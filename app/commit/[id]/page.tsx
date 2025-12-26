@@ -14,6 +14,7 @@ import {
   updateRewardTotalsAndMilestones,
 } from "../../lib/escrowStore";
 import { getBalanceLamports, getChainUnixTime, getConnection } from "../../lib/solana";
+import { getSafeErrorMessage } from "../../lib/safeError";
 
 export const runtime = "nodejs";
 
@@ -83,18 +84,19 @@ function clusterQuery(): string {
 export default async function CommitDashboardPage({ params }: { params: { id: string } }) {
   const id = params.id;
 
-  const record = await getCommitment(id);
-  if (!record) notFound();
+  try {
+    const record = await getCommitment(id);
+    if (!record) notFound();
 
-  const connection = getConnection();
-  const escrowPk = new PublicKey(record.escrowPubkey);
+    const connection = getConnection();
+    const escrowPk = new PublicKey(record.escrowPubkey);
 
-  const [balanceLamports, nowUnix] = await Promise.all([
-    getBalanceLamports(connection, escrowPk),
-    getChainUnixTime(connection),
-  ]);
+    const [balanceLamports, nowUnix] = await Promise.all([
+      getBalanceLamports(connection, escrowPk),
+      getChainUnixTime(connection),
+    ]);
 
-  if (record.kind === "creator_reward") {
+    if (record.kind === "creator_reward") {
     const milestones: RewardMilestone[] = Array.isArray(record.milestones) ? (record.milestones.slice() as RewardMilestone[]) : [];
     const approvalCounts = await getRewardMilestoneApprovalCounts(id);
     const approvalThreshold = getRewardApprovalThreshold();
@@ -218,118 +220,131 @@ export default async function CommitDashboardPage({ params }: { params: { id: st
         </div>
       </div>
     );
-  }
-
-  const funded = balanceLamports >= record.amountLamports;
-  const expired = nowUnix > record.deadlineUnix;
-
-  const total = Math.max(1, record.deadlineUnix - record.createdAtUnix);
-  const elapsed = nowUnix - record.createdAtUnix;
-  const progress = clamp01(elapsed / total);
-
-  const dueInSeconds = record.deadlineUnix - nowUnix;
-  const timingLine = expired ? `Past due by ${humanRelative(dueInSeconds)}` : `Due in ${humanRelative(dueInSeconds)}`;
-
-  const statement = (record as any).statement ? String((record as any).statement) : "";
-  const statementText = statement.trim().length > 0 ? statement.trim() : "Commitment";
-
-  const canMarkSuccess = record.status === "created" && !expired;
-  const canMarkFailure = record.status === "created" && expired;
-
-  const explorerUrl = `https://explorer.solana.com/address/${record.escrowPubkey}${clusterQuery()}`;
-
-  const guidance = (() => {
-    if (record.status === "resolved_success" || record.status === "resolved_failure") {
-      return "Resolution is recorded. This page stays here as a permanent receipt.";
     }
 
-    if (!funded) {
-      return "Fund the escrow by sending SOL to the escrow address. Once funded, your commitment becomes enforceable.";
-    }
+      const funded = balanceLamports >= record.amountLamports;
+      const expired = nowUnix > record.deadlineUnix;
 
-    if (!expired) {
-      return "Escrow is funded. You can reclaim before the deadline, or let it stand until time runs out.";
-    }
+      const dueInSeconds = record.deadlineUnix - nowUnix;
+      const timingLine = expired ? `Past due by ${humanRelative(dueInSeconds)}` : `Due in ${humanRelative(dueInSeconds)}`;
 
-    return "The deadline has passed. If this must be resolved, mark the outcome.";
-  })();
+      const statement = (record as any).statement ? String((record as any).statement) : "";
+      const statementText = statement.trim().length > 0 ? statement.trim() : "Commitment";
 
-  return (
-    <div className={styles.page}>
-      <div className={styles.wrap}>
-        <div className={styles.headerRow}>
-          <div className={styles.brand}>
-            <img className={styles.brandMark} src="/branding/svg-logo.svg" alt="Commit To Ship" />
-            <div className={styles.brandTitle}>Commit Dashboard</div>
-          </div>
+      const canMarkSuccess = record.status === "created" && !expired;
+      const canMarkFailure = record.status === "created" && expired;
 
-          <div className={styles.topMeta}>
-            <span>On-chain</span>
-            <span className={styles.dot} />
-            <span>Updated {new Date(nowUnix * 1000).toLocaleString()}</span>
+      const explorerUrl = `https://explorer.solana.com/address/${record.escrowPubkey}${clusterQuery()}`;
+
+      const totalWindowSeconds = Math.max(1, record.deadlineUnix - record.createdAtUnix);
+      const elapsedSeconds = nowUnix - record.createdAtUnix;
+      const progress = clamp01(elapsedSeconds / totalWindowSeconds);
+
+      const guidance = (() => {
+        if (record.status === "resolved_success" || record.status === "resolved_failure") {
+          return "Resolution is recorded. This page stays here as a permanent receipt.";
+        }
+
+        if (!funded) {
+          return "Fund the escrow by sending SOL to the escrow address. Once funded, your commitment becomes enforceable.";
+        }
+
+        if (!expired) {
+          return "Escrow is funded. You can reclaim before the deadline, or let it stand until time runs out.";
+        }
+
+        return "The deadline has passed. If this must be resolved, mark the outcome.";
+      })();
+
+      return (
+        <div className={styles.page}>
+          <div className={styles.wrap}>
+            <div className={styles.headerRow}>
+              <div className={styles.brand}>
+                <img className={styles.brandMark} src="/branding/svg-logo.svg" alt="Commit To Ship" />
+                <div className={styles.brandTitle}>Commit Dashboard</div>
+              </div>
+
+              <div className={styles.topMeta}>
+                <span>On-chain</span>
+                <span className={styles.dot} />
+                <span>Updated {new Date(nowUnix * 1000).toLocaleString()}</span>
+              </div>
+            </div>
+
+            <section className={`${styles.surface} ${styles.hero}`}>
+              <div className={styles.heroInner}>
+                <div className={styles.heroTop}>
+                  <h1 className={`${styles.statement} ${statementText === "Commitment" ? styles.statementFallback : ""}`}>{statementText}</h1>
+
+                  <div className={styles.heroMetaRight}>
+                    <span className={styles.statusPill}>
+                      <span className={styles.statusDot} />
+                      <span>{statusLabel(record.status)}</span>
+                    </span>
+                    <div className={styles.heroMetaLines}>
+                      <div>{funded ? "Escrow funded" : "Not funded yet"}</div>
+                      <div>{timingLine}</div>
+                      <div>{new Date(record.deadlineUnix * 1000).toLocaleString()}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className={styles.heroBottom}>
+                  <div className={styles.amountRow}>
+                    <div className={styles.amount}>{fmtSol(record.amountLamports)}</div>
+                    <div className={styles.amountUnit}>SOL locked</div>
+                  </div>
+
+                  <div className={styles.progressWrap}>
+                    <div className={styles.progressTrack}>
+                      <div className={styles.progressFill} style={{ width: `${Math.round(progress * 100)}%` }} />
+                    </div>
+                  </div>
+
+                  <div className={styles.guidance}>{guidance}</div>
+                </div>
+              </div>
+            </section>
+
+            <section className={`${styles.surface} ${styles.lowerSurface}`}>
+              <CommitDashboardClient
+                id={record.id}
+                kind={record.kind}
+                escrowPubkey={record.escrowPubkey}
+                destinationOnFail={record.destinationOnFail}
+                authority={record.authority}
+                statement={statementText}
+                status={record.status}
+                canMarkSuccess={canMarkSuccess}
+                canMarkFailure={canMarkFailure}
+                explorerUrl={explorerUrl}
+                creatorPubkey={record.creatorPubkey ?? null}
+                milestones={record.milestones ?? []}
+                totalFundedLamports={record.totalFundedLamports ?? 0}
+                unlockedLamports={record.unlockedLamports ?? 0}
+                balanceLamports={balanceLamports}
+                nowUnix={nowUnix}
+              />
+            </section>
+            <div className={styles.smallNote}>
+              This dashboard is a calm view of what’s true: the escrow address, the deadline, and the current state on-chain.
+            </div>
           </div>
         </div>
-
-        <section className={`${styles.surface} ${styles.hero}`}>
-          <div className={styles.heroInner}>
-            <div className={styles.heroTop}>
-              <h1 className={`${styles.statement} ${statementText === "Commitment" ? styles.statementFallback : ""}`}>{statementText}</h1>
-
-              <div className={styles.heroMetaRight}>
-                <span className={styles.statusPill}>
-                  <span className={styles.statusDot} />
-                  <span>{statusLabel(record.status)}</span>
-                </span>
-                <div className={styles.heroMetaLines}>
-                  <div>{funded ? "Escrow funded" : "Not funded yet"}</div>
-                  <div>{timingLine}</div>
-                  <div>{new Date(record.deadlineUnix * 1000).toLocaleString()}</div>
-                </div>
-              </div>
+    );
+  } catch (e) {
+    const msg = getSafeErrorMessage(e);
+    return (
+      <div className={styles.page}>
+        <div className={styles.wrap}>
+          <section className={`${styles.surface} ${styles.lowerSurface}`}>
+            <div className={styles.smallNote} style={{ color: "rgba(180, 40, 60, 0.86)" }}>
+              {msg}
             </div>
-
-            <div className={styles.heroBottom}>
-              <div className={styles.amountRow}>
-                <div className={styles.amount}>{fmtSol(record.amountLamports)}</div>
-                <div className={styles.amountUnit}>SOL locked</div>
-              </div>
-
-              <div className={styles.progressWrap}>
-                <div className={styles.progressTrack}>
-                  <div className={styles.progressFill} style={{ width: `${Math.round(progress * 100)}%` }} />
-                </div>
-              </div>
-
-              <div className={styles.guidance}>{guidance}</div>
-            </div>
-          </div>
-        </section>
-
-        <section className={`${styles.surface} ${styles.lowerSurface}`}>
-          <CommitDashboardClient
-            id={record.id}
-            kind={record.kind}
-            escrowPubkey={record.escrowPubkey}
-            destinationOnFail={record.destinationOnFail}
-            authority={record.authority}
-            statement={statementText}
-            status={record.status}
-            canMarkSuccess={canMarkSuccess}
-            canMarkFailure={canMarkFailure}
-            explorerUrl={explorerUrl}
-            creatorPubkey={record.creatorPubkey ?? null}
-            milestones={record.milestones ?? []}
-            totalFundedLamports={record.totalFundedLamports ?? 0}
-            unlockedLamports={record.unlockedLamports ?? 0}
-            balanceLamports={balanceLamports}
-            nowUnix={nowUnix}
-          />
-        </section>
-
-        <div className={styles.smallNote}>
-          This dashboard is a calm view of what’s true: the escrow address, the deadline, and the current state on-chain.
+          </section>
         </div>
       </div>
-    </div>
-  );
+    );
+  }
 }

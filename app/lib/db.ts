@@ -1,5 +1,7 @@
 import { Pool } from "pg";
 
+import { getSafeErrorMessage } from "./safeError";
+
 let pool: Pool | null = null;
 
 export function hasDatabase(): boolean {
@@ -15,6 +17,11 @@ export function getPool(): Pool {
     pool = new Pool({
       connectionString: process.env.DATABASE_URL,
       ssl: { rejectUnauthorized: false },
+    });
+
+    pool.on("error", (e) => {
+      const msg = getSafeErrorMessage(e);
+      console.error(msg);
     });
   }
 

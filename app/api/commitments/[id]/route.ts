@@ -12,6 +12,7 @@ import {
   updateRewardTotalsAndMilestones,
 } from "../../../lib/escrowStore";
 import { getBalanceLamports, getChainUnixTime, getConnection } from "../../../lib/solana";
+import { getSafeErrorMessage } from "../../../lib/safeError";
 
 export const runtime = "nodejs";
 
@@ -93,6 +94,6 @@ export async function GET(_req: Request, ctx: { params: { id: string } }) {
       },
     });
   } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
   }
 }

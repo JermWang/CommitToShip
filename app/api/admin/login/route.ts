@@ -11,6 +11,7 @@ import {
   getAllowedAdminWallets,
   verifyAdminOrigin,
 } from "../../../lib/adminSession";
+import { getSafeErrorMessage } from "../../../lib/safeError";
 
 export const runtime = "nodejs";
 
@@ -50,6 +51,6 @@ export async function POST(req: Request) {
     res.headers.set("set-cookie", buildAdminSessionCookie({ sessionId: sess.sessionId, maxAgeSeconds: sessionTtlSeconds }));
     return res;
   } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
   }
 }
