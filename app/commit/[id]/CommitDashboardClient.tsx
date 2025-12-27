@@ -5,6 +5,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import bs58 from "bs58";
 import styles from "./CommitDashboard.module.css";
 
+type ProfileSummary = {
+  walletPubkey: string;
+  displayName?: string | null;
+  avatarUrl?: string | null;
+};
+
 type RewardMilestoneStatus = "locked" | "claimable" | "released";
 
 type RewardMilestone = {
@@ -75,6 +81,13 @@ async function adminPost(path: string): Promise<any> {
   return json;
 }
 
+function shortWallet(pk: string): string {
+  const s = String(pk ?? "").trim();
+  if (!s) return "";
+  if (s.length <= 10) return s;
+  return `${s.slice(0, 4)}…${s.slice(-4)}`;
+}
+
 async function jsonPost(path: string, body: unknown): Promise<any> {
   const res = await fetch(path, {
     method: "POST",
@@ -123,6 +136,8 @@ export default function CommitDashboardClient(props: Props) {
   const [pumpClaimResult, setPumpClaimResult] = useState<any>(null);
   const [pumpWalletPubkey, setPumpWalletPubkey] = useState<string | null>(null);
 
+  const [profilesByWallet, setProfilesByWallet] = useState<Record<string, ProfileSummary>>({});
+
   const [creatorBusy, setCreatorBusy] = useState<string | null>(null);
   const [creatorError, setCreatorError] = useState<string | null>(null);
   const [signatureInput, setSignatureInput] = useState<Record<string, string>>({});
@@ -168,6 +183,43 @@ export default function CommitDashboardClient(props: Props) {
   function getSolanaProvider(): any {
     return (window as any)?.solana;
   }
+
+  useEffect(() => {
+    const wallets: string[] = [];
+    if (props.creatorPubkey) wallets.push(String(props.creatorPubkey));
+    if (props.authority) wallets.push(String(props.authority));
+
+    const cleaned = Array.from(new Set(wallets.map((w) => String(w ?? "").trim()).filter(Boolean)));
+    const missing = cleaned.filter((w) => !profilesByWallet[w]);
+    if (missing.length === 0) return;
+
+    fetch("/api/profiles/batch", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ walletPubkeys: missing }),
+    })
+      .then((res) => readJsonSafe(res).then((json) => ({ ok: res.ok, json })))
+      .then(({ ok, json }) => {
+        if (!ok) return;
+        const profiles = Array.isArray(json?.profiles) ? (json.profiles as ProfileSummary[]) : [];
+        if (!profiles.length) return;
+
+        setProfilesByWallet((prev) => {
+          const next = { ...prev };
+          for (const p of profiles) {
+            const pk = String(p?.walletPubkey ?? "").trim();
+            if (!pk) continue;
+            next[pk] = {
+              walletPubkey: pk,
+              displayName: p.displayName ?? null,
+              avatarUrl: p.avatarUrl ?? null,
+            };
+          }
+          return next;
+        });
+      })
+      .catch(() => null);
+  }, [props.creatorPubkey, props.authority, profilesByWallet]);
 
   async function connectPumpCreatorWallet() {
     setPumpError(null);
