@@ -13,9 +13,14 @@ export function getPool(): Pool {
     throw new Error("DATABASE_URL is required");
   }
 
+  const raw = String(process.env.DATABASE_URL).trim();
+  if (!raw || raw.startsWith("//") || (!raw.startsWith("postgres://") && !raw.startsWith("postgresql://"))) {
+    throw new Error("Invalid DATABASE_URL");
+  }
+
   if (!pool) {
     pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
+      connectionString: raw,
       ssl: { rejectUnauthorized: false },
     });
 
