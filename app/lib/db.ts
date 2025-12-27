@@ -41,10 +41,19 @@ export function getPool(): Pool {
     pool = new Pool({
       connectionString: raw,
       ssl: { rejectUnauthorized: false },
+      max: 1,
+      connectionTimeoutMillis: 10_000,
+      idleTimeoutMillis: 10_000,
+      allowExitOnIdle: true,
     });
 
     pool.on("error", (e) => {
       const msg = getSafeErrorMessage(e);
+      console.error("DB pool error", {
+        code: (e as any)?.code,
+        errno: (e as any)?.errno,
+        syscall: (e as any)?.syscall,
+      });
       console.error(msg);
     });
   }
