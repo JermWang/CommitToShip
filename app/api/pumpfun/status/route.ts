@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { PublicKey } from "@solana/web3.js";
 
-import { isAdminRequestAsync } from "../../../lib/adminAuth";
-import { verifyAdminOrigin } from "../../../lib/adminSession";
 import { getChainUnixTime, getConnection } from "../../../lib/solana";
 import { getClaimableCreatorFeeLamports } from "../../../lib/pumpfun";
 import { getSafeErrorMessage } from "../../../lib/safeError";
@@ -11,11 +9,6 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
-    verifyAdminOrigin(req);
-    if (!(await isAdminRequestAsync(req))) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const body = (await req.json().catch(() => null)) as any;
     const creatorPubkeyRaw = typeof body?.creatorPubkey === "string" ? body.creatorPubkey.trim() : "";
 

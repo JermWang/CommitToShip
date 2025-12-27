@@ -1,5 +1,6 @@
 "use client";
 
+import { Transaction } from "@solana/web3.js";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import bs58 from "bs58";
 import styles from "./CommitDashboard.module.css";
@@ -120,6 +121,7 @@ export default function CommitDashboardClient(props: Props) {
   const [pumpError, setPumpError] = useState<string | null>(null);
   const [pumpStatus, setPumpStatus] = useState<any>(null);
   const [pumpClaimResult, setPumpClaimResult] = useState<any>(null);
+  const [pumpWalletPubkey, setPumpWalletPubkey] = useState<string | null>(null);
 
   const [creatorBusy, setCreatorBusy] = useState<string | null>(null);
   const [creatorError, setCreatorError] = useState<string | null>(null);
@@ -167,6 +169,95 @@ export default function CommitDashboardClient(props: Props) {
     return (window as any)?.solana;
   }
 
+  async function connectPumpCreatorWallet() {
+    setPumpError(null);
+    setPumpBusy("connect");
+    try {
+      const provider = getSolanaProvider();
+      if (!provider?.connect) throw new Error("Wallet provider not found");
+      const res = await provider.connect();
+      const pk = (res?.publicKey ?? provider.publicKey)?.toBase58?.();
+      if (!pk) throw new Error("Failed to read wallet public key");
+      setPumpWalletPubkey(pk);
+      if (!pumpCreatorPubkeyInput.trim()) {
+        setPumpCreatorPubkeyInput(pk);
+      }
+    } catch (e) {
+      setPumpError((e as Error).message);
+    } finally {
+      setPumpBusy(null);
+    }
+  }
+
+  function expectedPumpClaimMessage(input: { creatorPubkey: string; timestampUnix: number }): string {
+    return `Commit To Ship\nPump.fun Claim\nCreator: ${input.creatorPubkey}\nTimestamp: ${input.timestampUnix}`;
+  }
+
+  function base64ToBytes(b64: string): Uint8Array {
+    const bin = atob(b64);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+
+  async function pumpSignAndClaimFees() {
+    setPumpError(null);
+    setPumpBusy("claim");
+    try {
+      const provider = getSolanaProvider();
+      if (!provider?.publicKey) throw new Error("Connect wallet first");
+      if (!provider.signMessage) throw new Error("Wallet does not support message signing");
+
+      const creatorPubkey = pumpCreatorPubkeyInput.trim();
+      if (!creatorPubkey) throw new Error("Creator wallet required");
+
+      const connected = provider.publicKey.toBase58();
+      setPumpWalletPubkey(connected);
+      if (connected !== creatorPubkey) {
+        throw new Error("Connected wallet must match creator wallet to claim");
+      }
+
+      const timestampUnix = Math.floor(Date.now() / 1000);
+      const message = expectedPumpClaimMessage({ creatorPubkey, timestampUnix });
+      const signed = await provider.signMessage(new TextEncoder().encode(message), "utf8");
+      const signatureBytes: Uint8Array = signed?.signature ?? signed;
+      const signatureB58 = bs58.encode(signatureBytes);
+
+      const res = await jsonPost("/api/pumpfun/claim", {
+        creatorPubkey,
+        timestampUnix,
+        signatureB58,
+      });
+
+      const txBase64 = String(res?.txBase64 ?? "");
+      if (!txBase64) throw new Error("Server did not return a transaction");
+
+      const tx = Transaction.from(base64ToBytes(txBase64));
+
+      if (!provider.signAndSendTransaction) {
+        throw new Error("Wallet does not support signAndSendTransaction");
+      }
+
+      const sent = await provider.signAndSendTransaction(tx);
+      const sig = String(sent?.signature ?? sent);
+
+      setPumpClaimResult({ ...res, signature: sig });
+      setPumpStatus({
+        ok: true,
+        nowUnix: res.nowUnix,
+        creator: res.creator,
+        creatorVault: res.creatorVault,
+        vaultBalanceLamports: res.vaultBalanceLamports,
+        rentExemptMinLamports: res.rentExemptMinLamports,
+        claimableLamports: 0,
+      });
+    } catch (e) {
+      setPumpError((e as Error).message);
+    } finally {
+      setPumpBusy(null);
+    }
+  }
+
   const refreshAdminSession = useCallback(async () => {
     const res = await fetch("/api/admin/me", { cache: "no-store", credentials: "include" });
     const json = await readJsonSafe(res);
@@ -196,29 +287,7 @@ export default function CommitDashboardClient(props: Props) {
   }
 
   async function pumpClaimFees() {
-    setPumpError(null);
-    setPumpBusy("claim");
-    try {
-      const creatorPubkey = pumpCreatorPubkeyInput.trim();
-      if (!creatorPubkey) throw new Error("Creator wallet required");
-      const res = await jsonPost("/api/pumpfun/claim", { creatorPubkey });
-      setPumpClaimResult(res);
-      if (res?.after) {
-        setPumpStatus({
-          ok: true,
-          nowUnix: res.nowUnix,
-          creator: res.creator,
-          creatorVault: res.after.creatorVault,
-          vaultBalanceLamports: res.after.vaultBalanceLamports,
-          rentExemptMinLamports: res.after.rentExemptMinLamports,
-          claimableLamports: res.after.claimableLamports,
-        });
-      }
-    } catch (e) {
-      setPumpError((e as Error).message);
-    } finally {
-      setPumpBusy(null);
-    }
+    await pumpSignAndClaimFees();
   }
 
   async function adminSignIn() {
@@ -623,7 +692,7 @@ export default function CommitDashboardClient(props: Props) {
           <div className={styles.receiptBlock}>
             <div className={styles.receiptLabel}>Pump.fun Creator Fees</div>
             <div className={styles.smallNote} style={{ marginTop: 8 }}>
-              Admin-only: check and claim creator fees from Pump.fun.
+              Connect the creator wallet to check and claim fees.
             </div>
 
             {pumpError ? <div className={styles.smallNote} style={{ marginTop: 10, color: "rgba(180, 40, 60, 0.86)" }}>{pumpError}</div> : null}
@@ -637,15 +706,22 @@ export default function CommitDashboardClient(props: Props) {
               />
               <button
                 className={styles.actionBtn}
+                onClick={connectPumpCreatorWallet}
+                disabled={pumpBusy != null}
+              >
+                {pumpBusy === "connect" ? "Connecting…" : pumpWalletPubkey ? "Wallet Connected" : "Connect Wallet"}
+              </button>
+              <button
+                className={styles.actionBtn}
                 onClick={pumpCheckStatus}
-                disabled={!adminWalletPubkey || pumpBusy != null}
+                disabled={pumpBusy != null}
               >
                 {pumpBusy === "check" ? "Checking…" : "Check"}
               </button>
               <button
                 className={`${styles.actionBtn} ${styles.actionPrimary}`}
                 onClick={pumpClaimFees}
-                disabled={!adminWalletPubkey || pumpBusy != null}
+                disabled={pumpBusy != null || !pumpWalletPubkey}
               >
                 {pumpBusy === "claim" ? "Claiming…" : "Claim"}
               </button>

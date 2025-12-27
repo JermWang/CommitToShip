@@ -48,6 +48,51 @@ export async function getClaimableCreatorFeeLamports(input: {
   return { creatorVault, vaultBalanceLamports, rentExemptMinLamports, claimableLamports };
 }
 
+export function buildCollectCreatorFeeInstruction(input: { creator: PublicKey }): { ix: TransactionInstruction; creatorVault: PublicKey } {
+  const creatorVault = getCreatorVaultPda(input.creator);
+  const eventAuthority = getPumpEventAuthorityPda();
+
+  const ix = new TransactionInstruction({
+    programId: PUMP_PROGRAM_ID,
+    keys: [
+      { pubkey: input.creator, isSigner: false, isWritable: true },
+      { pubkey: creatorVault, isSigner: false, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: eventAuthority, isSigner: false, isWritable: false },
+      { pubkey: PUMP_PROGRAM_ID, isSigner: false, isWritable: false },
+    ],
+    data: COLLECT_CREATOR_FEE_DISCRIMINATOR,
+  });
+
+  return { ix, creatorVault };
+}
+
+export async function buildUnsignedClaimCreatorFeesTx(input: {
+  connection: Connection;
+  creator: PublicKey;
+}): Promise<{ tx: Transaction; creatorVault: PublicKey; claimableLamports: number; rentExemptMinLamports: number; vaultBalanceLamports: number }> {
+  const { connection, creator } = input;
+
+  const claimable = await getClaimableCreatorFeeLamports({ connection, creator });
+
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("processed");
+  const { ix, creatorVault } = buildCollectCreatorFeeInstruction({ creator });
+
+  const tx = new Transaction();
+  tx.feePayer = creator;
+  tx.recentBlockhash = blockhash;
+  tx.lastValidBlockHeight = lastValidBlockHeight;
+  tx.add(ix);
+
+  return {
+    tx,
+    creatorVault,
+    claimableLamports: claimable.claimableLamports,
+    rentExemptMinLamports: claimable.rentExemptMinLamports,
+    vaultBalanceLamports: claimable.vaultBalanceLamports,
+  };
+}
+
 export async function claimCreatorFees(input: {
   connection: Connection;
   creator: PublicKey;
