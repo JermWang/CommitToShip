@@ -1123,6 +1123,14 @@ html[data-skin="app"] .ascii-waves {
   font-weight: 450;
 }
 
+.pumpfunLink,
+.pumpfunLink:visited,
+.pumpfunLink:hover,
+.pumpfunLink:active {
+  color: #b7ff3c;
+  text-decoration: none;
+}
+
 .heroMark {
   margin-top: 22px;
   margin-bottom: 14px;

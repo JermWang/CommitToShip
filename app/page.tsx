@@ -750,7 +750,7 @@ export default function Home() {
 
                         <p className="heroLead">
                           Lock your{" "}
-                          <a href="https://pump.fun" target="_blank" rel="noreferrer noopener">
+                          <a href="https://pump.fun" target="_blank" rel="noreferrer noopener" className="pumpfunLink">
                             pump.fun
                           </a>{" "}
                           dev fees in on-chain escrow. Set milestones; holders vote to approve releases. If you miss, fees stay locked or route to the chosen destination.
