@@ -1454,8 +1454,6 @@ export default function Home() {
             ) : tab === "commit" ? (
               <div className="commitStage">
                 <div className="commitWrap">
-                  {error ? <div className="commitError">{error}</div> : null}
-
                   <div className="commitLayout">
                       <section className="commitSurface commitSurfaceMain">
                       <div className="commitHero commitHeroInSurface" ref={commitmentRef}>

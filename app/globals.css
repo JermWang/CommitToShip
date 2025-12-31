@@ -281,22 +281,19 @@ body > * {
 .globalNav {
   position: sticky;
   top: 0;
-  z-index: 60;
-  border-bottom: none;
-  background: rgba(0, 0, 0, 0.52);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  box-shadow: none;
+  z-index: 80;
+  background: rgba(0, 0, 0, 0.92);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
 }
 
 .globalNavInner {
-  max-width: var(--layout-max);
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
   padding: 18px 22px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
+  gap: 18px;
 }
 
 .globalNavLeft {
@@ -581,8 +578,9 @@ body[data-skin="landing"] .globalNavLinkPrimary {
 }
 
 .docShell {
-  max-width: 1080px;
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
+  padding: 0 var(--layout-gutter);
 }
 
 .docShellGrid {
@@ -696,7 +694,7 @@ body[data-skin="landing"] .globalNavLinkPrimary {
 }
 
 .docArticle {
-  max-width: 720px;
+  max-width: none;
   margin: 0;
 }
 
@@ -898,15 +896,16 @@ body[data-skin="landing"] .globalNavLinkPrimary {
 .appShell {
   min-height: calc(100vh - 68px);
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
+  grid-template-columns: 1fr;
   gap: 20px;
   padding: 20px var(--layout-gutter) 28px;
-  max-width: var(--layout-max);
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
   background: transparent;
 }
 
 .appShellNav {
+  display: none;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: #fff;
@@ -1088,8 +1087,8 @@ html[data-skin="landing"] .appShellBrandMark {
 .stage {
   min-height: 100vh;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: stretch;
+  justify-content: stretch;
   padding: 56px 24px;
   background: var(--bg);
 }
@@ -1880,8 +1879,9 @@ html[data-skin="app"] .ascii-waves {
 
 .commitWrap {
   width: 100%;
-  max-width: var(--layout-content-max);
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
+  padding: 0 var(--layout-gutter);
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -1901,7 +1901,7 @@ html[data-skin="app"] .ascii-waves {
 /* Commit layout composition (inside app shell) */
 .commitLayout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-columns: 1fr;
   gap: 18px;
   align-items: start;
 }
@@ -1921,6 +1921,7 @@ html[data-skin="app"] .ascii-waves {
  }
 
  .commitSide {
+   display: none;
    gap: 0;
    padding: 18px;
    border-left: 1px solid var(--glass-divider);
@@ -2372,8 +2373,9 @@ body[data-skin="landing"] .commitSurface {
 
 .timelineWrap {
   width: 100%;
-  max-width: var(--layout-content-max);
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
+  padding: 0 var(--layout-gutter);
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -3161,8 +3163,8 @@ body[data-skin="app"] .timelineReceipt:hover {
 }
 
 .discoverWrap {
-  max-width: var(--layout-content-max);
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
   padding: 0 var(--layout-gutter);
 }
 

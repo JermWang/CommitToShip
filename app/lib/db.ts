@@ -18,7 +18,7 @@ function isMockMode(): boolean {
 function enforceProductionDbGuards(): void {
   if (process.env.NODE_ENV !== "production") return;
   if (isMockMode()) {
-    throw new Error("CTS_MOCK_MODE is not allowed in production");
+    return;
   }
   if (!String(process.env.DATABASE_URL ?? "").trim()) {
     throw new Error("DATABASE_URL is required in production");

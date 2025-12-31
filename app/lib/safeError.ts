@@ -24,6 +24,8 @@ export function getSafeErrorMessage(err: unknown): string {
 
   if (lower.includes("database_url is required")) return "DATABASE_URL is required";
 
+  if (lower.includes("cts_mock_mode")) return "Service configuration error";
+
   if (lower.includes("invalid database_url")) return "Invalid DATABASE_URL";
 
   if (

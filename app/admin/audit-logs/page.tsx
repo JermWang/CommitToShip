@@ -88,8 +88,8 @@ export default function AuditLogsPage() {
   }
 
   return (
-    <main className="appShellBody" style={{ paddingTop: 28 }}>
-      <div style={{ maxWidth: 1080, margin: "0 auto" }}>
+    <main className="appShellBody" style={{ paddingTop: 28, paddingLeft: "var(--layout-gutter)", paddingRight: "var(--layout-gutter)" }}>
+      <div>
         <div className="timelineHero" style={{ paddingBottom: 0 }}>
           <h1 className="timelineHeroTitle">Audit Logs</h1>
           <p className="timelineHeroLead">Admin-only event stream for monitoring and incident response.</p>
