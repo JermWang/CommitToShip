@@ -36,10 +36,10 @@ export default function GlobalNavLinks() {
         className={`globalNavIconBtn${active === "landing" ? " globalNavIconBtnActive" : ""}`}
         href="/"
         aria-current={active === "landing" ? "page" : undefined}
-        aria-label="Landing"
-        title="Landing"
+        aria-label="Home"
+        title="Home"
       >
-        <Icon d="M12 3l9 8h-3v9h-5v-6H11v6H6v-9H3l9-8z" />
+        <Icon d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" />
       </Link>
       <Link
         className={`globalNavIconBtn${active === "discover" ? " globalNavIconBtnActive" : ""}`}
@@ -48,25 +48,25 @@ export default function GlobalNavLinks() {
         aria-label="Discover"
         title="Discover"
       >
-        <Icon d="M3 5h18v2H3V5zm0 6h18v2H3v-2zm0 6h18v2H3v-2z" />
+        <Icon d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" />
       </Link>
       <Link
         className={`globalNavIconBtn${active === "commit" ? " globalNavIconBtnActive" : ""}`}
         href="/?tab=commit"
         aria-current={active === "commit" ? "page" : undefined}
-        aria-label="Commit"
-        title="Commit"
+        aria-label="Create Commitment"
+        title="Create Commitment"
       >
-        <Icon d="M19 21H9c-1.1 0-2-.9-2-2v-1h2v1h10V5H9v1H7V5c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2v14c0 1.1-.9 2-2 2zM11 17l-1.4-1.4L12.2 13H3v-2h9.2L9.6 8.4 11 7l6 6-6 6z" />
+        <Icon d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
       </Link>
       <Link
         className={`globalNavIconBtn${active === "docs" ? " globalNavIconBtnActive" : ""}`}
         href="/docs/platform-overview"
         aria-current={active === "docs" ? "page" : undefined}
-        aria-label="Platform overview"
-        title="Platform overview"
+        aria-label="Documentation"
+        title="Documentation"
       >
-        <Icon d="M6 2h11a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm0 2v16h11V4H6zm2 2h7v2H8V6zm0 4h7v2H8v-2zm0 4h5v2H8v-2z" />
+        <Icon d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z" />
       </Link>
       <WalletMultiButton />
     </nav>
