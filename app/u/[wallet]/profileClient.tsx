@@ -220,72 +220,122 @@ export default function ProfileClient({ wallet }: { wallet: string }) {
   }
 
   return (
-    <main className="appShellBody" style={{ paddingTop: 28, paddingLeft: "var(--layout-gutter)", paddingRight: "var(--layout-gutter)" }}>
-      <div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <div>
-            <div style={{ fontSize: 12, opacity: 0.7 }}>Profile</div>
-            <div style={{ fontSize: 18, fontWeight: 800 }}>{profile?.displayName?.trim() || shortWallet(profile?.walletPubkey || walletParam)}</div>
-          </div>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button className="btn" onClick={connectWallet} disabled={busy != null}>
-              {busy === "connect" ? "Connecting…" : connectedWallet ? "Wallet Connected" : "Connect Wallet"}
-            </button>
+    <main className="utilityPage">
+      <div className="utilityWrap">
+        <div className="utilityHeader">
+          <div className="utilityHeaderTop">
+            <div className="utilityHeaderLeft">
+              <div className="utilityBreadcrumb">
+                <a href="/" className="utilityBreadcrumbLink">Home</a>
+                <span className="utilityBreadcrumbSep">/</span>
+                <span>Profile</span>
+              </div>
+              <h1 className="utilityTitle">
+                {profile?.displayName?.trim() || shortWallet(profile?.walletPubkey || walletParam)}
+              </h1>
+              <p className="utilityLead">
+                Manage your public profile and wallet identity on Commit To Ship.
+              </p>
+            </div>
+            <div className="utilityHeaderRight">
+              <button className="utilityBtn" onClick={connectWallet} disabled={busy != null}>
+                {busy === "connect" ? "Connecting…" : connectedWallet ? "✓ Connected" : "Connect Wallet"}
+              </button>
+            </div>
           </div>
         </div>
 
-        {error ? <div style={{ marginTop: 14, color: "rgba(180, 40, 60, 0.86)" }}>{error}</div> : null}
-
-        <div style={{ display: "flex", gap: 18, marginTop: 18, alignItems: "flex-start", flexWrap: "wrap" }}>
-          <div style={{ width: 120, height: 120, borderRadius: 18, overflow: "hidden", border: "1px solid rgba(255,255,255,0.16)", background: "rgba(255,255,255,0.06)" }}>
-            {profile?.avatarUrl ? (
-              <img src={profile.avatarUrl} alt="avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-            ) : (
-              <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, opacity: 0.8 }}>
-                {shortWallet(profile?.walletPubkey || walletParam)}
-              </div>
-            )}
+        {error ? (
+          <div className="utilityAlert utilityAlertError" style={{ marginBottom: 24 }}>
+            {error}
           </div>
+        ) : null}
 
-          <div style={{ flex: 1, minWidth: 260 }}>
-            <div style={{ fontSize: 12, opacity: 0.7 }}>Wallet</div>
-            <div className="mono" style={{ marginTop: 4 }}>{profile?.walletPubkey || walletParam}</div>
-
-            <div style={{ marginTop: 14 }}>
-              <div style={{ fontSize: 12, opacity: 0.7 }}>Display name</div>
-              <input className="input" value={displayName} onChange={(e) => setDisplayName(e.target.value)} disabled={!canEdit || busy != null} style={{ width: "100%", marginTop: 6 }} />
-            </div>
-
-            <div style={{ marginTop: 14 }}>
-              <div style={{ fontSize: 12, opacity: 0.7 }}>Bio</div>
-              <textarea className="input" value={bio} onChange={(e) => setBio(e.target.value)} disabled={!canEdit || busy != null} style={{ width: "100%", marginTop: 6, minHeight: 92 }} />
-            </div>
-
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
-              <button className="btn btnPrimary" onClick={saveProfile} disabled={!canEdit || busy != null}>
-                {busy === "save" ? "Saving…" : "Save"}
-              </button>
-              <label className="btn" style={{ display: "inline-flex", alignItems: "center", gap: 10, cursor: canEdit && busy == null ? "pointer" : "not-allowed", opacity: canEdit ? 1 : 0.6 }}>
-                {busy === "upload" ? "Uploading…" : "Upload avatar"}
-                <input
-                  type="file"
-                  accept="image/*"
-                  disabled={!canEdit || busy != null}
-                  style={{ display: "none" }}
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) uploadAvatar(f);
-                    e.currentTarget.value = "";
-                  }}
-                />
-              </label>
-            </div>
-
-            {!canEdit ? (
-              <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
-                Connect the matching wallet to edit this profile.
+        <div className="utilityCard">
+          <div className="utilityCardHeader">
+            <h2 className="utilityCardTitle">Profile Information</h2>
+            <p className="utilityCardSub">Your public identity visible to other users on the platform.</p>
+          </div>
+          <div className="utilityCardBody">
+            <div className="utilityProfileHeader">
+              <div className="utilityAvatar utilityAvatarLarge">
+                {profile?.avatarUrl ? (
+                  <img src={profile.avatarUrl} alt="avatar" className="utilityAvatarImg" />
+                ) : (
+                  <div className="utilityAvatarFallback">
+                    {shortWallet(profile?.walletPubkey || walletParam)}
+                  </div>
+                )}
               </div>
-            ) : null}
+
+              <div className="utilityProfileInfo">
+                <div className="utilityField">
+                  <label className="utilityLabel">Wallet Address</label>
+                  <div className="utilityMono">{profile?.walletPubkey || walletParam}</div>
+                </div>
+
+                <div className="utilityField" style={{ marginTop: 20 }}>
+                  <label className="utilityLabel">Display Name</label>
+                  <input
+                    className="utilityInput"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    disabled={!canEdit || busy != null}
+                    placeholder="Enter a display name"
+                  />
+                </div>
+
+                <div className="utilityField" style={{ marginTop: 16 }}>
+                  <label className="utilityLabel">Bio</label>
+                  <textarea
+                    className="utilityInput utilityTextarea"
+                    value={bio}
+                    onChange={(e) => setBio(e.target.value)}
+                    disabled={!canEdit || busy != null}
+                    placeholder="Tell others about yourself"
+                  />
+                </div>
+
+                <div className="utilityProfileActions">
+                  <button
+                    className="utilityBtn utilityBtnPrimary"
+                    onClick={saveProfile}
+                    disabled={!canEdit || busy != null}
+                  >
+                    {busy === "save" ? "Saving…" : "Save Changes"}
+                  </button>
+                  <label
+                    className="utilityBtn"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      cursor: canEdit && busy == null ? "pointer" : "not-allowed",
+                      opacity: canEdit ? 1 : 0.5,
+                    }}
+                  >
+                    {busy === "upload" ? "Uploading…" : "Upload Avatar"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      disabled={!canEdit || busy != null}
+                      style={{ display: "none" }}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) uploadAvatar(f);
+                        e.currentTarget.value = "";
+                      }}
+                    />
+                  </label>
+                </div>
+
+                {!canEdit ? (
+                  <div className="utilityGuidance" style={{ marginTop: 16 }}>
+                    <strong>Want to edit?</strong> Connect the wallet that owns this profile to make changes.
+                  </div>
+                ) : null}
+              </div>
+            </div>
           </div>
         </div>
       </div>

@@ -88,106 +88,143 @@ export default function AuditLogsPage() {
   }
 
   return (
-    <main className="appShellBody" style={{ paddingTop: 28, paddingLeft: "var(--layout-gutter)", paddingRight: "var(--layout-gutter)" }}>
-      <div>
-        <div className="timelineHero" style={{ paddingBottom: 0 }}>
-          <h1 className="timelineHeroTitle">Audit Logs</h1>
-          <p className="timelineHeroLead">Admin-only event stream for monitoring and incident response.</p>
-        </div>
-
-        <div className="timelineControls" style={{ marginTop: 18 }}>
-          <div className="timelineToolRow" style={{ alignItems: "center" }}>
-            <input
-              className="timelineSearch"
-              value={eventPrefix}
-              onChange={(e) => setEventPrefix(e.target.value)}
-              placeholder="event prefix (e.g. admin_ or *_error)"
-            />
-            <input className="timelineSearch" value={q} onChange={(e) => setQ(e.target.value)} placeholder="search (event or fields)" />
-            <input
-              className="timelineSearch"
-              value={limit}
-              onChange={(e) => setLimit(e.target.value)}
-              placeholder="limit"
-              style={{ maxWidth: 120 }}
-            />
-            <button className="timelineRefresh" onClick={() => load().catch(() => null)} disabled={loading}>
-              {loading ? "Loading..." : "Refresh"}
-            </button>
-            <button
-              className="timelineRefresh"
-              onClick={() => load({ beforeUnix: oldestUnix }).catch(() => null)}
-              disabled={loading || !oldestUnix}
-              title="Load older"
-            >
-              Older
-            </button>
+    <main className="utilityPage">
+      <div className="utilityWrap">
+        <div className="utilityHeader">
+          <div className="utilityHeaderTop">
+            <div className="utilityHeaderLeft">
+              <div className="utilityBreadcrumb">
+                <a href="/" className="utilityBreadcrumbLink">Home</a>
+                <span className="utilityBreadcrumbSep">/</span>
+                <a href="/admin" className="utilityBreadcrumbLink">Admin</a>
+                <span className="utilityBreadcrumbSep">/</span>
+                <span>Audit Logs</span>
+              </div>
+              <h1 className="utilityTitle">Audit Logs</h1>
+              <p className="utilityLead">
+                Monitor platform activity and track admin actions for security and compliance.
+              </p>
+            </div>
           </div>
         </div>
 
-        {error ? <div className="timelineError" style={{ marginTop: 14 }}>{error}</div> : null}
-
-        <div style={{ marginTop: 14, color: "rgba(255,255,255,0.62)", fontSize: 12 }}>
-          <div>Newest: {newestUnix ? unixToLocal(newestUnix) : "—"}</div>
-          <div>Oldest: {oldestUnix ? unixToLocal(oldestUnix) : "—"}</div>
+        <div className="utilityCard">
+          <div className="utilityCardHeader">
+            <h2 className="utilityCardTitle">Search & Filter</h2>
+            <p className="utilityCardSub">Filter logs by event type, search terms, or time range.</p>
+          </div>
+          <div className="utilityCardBody">
+            <div className="utilityGrid utilityGrid3">
+              <div className="utilityField">
+                <label className="utilityLabel">Event Prefix</label>
+                <input
+                  className="utilityInput"
+                  value={eventPrefix}
+                  onChange={(e) => setEventPrefix(e.target.value)}
+                  placeholder="e.g. admin_ or *_error"
+                />
+              </div>
+              <div className="utilityField">
+                <label className="utilityLabel">Search</label>
+                <input
+                  className="utilityInput"
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="Search event or fields"
+                />
+              </div>
+              <div className="utilityField">
+                <label className="utilityLabel">Limit</label>
+                <input
+                  className="utilityInput"
+                  value={limit}
+                  onChange={(e) => setLimit(e.target.value)}
+                  placeholder="200"
+                  style={{ maxWidth: 120 }}
+                />
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 20, flexWrap: "wrap" }}>
+              <button className="utilityBtn utilityBtnPrimary" onClick={() => load().catch(() => null)} disabled={loading}>
+                {loading ? "Loading..." : "Search"}
+              </button>
+              <button
+                className="utilityBtn"
+                onClick={() => load({ beforeUnix: oldestUnix }).catch(() => null)}
+                disabled={loading || !oldestUnix}
+              >
+                Load Older
+              </button>
+            </div>
+          </div>
         </div>
 
-        <div className="timelineRail" style={{ marginTop: 18 }}>
+        {error ? (
+          <div className="utilityAlert utilityAlertError" style={{ marginTop: 24 }}>
+            {error}
+          </div>
+        ) : null}
+
+        <div className="utilityStats" style={{ marginTop: 24 }}>
+          <div className="utilityStat">
+            <div className="utilityStatLabel">Results</div>
+            <div className="utilityStatValue">{rows.length}</div>
+          </div>
+          <div className="utilityStat">
+            <div className="utilityStatLabel">Newest</div>
+            <div className="utilityStatValue" style={{ fontSize: 14 }}>{newestUnix ? unixToLocal(newestUnix) : "—"}</div>
+          </div>
+          <div className="utilityStat">
+            <div className="utilityStatLabel">Oldest</div>
+            <div className="utilityStatValue" style={{ fontSize: 14 }}>{oldestUnix ? unixToLocal(oldestUnix) : "—"}</div>
+          </div>
+        </div>
+
+        <div className="utilitySection" style={{ marginTop: 24 }}>
+          <h3 className="utilitySectionTitle">Event Log</h3>
+          
           {loading ? (
-            Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="timelineReceipt" aria-hidden="true">
-                <div className="timelineReceiptTop">
-                  <div className="timelineReceiptLeft">
-                    <div className="timelineActor">
-                      <div className="skeleton skeletonAvatar" />
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginLeft: 10 }}>
-                        <div className="skeleton skeletonLineSm" style={{ width: 180 }} />
-                        <div className="skeleton skeletonLineSm" style={{ width: 260 }} />
-                      </div>
-                    </div>
+            <div className="utilityList">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="utilityListItem" aria-hidden="true">
+                  <div className="utilityListItemContent">
+                    <div className="skeleton skeletonLine" style={{ width: 200, marginBottom: 8 }} />
+                    <div className="skeleton skeletonLineSm" style={{ width: 300 }} />
                   </div>
-                  <div className="timelineReceiptRight">
-                    <div className="skeleton skeletonLineSm" style={{ width: 110 }} />
-                  </div>
+                  <div className="skeleton skeletonLineSm" style={{ width: 80 }} />
                 </div>
-              </div>
-            ))
+              ))}
+            </div>
           ) : rows.length === 0 ? (
-            <div className="timelineEmpty">No logs found for this filter.</div>
+            <div className="utilityEmpty">
+              <div className="utilityEmptyTitle">No logs found</div>
+              <div className="utilityEmptyText">Try adjusting your search filters or time range.</div>
+            </div>
           ) : (
-            rows.map((r) => {
-              const json = JSON.stringify(r.fields ?? {}, null, 2);
-              return (
-                <div key={r.id} className="timelineReceipt timelineReceiptOpen">
-                  <div className="timelineReceiptTop">
-                    <div className="timelineReceiptLeft">
-                      <div className="timelineReceiptKicker">
-                        <span className="timelineChip timelineChipType">{unixToLocal(r.tsUnix)}</span>
-                        <span className="timelineChip timelineChipStatus">id={r.id}</span>
+            <div className="utilityList">
+              {rows.map((r) => {
+                const json = JSON.stringify(r.fields ?? {}, null, 2);
+                return (
+                  <div key={r.id} className="utilityListItem" style={{ flexDirection: "column", alignItems: "stretch", gap: 12 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                      <div>
+                        <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+                          <span className="utilityStatus utilityStatusDefault">{unixToLocal(r.tsUnix)}</span>
+                          <span className="utilityStatus utilityStatusActive">ID: {r.id}</span>
+                        </div>
+                        <div className="utilityListItemTitle" style={{ fontSize: 15 }}>{r.event}</div>
                       </div>
-                      <div className="timelineReceiptTitle">{r.event}</div>
-                      <pre
-                        style={{
-                          margin: "10px 0 0 0",
-                          whiteSpace: "pre-wrap",
-                          wordBreak: "break-word",
-                          color: "rgba(255,255,255,0.80)",
-                          fontSize: 12,
-                          lineHeight: 1.4,
-                        }}
-                      >
-                        {json}
-                      </pre>
-                    </div>
-                    <div className="timelineReceiptRight">
-                      <button className="timelineRefresh" type="button" onClick={() => copy(json)}>
+                      <button className="utilityBtn utilityBtnSmall" type="button" onClick={() => copy(json)}>
                         Copy
                       </button>
                     </div>
+                    <pre className="utilityMono" style={{ margin: 0, whiteSpace: "pre-wrap", lineHeight: 1.5, padding: "12px 14px", background: "rgba(0,0,0,0.3)", borderRadius: 8 }}>
+                      {json}
+                    </pre>
                   </div>
-                </div>
-              );
-            })
+                );
+              })}
+            </div>
           )}
         </div>
       </div>
