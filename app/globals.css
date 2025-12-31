@@ -1485,6 +1485,13 @@ html[data-skin="app"] .ascii-waves {
   text-decoration: none;
 }
 
+.heroLead .pumpfunLink,
+.heroLead .pumpfunLink:visited,
+.heroLead .pumpfunLink:hover,
+.heroLead .pumpfunLink:active {
+  color: #fff;
+}
+
 .heroMark {
   margin-top: 22px;
   margin-bottom: 14px;
