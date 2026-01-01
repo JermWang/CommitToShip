@@ -26,7 +26,9 @@ export default function RootLayout({
     <html lang="en">
       <body data-skin="app">
         <AsciiParticles />
-        <AsciiWaves />
+        <Suspense fallback={null}>
+          <AsciiWaves />
+        </Suspense>
         <SolanaWalletProvider>
           <ToastProvider>
             <header className="globalNav">
