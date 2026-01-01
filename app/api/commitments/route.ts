@@ -148,35 +148,36 @@ export async function POST(req: Request) {
         }, { status: 403 });
       }
 
-      const rawMilestones = Array.isArray(body.milestones) ? body.milestones : null;
-      if (!rawMilestones || rawMilestones.length === 0) {
-        return NextResponse.json({ error: "Milestones are required" }, { status: 400 });
-      }
+      // Milestones are optional at creation - can be added post-launch from the dashboard
+      const rawMilestones = Array.isArray(body.milestones) ? body.milestones : [];
       if (rawMilestones.length > 12) {
         return NextResponse.json({ error: "Too many milestones (max 12)" }, { status: 400 });
       }
 
-      // Support both percentage-based and lamport-based milestones
-      const hasPercents = rawMilestones.some((m: any) => m?.unlockPercent != null);
-      
-      if (hasPercents) {
-        const totalPercent = rawMilestones.reduce((sum: number, m: any) => sum + (Number(m?.unlockPercent) || 0), 0);
-        if (totalPercent !== 100) {
-          return NextResponse.json({ error: `Milestone percentages must total 100% (currently ${totalPercent}%)` }, { status: 400 });
+      // Validate milestones if provided
+      let milestones: Array<{ id: string; title: string; unlockLamports: number; unlockPercent: number }> = [];
+      if (rawMilestones.length > 0) {
+        const hasPercents = rawMilestones.some((m: any) => m?.unlockPercent != null);
+        
+        if (hasPercents) {
+          const totalPercent = rawMilestones.reduce((sum: number, m: any) => sum + (Number(m?.unlockPercent) || 0), 0);
+          if (totalPercent !== 100) {
+            return NextResponse.json({ error: `Milestone percentages must total 100% (currently ${totalPercent}%)` }, { status: 400 });
+          }
         }
-      }
 
-      const milestones = rawMilestones.map((m: any, idx: number) => {
-        const title = typeof m?.title === "string" ? m.title.trim() : "";
-        const unlockPercent = Number(m?.unlockPercent) || 0;
-        const unlockLamports = Number(m?.unlockLamports) || 0;
-        if (!title.length) throw new Error(`Milestone ${idx + 1}: title required`);
-        if (title.length > 80) throw new Error(`Milestone ${idx + 1}: title too long (max 80 chars)`);
-        if (hasPercents && (unlockPercent <= 0 || unlockPercent > 100)) throw new Error(`Milestone ${idx + 1}: invalid unlock percentage`);
-        if (!hasPercents && (!Number.isFinite(unlockLamports) || unlockLamports <= 0)) throw new Error(`Milestone ${idx + 1}: invalid unlockLamports`);
-        const id = typeof m?.id === "string" && m.id.trim().length > 0 ? m.id.trim() : crypto.randomBytes(8).toString("hex");
-        return { id, title, unlockLamports: Math.floor(unlockLamports), unlockPercent };
-      });
+        milestones = rawMilestones.map((m: any, idx: number) => {
+          const title = typeof m?.title === "string" ? m.title.trim() : "";
+          const unlockPercent = Number(m?.unlockPercent) || 0;
+          const unlockLamports = Number(m?.unlockLamports) || 0;
+          if (!title.length) throw new Error(`Milestone ${idx + 1}: title required`);
+          if (title.length > 80) throw new Error(`Milestone ${idx + 1}: title too long (max 80 chars)`);
+          if (hasPercents && (unlockPercent <= 0 || unlockPercent > 100)) throw new Error(`Milestone ${idx + 1}: invalid unlock percentage`);
+          if (!hasPercents && (!Number.isFinite(unlockLamports) || unlockLamports <= 0)) throw new Error(`Milestone ${idx + 1}: invalid unlockLamports`);
+          const id = typeof m?.id === "string" && m.id.trim().length > 0 ? m.id.trim() : crypto.randomBytes(8).toString("hex");
+          return { id, title, unlockLamports: Math.floor(unlockLamports), unlockPercent };
+        });
+      }
 
       const escrow = await createEscrow();
       const id = crypto.randomBytes(16).toString("hex");

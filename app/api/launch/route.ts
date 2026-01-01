@@ -65,30 +65,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid payout wallet address" }, { status: 400 });
     }
 
-    // Validate milestones
-    const rawMilestones = Array.isArray(body.milestones) ? body.milestones : [];
-    if (rawMilestones.length === 0) {
-      return NextResponse.json({ error: "At least one milestone is required" }, { status: 400 });
-    }
-    if (rawMilestones.length > 12) {
-      return NextResponse.json({ error: "Maximum 12 milestones allowed" }, { status: 400 });
-    }
-
-    // Validate percentages sum to 100
-    const totalPercent = rawMilestones.reduce((sum: number, m: any) => sum + (Number(m?.unlockPercent) || 0), 0);
-    if (totalPercent !== 100) {
-      return NextResponse.json({ error: `Milestone percentages must total 100% (currently ${totalPercent}%)` }, { status: 400 });
-    }
-
-    const milestones = rawMilestones.map((m: any, idx: number) => {
-      const title = typeof m?.title === "string" ? m.title.trim() : "";
-      const unlockPercent = Number(m?.unlockPercent) || 0;
-      if (!title.length) throw new Error(`Milestone ${idx + 1}: title required`);
-      if (title.length > 80) throw new Error(`Milestone ${idx + 1}: title too long (max 80 chars)`);
-      if (unlockPercent <= 0 || unlockPercent > 100) throw new Error(`Milestone ${idx + 1}: invalid unlock percentage`);
-      const id = crypto.randomBytes(8).toString("hex");
-      return { id, title, unlockPercent };
-    });
+    // Milestones are optional at launch - can be added post-launch from the dashboard
+    const milestones: Array<{ id: string; title: string; unlockPercent: number }> = [];
 
     // Optional social links
     const websiteUrl = typeof body.websiteUrl === "string" ? body.websiteUrl.trim() : "";
