@@ -1540,6 +1540,7 @@ export default function Home() {
 
   function setTabAndUrl(next: typeof tab) {
     setTab(next);
+    window.scrollTo({ top: 0, behavior: "instant" });
     if (next === "landing") {
       router.replace("/");
       return;
@@ -1583,20 +1584,14 @@ export default function Home() {
                         <div className="landingCtas">
                           <button
                             className="btn btnPrimary landingCtaPrimary"
-                            onClick={() => {
-                              setTabAndUrl("commit");
-                              setTimeout(() => commitmentRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
-                            }}
+                            onClick={() => setTabAndUrl("commit")}
                           >
                             Create Commitment
                           </button>
 
                           <button
                             className="btn landingCtaSecondary"
-                            onClick={() => {
-                              setTabAndUrl("discover");
-                              setTimeout(() => timelineRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 40);
-                            }}
+                            onClick={() => setTabAndUrl("discover")}
                           >
                             Explore Discover
                           </button>

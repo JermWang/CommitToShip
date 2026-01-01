@@ -242,7 +242,7 @@ export default function CreatorDashboardPage() {
           <img className={styles.emptyIcon} src="/branding/white-logo.png" alt="" />
           <h2>No Projects Yet</h2>
           <p>You haven&apos;t created any projects with CommitToShip yet.</p>
-          <button className={styles.createBtn} onClick={() => router.push("/?tab=create")}>
+          <button className={styles.createBtn} onClick={() => { window.scrollTo({ top: 0, behavior: "instant" }); router.push("/?tab=commit"); }}>
             Create Your First Project
           </button>
         </div>
