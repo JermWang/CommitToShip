@@ -149,7 +149,7 @@ export default async function CommitDashboardPage({ params }: { params: { id: st
         <div className={styles.wrap}>
           <div className={styles.headerRow}>
             <div className={styles.brand}>
-              <img className={styles.brandMark} src="/branding/svg-logo.svg" alt="Commit To Ship" />
+              <img className={styles.brandMark} src="/branding/white-logo.png" alt="Commit To Ship" />
               <div className={styles.brandTitle}>Commit Dashboard</div>
             </div>
 
@@ -281,7 +281,7 @@ export default async function CommitDashboardPage({ params }: { params: { id: st
           <div className={styles.wrap}>
             <div className={styles.headerRow}>
               <div className={styles.brand}>
-                <img className={styles.brandMark} src="/branding/svg-logo.svg" alt="Commit To Ship" />
+                <img className={styles.brandMark} src="/branding/white-logo.png" alt="Commit To Ship" />
                 <div className={styles.brandTitle}>Commit Dashboard</div>
               </div>
 

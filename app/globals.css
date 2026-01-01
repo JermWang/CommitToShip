@@ -321,7 +321,7 @@ body > * {
   flex: 0 0 auto;
   display: block;
   opacity: 0.95;
-  filter: invert(1);
+  filter: none;
   transform: scale(2);
   transform-origin: center;
   transition: transform 0.3s var(--ease-out), filter 0.3s var(--ease-out);
@@ -329,7 +329,7 @@ body > * {
 
 .globalNavBrand:hover .globalNavBrandMark {
   transform: scale(2.1) rotate(-2deg);
-  filter: invert(1);
+  filter: none;
 }
 
 .globalNavBrandText {
@@ -1222,11 +1222,15 @@ body[data-skin="landing"] .brandLockup {
 
 body[data-skin="landing"] .heroMark {
   margin: 0 0 2px 0;
+  overflow: hidden;
 }
 
 body[data-skin="landing"] .heroMarkImage {
   width: min(760px, 92vw);
   opacity: 1;
+  transform: scale(3);
+  transform-origin: center;
+  display: block;
 }
 
 body[data-skin="landing"] .heroMarkImageSvg {

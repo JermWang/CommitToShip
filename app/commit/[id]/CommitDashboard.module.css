@@ -28,7 +28,7 @@
   height: 72px;
   display: block;
   opacity: 0.92;
-  filter: invert(1);
+  filter: none;
 }
 
 .brandTitle {
