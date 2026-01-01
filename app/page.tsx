@@ -1434,6 +1434,10 @@ export default function Home() {
     const skin = tab === "landing" ? "landing" : "app";
     document.body.dataset.skin = skin;
     document.documentElement.dataset.skin = skin;
+    return () => {
+      document.body.dataset.skin = "app";
+      document.documentElement.dataset.skin = "app";
+    };
   }, [tab]);
 
   function setTabAndUrl(next: typeof tab) {

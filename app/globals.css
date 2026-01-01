@@ -551,9 +551,8 @@ body > * {
 }
 
 body[data-skin="landing"] .globalNav {
-  position: fixed;
-  left: 0;
-  right: 0;
+  position: sticky;
+  top: 0;
   background: rgba(0, 0, 0, 0.22);
   border-bottom-color: transparent;
 }
