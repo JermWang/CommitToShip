@@ -241,7 +241,7 @@ export default function CreatorDashboardPage() {
         <div className={styles.empty}>
           <div className={styles.emptyIcon}>📦</div>
           <h2>No Projects Yet</h2>
-          <p>You haven't created any projects with CommitToShip yet.</p>
+          <p>You haven&apos;t created any projects with CommitToShip yet.</p>
           <button className={styles.createBtn} onClick={() => router.push("/?tab=create")}>
             Create Your First Project
           </button>

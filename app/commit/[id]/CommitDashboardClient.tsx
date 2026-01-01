@@ -1334,7 +1334,7 @@ export default function CommitDashboardClient(props: Props) {
                   </div>
                 ) : (
                   <div className={styles.holderVoteEmpty}>
-                    <p>The creator hasn't marked any milestones as complete yet. Check back soon!</p>
+                    <p>The creator hasn&apos;t marked any milestones as complete yet. Check back soon!</p>
                   </div>
                 )}
               </div>
