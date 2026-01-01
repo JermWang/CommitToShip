@@ -1728,12 +1728,21 @@ export default function Home() {
                       </div>
                       <div className="createField">
                         <label className="createLabel">Ticker</label>
-                        <input
-                          className="createInput"
-                          value={draftSymbol}
-                          onChange={(e) => setDraftSymbol(e.target.value)}
-                          placeholder="e.g. DOGE"
-                        />
+                        <div className="tickerInputWrap">
+                          <span className="tickerPrefix">$</span>
+                          <input
+                            className="createInput tickerInput"
+                            value={draftSymbol}
+                            onChange={(e) => {
+                              const raw = e.target.value;
+                              const next = raw.replace(/^\s*\$+\s*/, "");
+                              setDraftSymbol(next);
+                            }}
+                            placeholder="e.g. DOGE"
+                            inputMode="text"
+                            autoCapitalize="characters"
+                          />
+                        </div>
                       </div>
                     </div>
 

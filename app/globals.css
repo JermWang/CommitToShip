@@ -5795,6 +5795,25 @@ body[data-skin="app"] .commitComplianceFill {
   background: rgba(0, 0, 0, 0.45);
 }
 
+.tickerInputWrap {
+  position: relative;
+}
+
+.tickerPrefix {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.tickerInput {
+  padding-left: 28px;
+}
+
 .createTextarea {
   width: 100%;
   padding: 12px 14px;
@@ -6607,6 +6626,14 @@ body[data-skin="app"] .commitComplianceFill {
   .createTextarea {
     padding: 11px 12px;
     font-size: 14px;
+  }
+
+  .tickerPrefix {
+    left: 12px;
+  }
+
+  .tickerInput {
+    padding-left: 26px;
   }
 
   .createToggleRow {
