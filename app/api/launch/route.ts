@@ -10,8 +10,7 @@ import { buildUnsignedPumpfunCreateV2Tx } from "../../lib/pumpfun";
 import { createRewardCommitmentRecord, insertCommitment, getCommitment } from "../../lib/escrowStore";
 import { upsertProjectProfile } from "../../lib/projectProfilesStore";
 import { auditLog } from "../../lib/auditLog";
-import { isAdminRequestAsync } from "../../lib/adminAuth";
-import { verifyAdminOrigin } from "../../lib/adminSession";
+import { getAdminCookieName, getAdminSessionWallet, getAllowedAdminWallets, verifyAdminOrigin } from "../../lib/adminSession";
 
 export const runtime = "nodejs";
 
@@ -37,9 +36,27 @@ export async function POST(req: Request) {
     }
 
     verifyAdminOrigin(req);
-    if (!(await isAdminRequestAsync(req))) {
-      await auditLog("admin_launch_denied", {});
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const cookieHeader = String(req.headers.get("cookie") ?? "");
+    const hasAdminCookie = cookieHeader.includes(`${getAdminCookieName()}=`);
+    const allowed = getAllowedAdminWallets();
+    const adminWallet = await getAdminSessionWallet(req);
+
+    if (!adminWallet) {
+      await auditLog("admin_launch_denied", { hasAdminCookie });
+      return NextResponse.json(
+        {
+          error: hasAdminCookie
+            ? "Admin session not found or expired. Try Admin Sign-In again. If this keeps happening, your server may not have a persistent DATABASE_URL (or is running in mock mode)."
+            : "Admin Sign-In required",
+        },
+        { status: 401 }
+      );
+    }
+
+    if (!allowed.has(adminWallet)) {
+      await auditLog("admin_launch_denied", { adminWallet });
+      return NextResponse.json({ error: "Not an allowed admin wallet" }, { status: 401 });
     }
 
     const body = (await req.json()) as any;

@@ -286,12 +286,16 @@ export default function Home() {
         if (!rewardTokenMint.trim().length) issues.push("Enter the token mint address.");
         if (!devVerify) issues.push("Verify your dev wallet on-chain.");
       }
+
+      if (commitPath === "automated") {
+        if (!adminWalletPubkey) issues.push("Admin sign-in required to launch.");
+      }
       
       // Milestones are set up post-launch, no validation needed here
     }
 
     return issues;
-  }, [amountLamports, authority, commitKind, commitPath, creatorPubkey, deadlineLocal, destinationOnFail, devVerify, rewardTokenMint, statement]);
+  }, [adminWalletPubkey, amountLamports, authority, commitKind, commitPath, creatorPubkey, deadlineLocal, destinationOnFail, devVerify, rewardTokenMint, statement]);
 
   function datetimeLocalFromUnix(tsUnix: number): string {
     const d = new Date(tsUnix * 1000);
@@ -1330,6 +1334,9 @@ export default function Home() {
     try {
       // Automated launch mode - use /api/launch
       if (commitKind === "creator_reward" && commitPath === "automated") {
+        if (!adminWalletPubkey) {
+          throw new Error("Admin sign-in required to launch");
+        }
         const launchBody = {
           name: draftName.trim(),
           symbol: draftSymbol.trim(),
@@ -1962,6 +1969,51 @@ export default function Home() {
                   {/* Connect Wallet - For Automated mode (simpler) */}
                   {commitPath === "automated" ? (
                     <>
+                      <div className="createDivider" />
+                      <div className="createSection">
+                        <h2 className="createSectionTitle">Admin Sign-In</h2>
+                        <p className="createSectionSub">Required to launch with Auto-Lock.</p>
+
+                        {adminWalletPubkey ? (
+                          <div className="createInfoBox" style={{ marginBottom: 0 }}>
+                            <div className="createInfoText">Signed in as {adminWalletPubkey}</div>
+                          </div>
+                        ) : null}
+
+                        {adminAuthError ? <div className="createError">{adminAuthError}</div> : null}
+
+                        <div style={{ display: "flex", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
+                          {!adminWalletPubkey ? (
+                            <button
+                              className="createUploadBtn"
+                              onClick={adminSignIn}
+                              disabled={busy != null || adminAuthBusy != null}
+                            >
+                              {adminAuthBusy === "signin" ? "Signing in..." : "Admin Sign-In"}
+                            </button>
+                          ) : (
+                            <button
+                              className="createUploadBtn"
+                              style={{ background: "rgba(134, 239, 172, 0.2)", color: "rgba(134, 239, 172, 0.9)" }}
+                              disabled
+                            >
+                              ✓ Admin Signed In
+                            </button>
+                          )}
+
+                          {adminWalletPubkey ? (
+                            <button
+                              className="createUploadBtn"
+                              style={{ background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)" }}
+                              onClick={adminSignOut}
+                              disabled={busy != null || adminAuthBusy != null}
+                            >
+                              {adminAuthBusy === "signout" ? "Signing out..." : "Sign out"}
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+
                       <div className="createDivider" />
                       <div className="createSection">
                         <h2 className="createSectionTitle">Connect Wallet</h2>
