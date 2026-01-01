@@ -2052,6 +2052,169 @@ body[data-skin="landing"] .commitSurface {
   color: rgba(255, 255, 255, 0.92);
 }
 
+/* Beta Blocker Modal */
+.betaBlockerOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.betaBlockerModal {
+  max-width: 420px;
+  width: 100%;
+  padding: 32px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(20, 20, 25, 0.95);
+  text-align: center;
+  animation: betaBlockerFadeIn 0.3s ease;
+}
+
+@keyframes betaBlockerFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.betaBlockerIcon {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(134, 239, 172, 0.15) 0%, rgba(96, 165, 250, 0.15) 100%);
+  border: 1px solid rgba(134, 239, 172, 0.25);
+}
+
+.betaBlockerIcon svg {
+  width: 32px;
+  height: 32px;
+  stroke: rgba(134, 239, 172, 0.9);
+}
+
+.betaBlockerTitle {
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0 0 12px;
+}
+
+.betaBlockerText {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.6);
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+
+.betaBlockerDate {
+  font-size: 18px;
+  font-weight: 600;
+  color: rgba(134, 239, 172, 0.95);
+  padding: 12px 20px;
+  border-radius: 12px;
+  background: rgba(134, 239, 172, 0.08);
+  border: 1px solid rgba(134, 239, 172, 0.15);
+  margin-bottom: 20px;
+}
+
+.betaBlockerCountdown {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 20px;
+}
+
+.betaBlockerCountdownValue {
+  font-size: 32px;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1;
+}
+
+.betaBlockerCountdownLabel {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.betaBlockerDivider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 0 0 20px;
+}
+
+.betaBlockerSubtext {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 0 0 20px;
+  line-height: 1.5;
+}
+
+.betaBlockerSubtext strong {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.betaBlockerActions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.betaBlockerBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 24px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.betaBlockerBtnPrimary {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #fff;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.betaBlockerBtnPrimary:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.30);
+  transform: translateY(-1px);
+}
+
+.betaBlockerBtnSecondary {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.betaBlockerBtnSecondary:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.20);
+  color: #fff;
+}
+
 .commitWizard {
   display: flex;
   flex-direction: column;

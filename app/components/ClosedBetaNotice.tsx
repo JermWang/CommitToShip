@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-const STORAGE_KEY = "cts_closed_beta_notice_dismissed_v1";
 const DEFAULT_BETA_START_ISO = "2026-01-06T00:00:00-08:00";
 
 function startOfLocalDay(d: Date): Date {
@@ -21,6 +20,10 @@ function msUntilNextLocalMidnight(now: Date): number {
   return Math.max(500, next.getTime() - now.getTime());
 }
 
+function formatDate(d: Date): string {
+  return d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+}
+
 export default function ClosedBetaNotice() {
   const betaStart = useMemo(() => {
     const raw = String(process.env.NEXT_PUBLIC_CLOSED_BETA_START_ISO ?? "").trim();
@@ -29,16 +32,12 @@ export default function ClosedBetaNotice() {
     return d;
   }, []);
 
-  const [dismissed, setDismissed] = useState(false);
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     let intervalId: number | null = null;
-
-    const v = window.localStorage.getItem(STORAGE_KEY);
-    if (v === "1") setDismissed(true);
 
     setNow(new Date());
 
@@ -54,40 +53,58 @@ export default function ClosedBetaNotice() {
     };
   }, []);
 
-  if (dismissed) return null;
-
   const d = daysUntil(betaStart, now);
+  const isBetaOpen = d <= 0;
 
-  const label =
+  if (isBetaOpen) return null;
+
+  const countdownLabel =
     d > 1
-      ? `Closed beta opens in ${d} days.`
+      ? `${d} days`
       : d === 1
-        ? "Closed beta opens in 1 day."
-        : d === 0
-          ? "Closed beta opens today."
-          : "Closed beta is live.";
+        ? "1 day"
+        : "Today";
 
   return (
-    <div className="closedBetaNotice" role="status" aria-live="polite">
-      <div className="closedBetaNoticeText">
-        <span className="closedBetaNoticeEm">{label}</span>
-        {d > 0 ? " Flagship launch is live now." : null}
+    <div className="betaBlockerOverlay">
+      <div className="betaBlockerModal">
+        <div className="betaBlockerIcon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
+          </svg>
+        </div>
+        
+        <h2 className="betaBlockerTitle">Closed Beta Coming Soon</h2>
+        
+        <p className="betaBlockerText">
+          We&apos;re putting the finishing touches on CommitToShip. The closed beta opens on:
+        </p>
+        
+        <div className="betaBlockerDate">
+          {formatDate(betaStart)}
+        </div>
+        
+        <div className="betaBlockerCountdown">
+          <div className="betaBlockerCountdownValue">{countdownLabel}</div>
+          <div className="betaBlockerCountdownLabel">until launch</div>
+        </div>
+        
+        <div className="betaBlockerDivider" />
+        
+        <p className="betaBlockerSubtext">
+          In the meantime, explore the <strong>Discover</strong> tab to see how commitments work, or check out our flagship launch.
+        </p>
+        
+        <div className="betaBlockerActions">
+          <a href="/?tab=discover" className="betaBlockerBtn betaBlockerBtnPrimary">
+            Explore Discover
+          </a>
+          <a href="https://x.com/committoship" target="_blank" rel="noopener noreferrer" className="betaBlockerBtn betaBlockerBtnSecondary">
+            Follow for Updates
+          </a>
+        </div>
       </div>
-
-      <button
-        type="button"
-        className="closedBetaNoticeClose"
-        aria-label="Dismiss"
-        onClick={() => {
-          try {
-            window.localStorage.setItem(STORAGE_KEY, "1");
-          } catch {
-          }
-          setDismissed(true);
-        }}
-      >
-        ×
-      </button>
     </div>
   );
 }
