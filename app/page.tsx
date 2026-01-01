@@ -1185,24 +1185,6 @@ export default function Home() {
     return [...withImages, ...fill];
   }, [projectsByMint, timelineCommitments, timelineEventsByCommitmentId, timelineFilter, timelineKindFilter, timelineQuery, timelineSort, timelineStatusFilter]);
 
-  const discoverStats = useMemo(() => {
-    const real = discoverCards.filter((c) => !c.isMock);
-    const totalEscrowedLamports = real.reduce((acc, c) => acc + Number(c.escrowedLamports || 0), 0);
-    const active = real.filter((c) => String(c.status).toLowerCase() === "active").length;
-    const funded = real.filter((c) => String(c.status).toLowerCase() === "funded").length;
-    const shipped = real.filter((c) => {
-      const s = String(c.status).toLowerCase();
-      return s.includes("resolved_success") || s.includes("completed");
-    }).length;
-    return {
-      realCount: real.length,
-      active,
-      funded,
-      shipped,
-      escrowedSol: totalEscrowedLamports / 1_000_000_000,
-    };
-  }, [discoverCards]);
-
   function humanTime(tsUnix: number): string {
     try {
       const d = new Date(tsUnix * 1000);
@@ -2070,11 +2052,6 @@ export default function Home() {
                             ↻
                           </button>
                         </div>
-                      </div>
-                      <div className="discoverHeaderStats">
-                        <span className="discoverHeaderStat"><strong>{fmtCompact(discoverStats.realCount)}</strong> projects</span>
-                        <span className="discoverHeaderStat"><strong>{fmtCompact(discoverStats.active)}</strong> active</span>
-                        <span className="discoverHeaderStat"><strong>{fmtCompact(discoverStats.escrowedSol)}</strong> SOL locked</span>
                       </div>
                     </div>
 
