@@ -400,14 +400,13 @@ export default function Home() {
     const signedUrl = String(info?.signedUrl ?? "");
     if (!signedUrl) throw new Error("Missing signedUrl");
 
-    const form = new FormData();
-    form.append("cacheControl", "3600");
-    form.append("", input.file);
-
     const uploadRes = await fetch(signedUrl, {
       method: "PUT",
-      headers: { "x-upsert": "true" },
-      body: form,
+      headers: {
+        "x-upsert": "true",
+        "content-type": input.file.type || "application/octet-stream",
+      },
+      body: input.file,
     });
 
     if (!uploadRes.ok) {
@@ -430,14 +429,13 @@ export default function Home() {
     const signedUrl = String(info?.signedUrl ?? "");
     if (!signedUrl) throw new Error("Missing signedUrl");
 
-    const form = new FormData();
-    form.append("cacheControl", "3600");
-    form.append("", input.file);
-
     const uploadRes = await fetch(signedUrl, {
       method: "PUT",
-      headers: { "x-upsert": "true" },
-      body: form,
+      headers: {
+        "x-upsert": "true",
+        "content-type": input.file.type || "application/octet-stream",
+      },
+      body: input.file,
     });
 
     if (!uploadRes.ok) {
@@ -465,14 +463,13 @@ export default function Home() {
     const signedUrl = String(info?.signedUrl ?? "");
     if (!signedUrl) throw new Error("Missing signedUrl");
 
-    const form = new FormData();
-    form.append("cacheControl", "3600");
-    form.append("", input.file);
-
     const uploadRes = await fetch(signedUrl, {
       method: "PUT",
-      headers: { "x-upsert": "true" },
-      body: form,
+      headers: {
+        "x-upsert": "true",
+        "content-type": input.file.type || "application/octet-stream",
+      },
+      body: input.file,
     });
 
     if (!uploadRes.ok) {
@@ -1570,10 +1567,10 @@ export default function Home() {
                         <div className="wordmark">
                           <div className="brandLockup">
                             <Image
-                              src="/branding/text-logo-white.png"
+                              src="/branding/white-logo.png"
                               alt="Commit To Ship"
-                              width={340}
-                              height={44}
+                              width={64}
+                              height={64}
                               priority
                               className="brandImage"
                             />
