@@ -7,10 +7,8 @@ import { checkRateLimit } from "../../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 import { confirmTransactionSignature, getConnection } from "../../../lib/solana";
 import {
-  privyCreateSolanaWallet,
   privyRefundWalletToDestination,
   privySignAndSendSolanaTransaction,
-  privyTransferLamportsFromWallet,
 } from "../../../lib/privy";
 import { buildUnsignedPumpfunCreateV2Tx } from "../../../lib/pumpfun";
 import { createRewardCommitmentRecord, insertCommitment } from "../../../lib/escrowStore";
@@ -212,27 +210,10 @@ export async function POST(req: Request) {
       });
     }
 
-    stage = "create_launch_wallet";
-    const created = await privyCreateSolanaWallet();
-    launchWalletId = created.walletId;
-    creatorWallet = created.address;
-    creatorPubkey = new PublicKey(creatorWallet);
-
-    stage = "fund_launch_wallet";
-    const fund = await privyTransferLamportsFromWallet({
-      walletId,
-      fromPubkey: treasuryPubkey,
-      toPubkey: creatorPubkey,
-      lamports: requiredLamports,
-      caip2: SOLANA_CAIP2,
-    });
-    if (!fund.ok) {
-      throw Object.assign(new Error(fund.error || "Failed to fund launch wallet from treasury"), { status: 500 });
-    }
-    fundSignature = fund.signature;
-
-    funded = true;
-    fundedLamports = requiredLamports;
+    stage = "use_treasury_wallet";
+    launchWalletId = walletId;
+    creatorWallet = treasuryWallet;
+    creatorPubkey = treasuryPubkey;
 
     stage = "upload_metadata";
     const metadataFormData = new FormData();
@@ -417,7 +398,7 @@ export async function POST(req: Request) {
     const msg = getSafeErrorMessage(e);
     const status = Number((e as any)?.status ?? 500);
 
-    if (funded && launchWalletId && creatorPubkey && treasuryPubkey && !launchTxSig) {
+    if (funded && launchWalletId && launchWalletId !== walletId && creatorPubkey && treasuryPubkey && !launchTxSig) {
       try {
         const refund = await privyRefundWalletToDestination({
           walletId: launchWalletId,
