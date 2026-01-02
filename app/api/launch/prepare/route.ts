@@ -102,8 +102,10 @@ export async function POST(req: Request) {
     const balanceBufferLamports = 50_000;
 
     const connection = getConnection();
+    const rentExemptMinRaw = await connection.getMinimumBalanceForRentExemption(0);
+    const rentExemptMin = Number.isFinite(rentExemptMinRaw) && rentExemptMinRaw > 0 ? rentExemptMinRaw : 890_880;
     const currentLamports = await connection.getBalance(treasuryPubkey, "confirmed");
-    const missingLamports = Math.max(0, requiredLamports + balanceBufferLamports - currentLamports);
+    const missingLamports = Math.max(0, requiredLamports + balanceBufferLamports + rentExemptMin - currentLamports);
     const needsFunding = missingLamports > 0;
 
     let txBase64: string | null = null;

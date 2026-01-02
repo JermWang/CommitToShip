@@ -164,7 +164,9 @@ export async function POST(req: Request) {
     const connection = getConnection();
     const treasuryBalance = await connection.getBalance(treasuryPubkey, "confirmed");
     const balanceBufferLamports = 50_000;
-    const missingLamports = Math.max(0, requiredLamports + balanceBufferLamports - treasuryBalance);
+    const rentExemptMinRaw = await connection.getMinimumBalanceForRentExemption(0);
+    const rentExemptMin = Number.isFinite(rentExemptMinRaw) && rentExemptMinRaw > 0 ? rentExemptMinRaw : 890_880;
+    const missingLamports = Math.max(0, requiredLamports + balanceBufferLamports + rentExemptMin - treasuryBalance);
     if (missingLamports > 0) {
       const latest = await connection.getLatestBlockhash("confirmed");
 
