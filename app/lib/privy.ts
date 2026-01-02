@@ -313,13 +313,48 @@ async function privySignAndSendRawViaRpc(input: {
       const signed = await privySignSolanaTransaction({ walletId, transactionBase64: serializeForPrivy() });
       const raw = Buffer.from(signed.signedTransactionBase64, "base64");
       signature = await withRetry(() =>
-        input.connection.sendRawTransaction(raw, { skipPreflight: false, preflightCommitment: "processed" })
+        input.connection.sendRawTransaction(raw, { skipPreflight: false, preflightCommitment: "processed", maxRetries: 3 })
       );
       break;
     } catch (e) {
       const msg = getSafeErrorMessage(e);
       const isBlockhashNotFound = msg.toLowerCase().includes("blockhash not found");
-      if (!isBlockhashNotFound || attempt === 3) throw e;
+
+      let logs: string[] | undefined;
+      const maybeLogs = (e as any)?.logs;
+      if (Array.isArray(maybeLogs) && maybeLogs.length) {
+        logs = maybeLogs.map((l: any) => String(l));
+      }
+
+      if (!logs) {
+        const getLogsFn = (e as any)?.getLogs;
+        if (typeof getLogsFn === "function") {
+          try {
+            const l = await getLogsFn.call(e, input.connection);
+            if (Array.isArray(l) && l.length) logs = l.map((x: any) => String(x));
+          } catch {
+            // ignore
+          }
+        }
+      }
+
+      if (!logs) {
+        try {
+          const signed = await privySignSolanaTransaction({ walletId, transactionBase64: serializeForPrivy() });
+          const raw = Buffer.from(signed.signedTransactionBase64, "base64");
+          const parsed = Transaction.from(raw);
+          const sim = await withRetry(() => input.connection.simulateTransaction(parsed));
+          const l = sim.value?.logs;
+          if (Array.isArray(l) && l.length) logs = l.map((x: any) => String(x));
+        } catch {
+          // ignore
+        }
+      }
+
+      const err: any = new Error(msg);
+      if (logs) err.logs = logs;
+
+      if (!isBlockhashNotFound || attempt === 3) throw err;
     }
   }
 
@@ -341,7 +376,7 @@ export async function privyTransferLamportsFromWallet(input: {
   toPubkey: PublicKey;
   lamports: number;
   caip2: string;
-}): Promise<{ ok: true; signature: string } | { ok: false; error: string }> {
+}): Promise<{ ok: true; signature: string } | { ok: false; error: string; logs?: string[] }> {
   const walletId = String(input.walletId ?? "").trim();
   const caip2 = String(input.caip2 ?? "").trim();
   const lamports = Math.floor(Number(input.lamports ?? 0));
@@ -367,7 +402,8 @@ export async function privyTransferLamportsFromWallet(input: {
     const sent = await privySignAndSendRawViaRpc({ connection, walletId, transaction: tx });
     return { ok: true, signature: sent.signature };
   } catch (e) {
-    return { ok: false, error: getSafeErrorMessage(e) };
+    const logs = Array.isArray((e as any)?.logs) ? ((e as any).logs as any[]).map((l) => String(l)) : undefined;
+    return { ok: false, error: getSafeErrorMessage(e), logs };
   }
 }
 
@@ -438,7 +474,10 @@ export async function privyRefundWalletToDestination(input: {
   toPubkey: PublicKey;
   caip2: string;
   keepLamports?: number;
-}): Promise<{ ok: true; signature: string; refundedLamports: number } | { ok: false; error: string }> {
+}): Promise<
+  | { ok: true; signature: string; refundedLamports: number }
+  | { ok: false; error: string; logs?: string[] }
+> {
   const walletId = String(input.walletId ?? "").trim();
   const caip2 = String(input.caip2 ?? "").trim();
   const keepLamports = Math.max(5_000, Number(input.keepLamports ?? 10_000));
@@ -471,7 +510,8 @@ export async function privyRefundWalletToDestination(input: {
     const sent = await privySignAndSendRawViaRpc({ connection, walletId, transaction: tx });
     return { ok: true, signature: sent.signature, refundedLamports: refundableLamports };
   } catch (e) {
-    return { ok: false, error: getSafeErrorMessage(e) };
+    const logs = Array.isArray((e as any)?.logs) ? ((e as any).logs as any[]).map((l) => String(l)) : undefined;
+    return { ok: false, error: getSafeErrorMessage(e), logs };
   }
 }
 
@@ -480,7 +520,10 @@ export async function privyRefundWalletToFeePayer(input: {
   fromPubkey: PublicKey;
   caip2: string;
   keepLamports?: number;
-}): Promise<{ ok: true; signature: string; refundedLamports: number } | { ok: false; error: string }> {
+}): Promise<
+  | { ok: true; signature: string; refundedLamports: number }
+  | { ok: false; error: string; logs?: string[] }
+> {
   const walletId = String(input.walletId ?? "").trim();
   const caip2 = String(input.caip2 ?? "").trim();
   const keepLamports = Math.max(5_000, Number(input.keepLamports ?? 10_000));
@@ -519,6 +562,7 @@ export async function privyRefundWalletToFeePayer(input: {
     const sent = await privySignAndSendRawViaRpc({ connection, walletId, transaction: tx });
     return { ok: true, signature: sent.signature, refundedLamports: refundableLamports };
   } catch (e) {
-    return { ok: false, error: getSafeErrorMessage(e) };
+    const logs = Array.isArray((e as any)?.logs) ? ((e as any).logs as any[]).map((l) => String(l)) : undefined;
+    return { ok: false, error: getSafeErrorMessage(e), logs };
   }
 }
