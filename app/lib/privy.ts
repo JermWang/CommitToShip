@@ -299,7 +299,7 @@ export async function privyRefundWalletToDestination(input: {
       return { ok: false, error: "No refundable balance" };
     }
 
-    const { blockhash, lastValidBlockHeight } = await withRetry(() => connection.getLatestBlockhash("processed"));
+    let { blockhash, lastValidBlockHeight } = await withRetry(() => connection.getLatestBlockhash("confirmed"));
 
     const tx = new Transaction();
     tx.recentBlockhash = blockhash;
@@ -313,13 +313,26 @@ export async function privyRefundWalletToDestination(input: {
       })
     );
 
-    const txBase64 = tx.serialize({ requireAllSignatures: false }).toString("base64");
+    const serializeForPrivy = () => tx.serialize({ requireAllSignatures: false }).toString("base64");
 
-    const { signature } = await privySignAndSendSolanaTransaction({
-      walletId,
-      caip2,
-      transactionBase64: txBase64,
-    });
+    let signature = "";
+    try {
+      const sent = await privySignAndSendSolanaTransaction({ walletId, caip2, transactionBase64: serializeForPrivy() });
+      signature = sent.signature;
+    } catch (sendErr) {
+      const msg = getSafeErrorMessage(sendErr);
+      if (msg.toLowerCase().includes("blockhash not found")) {
+        const retryLatest = await withRetry(() => connection.getLatestBlockhash("confirmed"));
+        blockhash = retryLatest.blockhash;
+        lastValidBlockHeight = retryLatest.lastValidBlockHeight;
+        tx.recentBlockhash = blockhash;
+        tx.lastValidBlockHeight = lastValidBlockHeight;
+        const sent = await privySignAndSendSolanaTransaction({ walletId, caip2, transactionBase64: serializeForPrivy() });
+        signature = sent.signature;
+      } else {
+        throw sendErr;
+      }
+    }
 
     await withRetry(
       () => connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "confirmed"),

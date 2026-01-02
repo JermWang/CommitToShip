@@ -178,7 +178,7 @@ export async function POST(req: Request) {
     stage = "fetch_image";
     const imageResponse = await fetch(imageUrl);
     if (!imageResponse.ok) {
-      return NextResponse.json({ error: "Failed to fetch token image", stage }, { status: 400 });
+      throw Object.assign(new Error("Failed to fetch token image"), { status: 400 });
     }
     const imageBlob = await imageResponse.blob();
     metadataFormData.append("file", imageBlob, "token.png");
@@ -187,13 +187,13 @@ export async function POST(req: Request) {
     const ipfsResponse = await fetch("https://pump.fun/api/ipfs", { method: "POST", body: metadataFormData });
     if (!ipfsResponse.ok) {
       const ipfsError = await ipfsResponse.text().catch(() => "Unknown error");
-      return NextResponse.json({ error: `Failed to upload metadata: ${ipfsError}`, stage }, { status: 500 });
+      throw Object.assign(new Error(`Failed to upload metadata: ${ipfsError}`), { status: 500 });
     }
 
     const ipfsJson = await ipfsResponse.json();
     const metadataUri = ipfsJson?.metadataUri;
     if (!metadataUri) {
-      return NextResponse.json({ error: "Failed to get metadata URI from Pump.fun", stage }, { status: 500 });
+      throw Object.assign(new Error("Failed to get metadata URI from Pump.fun"), { status: 500 });
     }
 
     stage = "build_tx";
@@ -320,6 +320,7 @@ export async function POST(req: Request) {
     });
   } catch (e) {
     const msg = getSafeErrorMessage(e);
+    const status = Number((e as any)?.status ?? 500);
 
     if (funded && walletId && creatorPubkey && payerPubkey && !launchTxSig) {
       try {
@@ -355,6 +356,6 @@ export async function POST(req: Request) {
     }
 
     await auditLog("launch_error", { stage, commitmentId, walletId, creatorWallet, payerWallet, launchTxSig, error: msg });
-    return NextResponse.json({ error: msg, stage, commitmentId, walletId, creatorWallet, payerWallet, launchTxSig }, { status: 500 });
+    return NextResponse.json({ error: msg, stage, commitmentId, walletId, creatorWallet, payerWallet, launchTxSig }, { status: status });
   }
 }
