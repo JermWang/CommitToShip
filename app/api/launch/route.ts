@@ -4,10 +4,10 @@ import crypto from "crypto";
 
 import { checkRateLimit } from "../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../lib/safeError";
-import { confirmTransactionSignature, getConnection, getBalanceLamports } from "../../lib/solana";
-import { privyCreateSolanaWallet, privySignAndSendSolanaTransaction, privyFundWalletFromFeePayer } from "../../lib/privy";
+import { confirmTransactionSignature, getConnection } from "../../lib/solana";
+import { privyCreateSolanaWallet, privySignAndSendSolanaTransaction, privyFundWalletFromFeePayer, privyRefundWalletToFeePayer } from "../../lib/privy";
 import { buildUnsignedPumpfunCreateV2Tx } from "../../lib/pumpfun";
-import { createRewardCommitmentRecord, insertCommitment, getCommitment } from "../../lib/escrowStore";
+import { createRewardCommitmentRecord, insertCommitment } from "../../lib/escrowStore";
 import { upsertProjectProfile } from "../../lib/projectProfilesStore";
 import { auditLog } from "../../lib/auditLog";
 import { getAdminCookieName, getAdminSessionWallet, getAllowedAdminWallets, verifyAdminOrigin } from "../../lib/adminSession";
@@ -55,6 +55,16 @@ const SOLANA_CAIP2 = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"; // mainnet
  * 5. The platform wallet receives creator fees, which we auto-escrow
  */
 export async function POST(req: Request) {
+  let stage = "init";
+  let walletId = "";
+  let creatorWalletAddress = "";
+  let creatorPubkey: PublicKey | null = null;
+  let funded = false;
+  let fundedLamports = 0;
+  let fundSignature = "";
+  let commitmentId = "";
+  let launchTxSig = "";
+
   try {
     const rl = await checkRateLimit(req, { keyPrefix: "launch:post", limit: 5, windowSeconds: 60 });
     if (!rl.allowed) {
@@ -87,6 +97,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Not an allowed admin wallet" }, { status: 401 });
     }
 
+    stage = "read_body";
     const body = (await req.json()) as any;
 
     // Validate required fields
@@ -124,22 +135,16 @@ export async function POST(req: Request) {
     const devBuySol = Number(body.devBuySol ?? 0.01);
     const devBuyLamports = Math.floor(devBuySol * 1_000_000_000);
 
-    // Step 1: Create Privy-managed wallet for the token creator
-    const { walletId, address: creatorWalletAddress } = await privyCreateSolanaWallet();
-    const creatorPubkey = new PublicKey(creatorWalletAddress);
-
-    // Step 1b: Fund the Privy wallet from fee payer for dev buy + tx fees
-    const requiredLamports = devBuyLamports + 10_000_000; // dev buy + ~0.01 SOL for fees
-    const fundResult = await privyFundWalletFromFeePayer({
-      toPubkey: creatorPubkey,
-      lamports: requiredLamports,
-    });
-    if (!fundResult.ok) {
-      await auditLog("launch_funding_failed", { walletId, creatorWallet: creatorWalletAddress, requiredLamports, error: fundResult.error });
-      return NextResponse.json({ error: fundResult.error || "Failed to fund creator wallet for launch" }, { status: 500 });
+    stage = "create_wallet";
+    const created = await privyCreateSolanaWallet();
+    walletId = created.walletId;
+    creatorWalletAddress = created.address;
+    creatorPubkey = new PublicKey(creatorWalletAddress);
+    if (!creatorPubkey) {
+      throw new Error("Failed to create creator wallet");
     }
 
-    // Step 2: Upload metadata to IPFS via Pump.fun
+    stage = "upload_metadata";
     const metadataFormData = new FormData();
     metadataFormData.append("name", name);
     metadataFormData.append("symbol", symbol);
@@ -149,14 +154,15 @@ export async function POST(req: Request) {
     if (xUrl) metadataFormData.append("twitter", xUrl);
     if (telegramUrl) metadataFormData.append("telegram", telegramUrl);
 
-    // Fetch image and add to form
+    stage = "fetch_image";
     const imageResponse = await fetch(imageUrl);
     if (!imageResponse.ok) {
-      return NextResponse.json({ error: "Failed to fetch token image" }, { status: 400 });
+      return NextResponse.json({ error: "Failed to fetch token image", stage }, { status: 400 });
     }
     const imageBlob = await imageResponse.blob();
     metadataFormData.append("file", imageBlob, "token.png");
 
+    stage = "pump_ipfs";
     const ipfsResponse = await fetch("https://pump.fun/api/ipfs", {
       method: "POST",
       body: metadataFormData,
@@ -164,16 +170,17 @@ export async function POST(req: Request) {
 
     if (!ipfsResponse.ok) {
       const ipfsError = await ipfsResponse.text().catch(() => "Unknown error");
-      return NextResponse.json({ error: `Failed to upload metadata: ${ipfsError}` }, { status: 500 });
+      return NextResponse.json({ error: `Failed to upload metadata: ${ipfsError}`, stage }, { status: 500 });
     }
 
     const ipfsJson = await ipfsResponse.json();
     const metadataUri = ipfsJson?.metadataUri;
     if (!metadataUri) {
-      return NextResponse.json({ error: "Failed to get metadata URI from Pump.fun" }, { status: 500 });
+      return NextResponse.json({ error: "Failed to get metadata URI from Pump.fun", stage }, { status: 500 });
     }
 
     // Step 3: Generate mint keypair and build transaction
+    stage = "build_tx";
     const connection = getConnection();
     const mintKeypair = Keypair.generate();
 
@@ -196,10 +203,11 @@ export async function POST(req: Request) {
     tx.partialSign(mintKeypair);
 
     // Generate commitment ID early for recovery tracking
-    const commitmentId = crypto.randomBytes(16).toString("hex");
+    commitmentId = crypto.randomBytes(16).toString("hex");
     const tokenMintB58 = mintKeypair.publicKey.toBase58();
 
     // Log launch attempt for orphan recovery - if tx succeeds but DB fails, we can recover
+    stage = "audit_attempt";
     await auditLog("launch_attempt", {
       commitmentId,
       tokenMint: tokenMintB58,
@@ -210,15 +218,30 @@ export async function POST(req: Request) {
       symbol,
     });
 
+    stage = "fund_wallet";
+    const requiredLamports = devBuyLamports + 10_000_000;
+    fundedLamports = requiredLamports;
+    const fundResult = await privyFundWalletFromFeePayer({ toPubkey: creatorPubkey, lamports: requiredLamports });
+    if (!fundResult.ok) {
+      await auditLog("launch_funding_failed", { commitmentId, walletId, creatorWallet: creatorWalletAddress, requiredLamports, error: fundResult.error });
+      return NextResponse.json({ error: fundResult.error || "Failed to fund creator wallet for launch", stage }, { status: 500 });
+    }
+    funded = true;
+    fundSignature = fundResult.signature;
+    await auditLog("launch_funding_success", { commitmentId, walletId, creatorWallet: creatorWalletAddress, requiredLamports, signature: fundSignature });
+
     // Step 4: Send transaction via Privy (they sign with the creator wallet)
     const txBase64 = tx.serialize({ requireAllSignatures: false }).toString("base64");
     
-    const { signature: launchTxSig } = await privySignAndSendSolanaTransaction({
+    stage = "send_tx";
+    const sent = await privySignAndSendSolanaTransaction({
       walletId,
       caip2: SOLANA_CAIP2,
       transactionBase64: txBase64,
     });
+    launchTxSig = sent.signature;
 
+    stage = "confirm_tx";
     await confirmTransactionSignature({
       connection,
       signature: launchTxSig,
@@ -295,7 +318,39 @@ export async function POST(req: Request) {
     });
 
   } catch (e) {
-    await auditLog("launch_error", { error: getSafeErrorMessage(e) });
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    const msg = getSafeErrorMessage(e);
+
+    if (funded && walletId && creatorPubkey && !launchTxSig) {
+      try {
+        const refund = await privyRefundWalletToFeePayer({
+          walletId,
+          fromPubkey: creatorPubkey,
+          caip2: SOLANA_CAIP2,
+          keepLamports: 10_000,
+        });
+        await auditLog("launch_refund_attempt", {
+          commitmentId,
+          walletId,
+          creatorWallet: creatorWalletAddress,
+          fundedLamports,
+          ok: refund.ok,
+          refundSignature: refund.ok ? refund.signature : undefined,
+          refundedLamports: refund.ok ? refund.refundedLamports : undefined,
+          refundError: refund.ok ? undefined : refund.error,
+        });
+      } catch (refundErr) {
+        await auditLog("launch_refund_attempt", {
+          commitmentId,
+          walletId,
+          creatorWallet: creatorWalletAddress,
+          fundedLamports,
+          ok: false,
+          refundError: getSafeErrorMessage(refundErr),
+        });
+      }
+    }
+
+    await auditLog("launch_error", { stage, commitmentId, walletId, creatorWallet: creatorWalletAddress, launchTxSig, error: msg });
+    return NextResponse.json({ error: msg, stage, commitmentId, walletId, creatorWallet: creatorWalletAddress, launchTxSig }, { status: 500 });
   }
 }

@@ -272,3 +272,67 @@ export async function privyFundWalletFromFeePayer(input: {
     return { ok: false, error: getSafeErrorMessage(e) };
   }
 }
+
+export async function privyRefundWalletToFeePayer(input: {
+  walletId: string;
+  fromPubkey: PublicKey;
+  caip2: string;
+  keepLamports?: number;
+}): Promise<{ ok: true; signature: string; refundedLamports: number } | { ok: false; error: string }> {
+  const walletId = String(input.walletId ?? "").trim();
+  const caip2 = String(input.caip2 ?? "").trim();
+  const keepLamports = Math.max(5_000, Number(input.keepLamports ?? 10_000));
+
+  if (!walletId) return { ok: false, error: "walletId required" };
+  if (!caip2) return { ok: false, error: "caip2 required" };
+
+  const feePayerSecret = String(process.env.ESCROW_FEE_PAYER_SECRET_KEY ?? "").trim();
+  if (!feePayerSecret) {
+    return { ok: false, error: "ESCROW_FEE_PAYER_SECRET_KEY is required for refunds" };
+  }
+
+  try {
+    const { keypairFromBase58Secret, getConnection } = await import("./solana");
+    const { withRetry } = await import("./rpc");
+
+    const feePayer = keypairFromBase58Secret(feePayerSecret);
+    const connection = getConnection();
+
+    const balance = await withRetry(() => connection.getBalance(input.fromPubkey, "confirmed"));
+    const refundableLamports = Math.max(0, balance - keepLamports);
+    if (refundableLamports <= 0) {
+      return { ok: false, error: "No refundable balance" };
+    }
+
+    const { blockhash, lastValidBlockHeight } = await withRetry(() => connection.getLatestBlockhash("processed"));
+
+    const tx = new Transaction();
+    tx.recentBlockhash = blockhash;
+    tx.lastValidBlockHeight = lastValidBlockHeight;
+    tx.feePayer = input.fromPubkey;
+    tx.add(
+      SystemProgram.transfer({
+        fromPubkey: input.fromPubkey,
+        toPubkey: feePayer.publicKey,
+        lamports: refundableLamports,
+      })
+    );
+
+    const txBase64 = tx.serialize({ requireAllSignatures: false }).toString("base64");
+
+    const { signature } = await privySignAndSendSolanaTransaction({
+      walletId,
+      caip2,
+      transactionBase64: txBase64,
+    });
+
+    await withRetry(
+      () => connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "confirmed"),
+      { attempts: 4, baseDelayMs: 350 }
+    );
+
+    return { ok: true, signature, refundedLamports: refundableLamports };
+  } catch (e) {
+    return { ok: false, error: getSafeErrorMessage(e) };
+  }
+}
