@@ -1767,7 +1767,6 @@ export default function Home() {
                         <div className="heroMark">
                           <span className="landingHeroMarkWrap">
                             <img src="/branding/svg-logo.svg" alt="Commit To Ship" className="heroMarkImage heroMarkImageSvg" />
-                            <span className="landingHeroBeta" aria-hidden="true">BETA</span>
                           </span>
                         </div>
 
