@@ -7,6 +7,7 @@ import bs58 from "bs58";
 import { Transaction } from "@solana/web3.js";
 
 import ClosedBetaNotice from "./components/ClosedBetaNotice";
+import TokenContractBar from "./components/TokenContractBar";
 
 type ProfileSummary = {
   walletPubkey: string;
@@ -1767,6 +1768,8 @@ export default function Home() {
                           <img src="/branding/svg-logo.svg" alt="Commit To Ship" className="heroMarkImage heroMarkImageSvg" />
                         </div>
 
+                        <h1 className="landingMobileTitle">COMMIT TO SHIP</h1>
+
                         <p className="heroLead">
                           Lock your{" "}
                           <a href="https://pump.fun" target="_blank" rel="noreferrer noopener" className="pumpfunLink">
@@ -1776,6 +1779,9 @@ export default function Home() {
                         </p>
 
                         <div className="landingCtas">
+                          <div className="landingTokenBar">
+                            <TokenContractBar />
+                          </div>
                           <button
                             className="btn btnPrimary landingCtaPrimary"
                             onClick={() => setTabAndUrl("commit")}
@@ -1789,6 +1795,19 @@ export default function Home() {
                           >
                             Explore Discover
                           </button>
+
+                          <div className="landingSocials">
+                            <a
+                              className="landingSocialBtn"
+                              href="https://x.com/CommitToShip"
+                              target="_blank"
+                              rel="noreferrer noopener"
+                              aria-label="Twitter"
+                              title="Twitter"
+                            >
+                              <SocialIcon type="x" />
+                            </a>
+                          </div>
                         </div>
                       </div>
 

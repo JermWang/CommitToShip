@@ -1600,6 +1600,14 @@ body[data-skin="landing"] .landingRight {
   font-weight: 450;
 }
 
+.landingMobileTitle {
+  display: none;
+}
+
+.landingTokenBar {
+  display: none;
+}
+
 .pumpfunLink,
 .pumpfunLink:visited,
 .pumpfunLink:hover,
@@ -6469,12 +6477,36 @@ body[data-skin="app"] .commitComplianceFill {
     justify-content: flex-end;
     order: 3;
     margin-top: 8px;
+    display: inline-flex;
+    flex-wrap: wrap;
+  }
+
+  .globalNav .globalNavToken,
+  .globalNav .globalNavTokenCopy {
     display: none;
   }
 
-  .globalNavToken,
-  .globalNavTokenCopy {
-    display: none;
+  .globalNavLinks .wallet-adapter-button {
+    height: auto;
+    min-height: 38px;
+    padding: 8px 10px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    color: rgba(255, 255, 255, 0.88);
+    font-size: 12px;
+    line-height: 1;
+    transition: transform 0.18s var(--ease-out), background 0.18s var(--ease-out), border-color 0.18s var(--ease-out);
+  }
+
+  .globalNavLinks .wallet-adapter-button:hover {
+    background: rgba(255, 255, 255, 0.11);
+    border-color: rgba(255, 255, 255, 0.22);
+    transform: translateY(-1px);
+  }
+
+  .globalNavLinks .wallet-adapter-button:active {
+    transform: translateY(0);
   }
 
   .tabs {
@@ -6499,6 +6531,17 @@ body[data-skin="app"] .commitComplianceFill {
 @media (max-width: 768px) {
   body[data-skin="landing"] .landingLeft {
     padding-top: clamp(48px, 6vh, 72px);
+    padding-bottom: clamp(22px, 4vh, 44px);
+  }
+
+  body[data-skin="landing"] .landingMobileTitle {
+    display: block;
+    margin: 10px 0 0 0;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.86);
   }
 
   body[data-skin="landing"] .heroMarkImage {
@@ -6510,12 +6553,47 @@ body[data-skin="app"] .commitComplianceFill {
     font-size: 14px;
     line-height: 1.6;
     padding: 0 20px;
-    margin-top: clamp(-14px, -1.4vw, -8px);
+    margin-top: 12px;
+    max-width: 46ch;
   }
 
   body[data-skin="landing"] .landingCtas {
     padding: 0 20px;
     margin-top: clamp(8px, 1.2vw, 12px);
+  }
+
+  body[data-skin="landing"] .landingTokenBar {
+    display: block;
+    margin-bottom: 10px;
+  }
+
+  body[data-skin="landing"] .landingSocials {
+    display: flex;
+    justify-content: center;
+    margin-top: 10px;
+  }
+
+  body[data-skin="landing"] .landingSocialBtn {
+    width: 44px;
+    height: 44px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.88);
+    transition: transform 0.18s var(--ease-out), background 0.18s var(--ease-out), border-color 0.18s var(--ease-out);
+  }
+
+  body[data-skin="landing"] .landingSocialBtn:hover {
+    transform: translateY(-1px);
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.28);
+  }
+
+  body[data-skin="landing"] .landingSocialBtn:active {
+    transform: translateY(0) scale(0.98);
   }
 
   body[data-skin="landing"] .landingCtas .btn,
@@ -6545,6 +6623,15 @@ body[data-skin="app"] .commitComplianceFill {
     flex-direction: column;
     align-items: stretch;
     gap: 10px;
+  }
+
+  body[data-skin="landing"] .landingTokenBar {
+    width: 100%;
+  }
+
+  body[data-skin="landing"] .landingTokenBar .globalNavTokenCopy {
+    width: 100%;
+    justify-content: center;
   }
 
   body[data-skin="landing"] .landingCtas .btn {
