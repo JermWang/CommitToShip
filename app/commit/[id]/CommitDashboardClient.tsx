@@ -247,6 +247,16 @@ export default function CommitDashboardClient(props: Props) {
 
   const isManagedCreatorFeeMode = String(props.creatorFeeMode ?? "assisted") === "managed";
 
+  const effectiveRewardMilestoneLamports = (m: RewardMilestone): number => {
+    const explicit = Number(m.unlockLamports ?? 0);
+    if (Number.isFinite(explicit) && explicit > 0) return Math.floor(explicit);
+    const pct = Number((m as any).unlockPercent ?? 0);
+    const total = Number(props.totalFundedLamports ?? 0);
+    if (!Number.isFinite(pct) || pct <= 0) return 0;
+    if (!Number.isFinite(total) || total <= 0) return 0;
+    return Math.floor((total * pct) / 100);
+  };
+
   async function copyAny(text: string) {
     try {
       if (!window.isSecureContext || !navigator.clipboard?.writeText) {
@@ -1232,7 +1242,7 @@ export default function CommitDashboardClient(props: Props) {
 
             const pendingMilestones = openMilestones;
             const threshold = Number(props.approvalThreshold ?? 0);
-            const totalPendingSOL = pendingMilestones.reduce((acc, m) => acc + Number(m.unlockLamports || 0), 0) / 1_000_000_000;
+            const totalPendingSOL = pendingMilestones.reduce((acc, m) => acc + effectiveRewardMilestoneLamports(m), 0) / 1_000_000_000;
 
             const handleShare = async () => {
               const url = typeof window !== "undefined" ? window.location.href : "";
@@ -1520,6 +1530,7 @@ export default function CommitDashboardClient(props: Props) {
                             const pct = showApprovals ? clamp01(threshold > 0 ? approvals / threshold : 0) : 0;
                             const checked = selectedSet.has(m.id);
                             const label = String(m.title ?? "").trim().length ? m.title : `Milestone ${idx + 1}`;
+                            const unlockLamports = effectiveRewardMilestoneLamports(m);
 
                             return (
                               <div
@@ -1545,7 +1556,7 @@ export default function CommitDashboardClient(props: Props) {
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                   <div className={styles.voteRowTop}>
                                     <div className={styles.voteRowTitle}>{label}</div>
-                                    <div className={styles.voteRowAmount}>{fmtSol(Number(m.unlockLamports || 0))} SOL</div>
+                                    <div className={styles.voteRowAmount}>{fmtSol(unlockLamports)} SOL</div>
                                   </div>
 
                                   {showApprovals ? (
@@ -1576,7 +1587,7 @@ export default function CommitDashboardClient(props: Props) {
                 const canRelease = m.status === "claimable";
 
                 const balanceLamports = Number(props.balanceLamports ?? 0);
-                const unlockLamports = Number(m.unlockLamports ?? 0);
+                const unlockLamports = effectiveRewardMilestoneLamports(m);
                 const underfunded = Number.isFinite(balanceLamports) && Number.isFinite(unlockLamports) && balanceLamports < unlockLamports;
 
                 const approvals = Number((props.approvalCounts ?? {})[m.id] ?? 0);
@@ -1653,7 +1664,7 @@ export default function CommitDashboardClient(props: Props) {
                             </div>
                           ) : null}
                         </div>
-                        <div className={styles.milestoneAmount}>{fmtSol(Number(m.unlockLamports || 0))} SOL</div>
+                        <div className={styles.milestoneAmount}>{fmtSol(unlockLamports)} SOL</div>
                       </div>
 
                       {m.status === "released" && m.releasedTxSig ? (

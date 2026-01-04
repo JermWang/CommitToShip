@@ -38,6 +38,18 @@ export type RewardMilestone = {
   releasedTxSig?: string;
 };
 
+export function getEffectiveRewardMilestoneUnlockLamports(input: { milestone: RewardMilestone; totalFundedLamports: number }): number {
+  const explicit = Number(input.milestone.unlockLamports ?? 0);
+  if (Number.isFinite(explicit) && explicit > 0) return Math.floor(explicit);
+
+  const pct = Number(input.milestone.unlockPercent ?? 0);
+  const total = Number(input.totalFundedLamports ?? 0);
+  if (!Number.isFinite(pct) || pct <= 0) return 0;
+  if (!Number.isFinite(total) || total <= 0) return 0;
+
+  return Math.floor((total * pct) / 100);
+}
+
 export type CommitmentRecord = {
   id: string;
   statement?: string;
