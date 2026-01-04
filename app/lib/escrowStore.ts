@@ -1951,18 +1951,24 @@ export async function updateRewardTotalsAndMilestones(input: {
   if (!hasDatabase()) {
     const current = mem.commitments.get(input.id);
     if (!current) throw new Error("Not found");
+    const nextStatus = current.status === "archived" && input.status != null && input.status !== "archived" ? current.status : (input.status ?? current.status);
     const updated: CommitmentRecord = {
       ...current,
       totalFundedLamports: input.totalFundedLamports ?? current.totalFundedLamports,
       unlockedLamports: input.unlockedLamports ?? current.unlockedLamports,
       milestones: input.milestones ?? current.milestones,
-      status: input.status ?? current.status,
+      status: nextStatus,
     };
     mem.commitments.set(input.id, updated);
     return updated;
   }
 
   const pool = getPool();
+
+  const current = await getCommitment(input.id);
+  if (!current) throw new Error("Not found");
+  const desiredStatus =
+    current.status === "archived" && input.status != null && input.status !== "archived" ? undefined : input.status;
 
   const fields: string[] = [];
   const values: any[] = [input.id];
@@ -1980,9 +1986,9 @@ export async function updateRewardTotalsAndMilestones(input: {
     fields.push(`milestones_json=$${idx++}`);
     values.push(JSON.stringify(input.milestones));
   }
-  if (input.status != null) {
+  if (desiredStatus != null) {
     fields.push(`status=$${idx++}`);
-    values.push(input.status);
+    values.push(desiredStatus);
   }
 
   if (fields.length === 0) {
