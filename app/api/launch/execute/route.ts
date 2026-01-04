@@ -8,7 +8,7 @@ import { getSafeErrorMessage } from "../../../lib/safeError";
 import { confirmTransactionSignature, getConnection } from "../../../lib/solana";
 import { privyRefundWalletToDestination, privySignSolanaTransaction } from "../../../lib/privy";
 import { buildUnsignedPumpfunCreateV2Tx } from "../../../lib/pumpfun";
-import { createRewardCommitmentRecord, insertCommitment } from "../../../lib/escrowStore";
+import { createRewardCommitmentRecord, insertCommitment, listCommitments } from "../../../lib/escrowStore";
 import { upsertProjectProfile } from "../../../lib/projectProfilesStore";
 import { auditLog } from "../../../lib/auditLog";
 import { getAdminCookieName, getAdminSessionWallet, getAllowedAdminWallets, verifyAdminOrigin } from "../../../lib/adminSession";
@@ -219,6 +219,30 @@ export async function POST(req: Request) {
     launchWalletId = walletId;
     creatorWallet = treasuryWallet;
     creatorPubkey = treasuryPubkey;
+
+    if (!creatorPubkey) {
+      throw Object.assign(new Error("Invalid creator wallet"), { status: 400 });
+    }
+
+    const creatorWalletPubkey = creatorPubkey.toBase58();
+    const existingManaged = (await listCommitments()).find(
+      (c) => c.kind === "creator_reward" && c.creatorFeeMode === "managed" && c.status !== "archived" && c.authority === creatorWalletPubkey
+    );
+    if (existingManaged) {
+      await auditLog("launch_denied_shared_creator_wallet", {
+        creatorWallet: creatorWalletPubkey,
+        existingCommitmentId: existingManaged.id,
+      });
+      return NextResponse.json(
+        {
+          error: "Creator wallet already has a managed creator reward commitment",
+          creatorWallet: creatorWalletPubkey,
+          existingCommitmentId: existingManaged.id,
+          hint: "Managed launches require a unique creator wallet. Use a different payer wallet or use manual mode (assisted).",
+        },
+        { status: 409 }
+      );
+    }
 
     stage = "upload_metadata";
     const PUMP_DESCRIPTION_MAX = 600;

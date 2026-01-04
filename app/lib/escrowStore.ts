@@ -16,7 +16,8 @@ export type CommitmentStatus =
   | "resolved_failure"
   | "active"
   | "completed"
-  | "failed";
+  | "failed"
+  | "archived";
 
 export type RewardMilestoneStatus = "locked" | "approved" | "claimable" | "released" | "failed";
 
@@ -2204,6 +2205,52 @@ export async function getCommitment(id: string): Promise<CommitmentRecord | null
   const res = await pool.query("select * from commitments where id=$1", [id]);
   const row = res.rows[0];
   return row ? rowToRecord(row) : null;
+}
+
+export async function updateCommitmentAdminFields(input: {
+  id: string;
+  status?: CommitmentStatus;
+  creatorFeeMode?: CreatorFeeMode | null;
+}): Promise<CommitmentRecord> {
+  await ensureSchema();
+
+  if (!hasDatabase()) {
+    const current = mem.commitments.get(input.id);
+    if (!current) throw new Error("Not found");
+    const updated: CommitmentRecord = {
+      ...current,
+      status: input.status ?? current.status,
+      creatorFeeMode: input.creatorFeeMode === undefined ? current.creatorFeeMode : input.creatorFeeMode ?? undefined,
+    };
+    mem.commitments.set(input.id, updated);
+    return updated;
+  }
+
+  const fields: string[] = [];
+  const values: any[] = [input.id];
+  let idx = 2;
+
+  if (input.status != null) {
+    fields.push(`status=$${idx++}`);
+    values.push(input.status);
+  }
+
+  if (input.creatorFeeMode !== undefined) {
+    fields.push(`creator_fee_mode=$${idx++}`);
+    values.push(input.creatorFeeMode);
+  }
+
+  if (fields.length === 0) {
+    const existing = await getCommitment(input.id);
+    if (!existing) throw new Error("Not found");
+    return existing;
+  }
+
+  const pool = getPool();
+  const res = await pool.query(`update commitments set ${fields.join(", ")} where id=$1 returning *`, values);
+  const row = res.rows[0];
+  if (!row) throw new Error("Not found");
+  return rowToRecord(row);
 }
 
 export async function getActiveCommitmentByTokenMint(tokenMint: string): Promise<CommitmentRecord | null> {

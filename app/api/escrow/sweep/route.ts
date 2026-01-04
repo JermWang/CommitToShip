@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { PublicKey, Transaction, SystemProgram } from "@solana/web3.js";
 
+import { isAdminRequestAsync } from "../../../lib/adminAuth";
+import { verifyAdminOrigin } from "../../../lib/adminSession";
 import { checkRateLimit } from "../../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 import { confirmTransactionSignature, getConnection } from "../../../lib/solana";
@@ -33,6 +35,21 @@ async function sweepOne(commitmentId: string): Promise<any> {
 
   if (record.kind !== "creator_reward") return { id: commitmentId, ok: false, error: "Not a creator reward commitment" };
   if (record.creatorFeeMode !== "managed") return { id: commitmentId, ok: false, error: "Commitment is not in managed mode" };
+
+  const all = await listCommitments();
+  const shared = all.filter(
+    (c) => c.kind === "creator_reward" && c.creatorFeeMode === "managed" && c.status !== "archived" && c.authority === record.authority
+  );
+  if (shared.length > 1) {
+    return {
+      id: commitmentId,
+      ok: false,
+      status: 409,
+      error: "Creator wallet is shared across multiple commitments; sweep is blocked to prevent mixing creator fees",
+      creatorPubkey: record.authority,
+      sharedCommitmentIds: shared.map((c) => c.id),
+    };
+  }
 
   const signerRef = getEscrowSignerRef(record);
   if (signerRef.kind !== "privy") return { id: commitmentId, ok: false, error: "Commitment does not use a Privy-managed wallet" };
@@ -125,6 +142,16 @@ export async function POST(req: Request) {
     }
 
     const cronOk = isCronAuthorized(req);
+
+    if (!cronOk) {
+      verifyAdminOrigin(req);
+      const adminOk = await isAdminRequestAsync(req);
+      if (!adminOk) {
+        await auditLog("escrow_sweep_denied", { reason: "unauthorized" });
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+    }
+
     const body = (await req.json().catch(() => ({}))) as any;
     const commitmentId = typeof body.commitmentId === "string" ? body.commitmentId.trim() : "";
     const limit = body?.limit != null ? Number(body.limit) : undefined;
@@ -135,14 +162,40 @@ export async function POST(req: Request) {
 
     if (!commitmentId && cronOk) {
       const all = await listCommitments();
-      const targets = all.filter((c) => c.kind === "creator_reward" && c.creatorFeeMode === "managed");
+      const targets = all.filter((c) => c.kind === "creator_reward" && c.creatorFeeMode === "managed" && c.status !== "archived");
+      const sharedCreatorPubkeys = new Map<string, string[]>();
+      for (const c of all) {
+        if (c.kind !== "creator_reward") continue;
+        if (c.creatorFeeMode !== "managed") continue;
+        if (c.status === "archived") continue;
+        const key = String(c.authority);
+        const arr = sharedCreatorPubkeys.get(key) ?? [];
+        arr.push(c.id);
+        sharedCreatorPubkeys.set(key, arr);
+      }
+
       const capped = typeof limit === "number" && Number.isFinite(limit) && limit > 0 ? targets.slice(0, Math.min(200, Math.floor(limit))) : targets;
       const results: any[] = [];
       const failed: Array<{ id: string; error: string; attempts: number }> = [];
       
       for (const c of capped) {
+        const sharedIds = sharedCreatorPubkeys.get(String(c.authority)) ?? [];
+        if (sharedIds.length > 1) {
+          const msg = "Creator wallet is shared across multiple commitments; sweep is blocked to prevent mixing creator fees";
+          results.push({
+            id: c.id,
+            ok: false,
+            status: 409,
+            error: msg,
+            creatorPubkey: c.authority,
+            sharedCommitmentIds: sharedIds,
+          });
+          failed.push({ id: c.id, error: msg, attempts: 0 });
+          continue;
+        }
+
         let attempts = 0;
-        const maxAttempts = 2; // Retry once on failure
+        const maxAttempts = 2;
         let lastError = "";
         
         while (attempts < maxAttempts) {

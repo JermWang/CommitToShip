@@ -188,7 +188,7 @@ export async function GET(req: Request) {
     const beforeId = String(url.searchParams.get("beforeId") ?? "").trim();
     const beforeTs = beforeTsRaw != null && beforeTsRaw.trim().length ? Number(beforeTsRaw) : null;
 
-    const rows = await listCommitments();
+    const rows = (await listCommitments()).filter((c) => c.status !== "archived");
 
     const events: TimelineEvent[] = [];
 

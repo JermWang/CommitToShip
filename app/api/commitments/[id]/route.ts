@@ -36,6 +36,7 @@ export async function GET(_req: Request, ctx: { params: { id: string } }) {
     const id = ctx.params.id;
     const record = await getCommitment(id);
     if (!record) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (record.status === "archived") return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     const connection = getConnection();
     const escrowPk = new PublicKey(record.escrowPubkey);

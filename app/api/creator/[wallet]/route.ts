@@ -55,11 +55,12 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
     const allCommitments = await listCommitments();
     const creatorCommitments = allCommitments.filter(
       (c) =>
-        c.creatorPubkey === walletPubkey ||
-        c.authority === walletPubkey ||
-        c.destinationOnFail === walletPubkey ||
-        (treasuryWallet ? c.authority === treasuryWallet : false) ||
-        (treasuryWallet ? c.destinationOnFail === treasuryWallet : false)
+        c.status !== "archived" &&
+        (c.creatorPubkey === walletPubkey ||
+          c.authority === walletPubkey ||
+          c.destinationOnFail === walletPubkey ||
+          (treasuryWallet ? c.authority === treasuryWallet : false) ||
+          (treasuryWallet ? c.destinationOnFail === treasuryWallet : false))
     );
 
     if (creatorCommitments.length === 0) {

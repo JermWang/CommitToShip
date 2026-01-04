@@ -35,7 +35,7 @@ export async function GET(req: Request) {
       res.headers.set("retry-after", String(rl.retryAfterSeconds));
       return res;
     }
-    const commitments = (await listCommitments()).map(publicView);
+    const commitments = (await listCommitments()).filter((c) => c.status !== "archived").map(publicView);
     return NextResponse.json({ commitments });
   } catch (e) {
     return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
@@ -94,6 +94,23 @@ export async function POST(req: Request) {
       const okSig = nacl.sign.detached.verify(new TextEncoder().encode(message), signature, devWallet.toBytes());
       if (!okSig) {
         return NextResponse.json({ error: "Invalid dev verification signature" }, { status: 401 });
+      }
+
+      if (creatorFeeMode === "managed") {
+        const existingManaged = (await listCommitments()).find(
+          (c) => c.kind === "creator_reward" && c.creatorFeeMode === "managed" && c.status !== "archived" && c.authority === creator.toBase58()
+        );
+        if (existingManaged) {
+          return NextResponse.json(
+            {
+              error: "Creator wallet already has a managed creator reward commitment",
+              creatorPubkey: creator.toBase58(),
+              existingCommitmentId: existingManaged.id,
+              hint: "Managed mode requires a unique creator wallet. Use assisted mode or a different wallet.",
+            },
+            { status: 409 }
+          );
+        }
       }
 
       const connection = getConnection();
