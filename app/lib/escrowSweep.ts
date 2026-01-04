@@ -179,57 +179,48 @@ export async function sweepManagedCreatorFeesToEscrow(input: { commitmentId: str
     let wsolBeforeUiAmount: number | null = null;
     let wsolAfterUiAmount: number | null = null;
 
-    const mint = String(record.tokenMint ?? "").trim();
-    if (!mint) {
-      pumpportalError = "tokenMint missing (cannot claim post-bond creator fees)";
-    } else {
+    try {
+      const escrowBefore = await getBalanceLamports(connection, escrowPubkey);
+      const solBefore = await getBalanceLamports(connection, creatorWallet);
+      const wsolBefore = await getTokenBalanceForMint({ connection, owner: creatorWallet, mint: WSOL_MINT });
+      wsolBeforeUiAmount = wsolBefore.uiAmount;
+
+      const minCreatorLamportsForFees = 5_000_000;
+      if (solBefore < minCreatorLamportsForFees) {
+        const topup = minCreatorLamportsForFees - solBefore;
+        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
+        const tx = new Transaction();
+        tx.feePayer = feePayer.publicKey;
+        tx.recentBlockhash = blockhash;
+        tx.lastValidBlockHeight = lastValidBlockHeight;
+        tx.add(SystemProgram.transfer({ fromPubkey: feePayer.publicKey, toPubkey: creatorWallet, lamports: topup }));
+        tx.partialSign(feePayer);
+
+        const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false, preflightCommitment: "processed", maxRetries: 2 });
+        await confirmTransactionSignature({ connection, signature: sig, blockhash, lastValidBlockHeight });
+        pumpportalFundedForFeesLamports = topup;
+      }
+
+      const solBaseline = await getBalanceLamports(connection, creatorWallet);
+
+      const built = await pumpportalBuildCollectCreatorFeeTxBase64({ publicKey: creatorWallet.toBase58(), priorityFee: 0.000001 });
+
+      const signed = await privySignSolanaTransaction({ walletId: privyWalletId, transactionBase64: built.txBase64 });
+      const raw = Buffer.from(String(signed.signedTransactionBase64), "base64");
+      const sig = await connection.sendRawTransaction(raw, { skipPreflight: false, preflightCommitment: "processed", maxRetries: 2 });
+      await confirmTransactionSignature({ connection, signature: sig, blockhash: "", lastValidBlockHeight: 0 });
+
+      pumpportalSignature = sig;
+
+      const solAfter = await getBalanceLamports(connection, creatorWallet);
+      const wsolAfter = await getTokenBalanceForMint({ connection, owner: creatorWallet, mint: WSOL_MINT });
+      wsolAfterUiAmount = wsolAfter.uiAmount;
+
+      const solDelta = solAfter - solBaseline;
+      pumpportalNetNewSolLamports = Math.max(0, solDelta);
+
       try {
-        const escrowBefore = await getBalanceLamports(connection, escrowPubkey);
-        const solBefore = await getBalanceLamports(connection, creatorWallet);
-        const wsolBefore = await getTokenBalanceForMint({ connection, owner: creatorWallet, mint: WSOL_MINT });
-        wsolBeforeUiAmount = wsolBefore.uiAmount;
-
-        const minCreatorLamportsForFees = 5_000_000;
-        if (solBefore < minCreatorLamportsForFees) {
-          const topup = minCreatorLamportsForFees - solBefore;
-          const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
-          const tx = new Transaction();
-          tx.feePayer = feePayer.publicKey;
-          tx.recentBlockhash = blockhash;
-          tx.lastValidBlockHeight = lastValidBlockHeight;
-          tx.add(SystemProgram.transfer({ fromPubkey: feePayer.publicKey, toPubkey: creatorWallet, lamports: topup }));
-          tx.partialSign(feePayer);
-
-          const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false, preflightCommitment: "processed", maxRetries: 2 });
-          await confirmTransactionSignature({ connection, signature: sig, blockhash, lastValidBlockHeight });
-          pumpportalFundedForFeesLamports = topup;
-        }
-
-        const solBaseline = await getBalanceLamports(connection, creatorWallet);
-
-        const built = await pumpportalBuildCollectCreatorFeeTxBase64({
-          publicKey: creatorWallet.toBase58(),
-          pool: "meteora-dbc",
-          mint,
-          priorityFee: 0.000001,
-        });
-
-        const signed = await privySignSolanaTransaction({ walletId: privyWalletId, transactionBase64: built.txBase64 });
-        const raw = Buffer.from(String(signed.signedTransactionBase64), "base64");
-        const sig = await connection.sendRawTransaction(raw, { skipPreflight: false, preflightCommitment: "processed", maxRetries: 2 });
-        await confirmTransactionSignature({ connection, signature: sig, blockhash: "", lastValidBlockHeight: 0 });
-
-        pumpportalSignature = sig;
-
-        const solAfter = await getBalanceLamports(connection, creatorWallet);
-        const wsolAfter = await getTokenBalanceForMint({ connection, owner: creatorWallet, mint: WSOL_MINT });
-        wsolAfterUiAmount = wsolAfter.uiAmount;
-
-        const solDelta = solAfter - solBaseline;
-        pumpportalNetNewSolLamports = Math.max(0, solDelta);
-
-        try {
-          for (let batch = 0; batch < 6; batch++) {
+        for (let batch = 0; batch < 6; batch++) {
             const c = "confirmed" as const;
             const res = await connection.getParsedTokenAccountsByOwner(creatorWallet, { mint: WSOL_MINT }, c);
             const tokenAccountsToClose: PublicKey[] = [];
@@ -263,42 +254,20 @@ export async function sweepManagedCreatorFeesToEscrow(input: { commitmentId: str
             const rawClose = Buffer.from(String(signedClose.signedTransactionBase64), "base64");
             const sigClose = await connection.sendRawTransaction(rawClose, { skipPreflight: false, preflightCommitment: "processed", maxRetries: 2 });
             await confirmTransactionSignature({ connection, signature: sigClose, blockhash, lastValidBlockHeight });
-          }
-        } catch (e) {
-          void e;
-        }
-
-        if (!sameWallet) {
-          const solNow = await getBalanceLamports(connection, creatorWallet);
-          const floorLamports = Math.max(CREATOR_FEE_SWEEP_KEEP_LAMPORTS, solBaseline);
-          const transferable = Math.max(0, solNow - floorLamports);
-          if (transferable > 0) {
-            const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
-            const tx = new Transaction();
-            tx.feePayer = feePayer.publicKey;
-            tx.recentBlockhash = blockhash;
-            tx.lastValidBlockHeight = lastValidBlockHeight;
-            tx.add(SystemProgram.transfer({ fromPubkey: creatorWallet, toPubkey: escrowPubkey, lamports: transferable }));
-            tx.partialSign(feePayer);
-
-            const txBase64 = tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64");
-            const signedTransfer = await privySignSolanaTransaction({ walletId: privyWalletId, transactionBase64: txBase64 });
-            const rawTransfer = Buffer.from(String(signedTransfer.signedTransactionBase64), "base64");
-            const sigTransfer = await connection.sendRawTransaction(rawTransfer, { skipPreflight: false, preflightCommitment: "processed", maxRetries: 2 });
-            await confirmTransactionSignature({ connection, signature: sigTransfer, blockhash, lastValidBlockHeight });
-          }
-        }
-
-        const escrowAfter = await getBalanceLamports(connection, escrowPubkey);
-        pumpportalEscrowDeltaLamports = Math.max(0, escrowAfter - escrowBefore);
-        const netCreatorFeeLamports = pumpportalEscrowDeltaLamports;
-        if (netCreatorFeeLamports > 0) {
-          runningTotalFundedLamports += netCreatorFeeLamports;
-          await updateRewardTotalsAndMilestones({ id: commitmentId, totalFundedLamports: runningTotalFundedLamports });
         }
       } catch (e) {
-        pumpportalError = String((e as any)?.message ?? e ?? "PumpPortal claim failed");
+        void e;
       }
+
+      const escrowAfter = await getBalanceLamports(connection, escrowPubkey);
+      pumpportalEscrowDeltaLamports = Math.max(0, escrowAfter - escrowBefore);
+      const netCreatorFeeLamports = pumpportalEscrowDeltaLamports;
+      if (netCreatorFeeLamports > 0) {
+        runningTotalFundedLamports += netCreatorFeeLamports;
+        await updateRewardTotalsAndMilestones({ id: commitmentId, totalFundedLamports: runningTotalFundedLamports });
+      }
+    } catch (e) {
+      pumpportalError = String((e as any)?.message ?? e ?? "PumpPortal claim failed");
     }
 
     const newTotalFundedLamports = runningTotalFundedLamports;

@@ -1,9 +1,5 @@
-export type PumpPortalPool = "pump" | "meteora-dbc";
-
 export async function pumpportalBuildCollectCreatorFeeTxBase64(input: {
   publicKey: string;
-  pool?: PumpPortalPool;
-  mint?: string;
   priorityFee?: number;
 }): Promise<{ txBase64: string }> {
   const publicKey = String(input.publicKey ?? "").trim();
@@ -14,12 +10,6 @@ export async function pumpportalBuildCollectCreatorFeeTxBase64(input: {
     action: "collectCreatorFee",
     priorityFee: typeof input.priorityFee === "number" ? input.priorityFee : 0.000001,
   };
-
-  const pool = input.pool;
-  if (pool) body.pool = pool;
-
-  const mint = String(input.mint ?? "").trim();
-  if (mint) body.mint = mint;
 
   const res = await fetch("https://pumpportal.fun/api/trade-local", {
     method: "POST",
