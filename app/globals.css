@@ -3807,6 +3807,215 @@ body[data-skin="app"] .timelineReceipt:hover {
   height: 14px;
 }
 
+.spotlightGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.spotlightCard {
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(0,0,0,0.25);
+  border-radius: 16px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.spotlightCard:hover {
+  border-color: rgba(255,255,255,0.18);
+  background: rgba(0,0,0,0.35);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 28px rgba(0,0,0,0.34);
+}
+
+.spotlightCardDisabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.spotlightCardDisabled:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.spotlightBanner {
+  position: relative;
+  height: 140px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
+}
+
+.spotlightBanner img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.spotlightBody {
+  padding: 14px;
+}
+
+.spotlightTop {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.spotlightPfp {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.05));
+  flex-shrink: 0;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.spotlightPfp img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.spotlightInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.spotlightTitle {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.spotlightName {
+  font-size: 16px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.96);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.spotlightTicker {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.55);
+}
+
+.spotlightMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: rgba(255,255,255,0.45);
+  margin-top: 3px;
+}
+
+.spotlightDot {
+  opacity: 0.5;
+}
+
+.spotlightStatus {
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.spotlightStatus--active {
+  color: rgba(96, 165, 250, 0.9);
+}
+
+.spotlightStatus--shipped {
+  color: rgba(134, 239, 172, 0.9);
+}
+
+.spotlightStatus--failed {
+  color: rgba(251, 146, 60, 0.9);
+}
+
+.spotlightBadge {
+  flex-shrink: 0;
+  text-align: right;
+  padding: 6px 10px;
+  background: rgba(34, 197, 94, 0.12);
+  border-radius: 10px;
+}
+
+.spotlightBadgeVal {
+  font-size: 15px;
+  font-weight: 800;
+  color: rgba(134, 239, 172, 0.95);
+}
+
+.spotlightBadgeUnit {
+  margin-left: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(134, 239, 172, 0.6);
+}
+
+.spotlightDesc {
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(255,255,255,0.6);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.spotlightStats {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.spotlightStat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.spotlightStatLabel {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.4);
+}
+
+.spotlightStatValue {
+  font-size: 14px;
+  font-weight: 800;
+  color: rgba(255,255,255,0.9);
+}
+
+.spotlightProgress {
+  margin-top: 10px;
+}
+
+.spotlightProgressBar {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  overflow: hidden;
+}
+
+.spotlightProgressFill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(134, 239, 172, 0.8), rgba(96, 165, 250, 0.6));
+  transition: width 0.3s ease;
+}
+
 .discoverEmpty {
   padding: 60px 20px;
   text-align: center;

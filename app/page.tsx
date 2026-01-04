@@ -257,7 +257,7 @@ export default function Home() {
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [timelineLoadingMore, setTimelineLoadingMore] = useState(false);
   const [timelineNextCursor, setTimelineNextCursor] = useState<null | { beforeTs: number; beforeId: string }>(null);
-  const [timelineFilter, setTimelineFilter] = useState<"curated" | "all" | "reward" | "milestones" | "completed">("curated");
+  const [timelineFilter, setTimelineFilter] = useState<"curated" | "spotlight" | "all" | "reward" | "milestones" | "completed">("curated");
   const [timelineQuery, setTimelineQuery] = useState("");
   const [timelineKindFilter, setTimelineKindFilter] = useState<"all" | "personal" | "reward">("all");
   const [timelineStatusFilter, setTimelineStatusFilter] = useState<"all" | "active" | "funded" | "expired" | "success" | "failure">("all");
@@ -932,6 +932,7 @@ export default function Home() {
     projectName: string;
     projectSymbol: string;
     projectImageUrl: string;
+    projectBannerUrl: string;
     projectDesc: string;
     websiteUrl: string;
     xUrl: string;
@@ -997,6 +998,7 @@ export default function Home() {
       const projectName = project?.name != null ? String(project.name) : "";
       const projectSymbol = project?.symbol != null ? String(project.symbol) : "";
       const projectImageUrl = project?.imageUrl != null ? String(project.imageUrl) : "";
+      const projectBannerUrl = (project as any)?.bannerUrl != null ? String((project as any).bannerUrl) : "";
       const projectDesc = project?.description != null ? String(project.description) : "";
       const websiteUrl = project?.websiteUrl != null ? String(project.websiteUrl) : "";
       const xUrl = project?.xUrl != null ? String(project.xUrl) : "";
@@ -1029,6 +1031,7 @@ export default function Home() {
         projectName,
         projectSymbol,
         projectImageUrl,
+        projectBannerUrl,
         projectDesc,
         websiteUrl,
         xUrl,
@@ -1059,6 +1062,25 @@ export default function Home() {
 
     return sorted;
   }, [projectsByMint, timelineCommitments, timelineEventsByCommitmentId, timelineFilter, timelineKindFilter, timelineQuery, timelineSort, timelineStatusFilter]);
+
+  const discoverSpotlightCards: DiscoverCard[] = useMemo(() => {
+    const order = ["SHIP"];
+    const bySym = new Map<string, DiscoverCard[]>();
+    for (const c of discoverLiveCards) {
+      const s = String(c.projectSymbol ?? "").trim().toUpperCase();
+      if (!s) continue;
+      const list = bySym.get(s) ?? [];
+      list.push(c);
+      bySym.set(s, list);
+    }
+
+    const out: DiscoverCard[] = [];
+    for (const sym of order) {
+      const list = bySym.get(sym) ?? [];
+      out.push(...list);
+    }
+    return out;
+  }, [discoverLiveCards]);
 
   function humanTime(tsUnix: number): string {
     try {
@@ -1541,7 +1563,7 @@ export default function Home() {
     const ts = String(searchParams.get("ts") ?? "").trim();
     const tso = String(searchParams.get("tso") ?? "").trim();
 
-    if (tf === "curated" || tf === "all" || tf === "reward" || tf === "milestones" || tf === "completed") setTimelineFilter(tf);
+    if (tf === "curated" || tf === "spotlight" || tf === "all" || tf === "reward" || tf === "milestones" || tf === "completed") setTimelineFilter(tf);
     if (tk === "all" || tk === "personal" || tk === "reward") setTimelineKindFilter(tk);
     if (ts === "all" || ts === "active" || ts === "funded" || ts === "expired" || ts === "success" || ts === "failure") setTimelineStatusFilter(ts);
     if (tso === "newest" || tso === "oldest" || tso === "amount_desc") setTimelineSort(tso);
@@ -2222,6 +2244,7 @@ export default function Home() {
                     </div>
 
                     <div className="discoverTabs">
+                      <button className={`discoverTab ${timelineFilter === "spotlight" ? "discoverTabActive" : ""}`} onClick={() => setTimelineFilter("spotlight")}>Spotlight</button>
                       <button className={`discoverTab ${timelineFilter === "curated" ? "discoverTabActive" : ""}`} onClick={() => setTimelineFilter("curated")}>Hot</button>
                       <button className={`discoverTab ${timelineFilter === "completed" ? "discoverTabActive" : ""}`} onClick={() => setTimelineFilter("completed")}>Shipped</button>
                       <button className={`discoverTab ${timelineFilter === "reward" ? "discoverTabActive" : ""}`} onClick={() => setTimelineFilter("reward")}>Rewards</button>
@@ -2255,7 +2278,175 @@ export default function Home() {
                       </div>
                     ) : (
                       <>
-                        {discoverLiveCards.length === 0 ? (
+                        {timelineFilter === "spotlight" ? (
+                          discoverSpotlightCards.length === 0 ? (
+                            <div className="discoverEmpty">No spotlight projects yet.</div>
+                          ) : (
+                            <div className="spotlightGrid">
+                              {discoverSpotlightCards.map((c) => {
+                                const nowUnix = Math.floor(Date.now() / 1000);
+                                const target = Math.max(0, Number(c.targetLamports || 0));
+                                const escrowed = Math.max(0, Number(c.escrowedLamports || 0));
+                                const pct = target > 0 ? clamp01(escrowed / target) : (escrowed > 0 ? 1 : 0);
+
+                                const displayName = (() => {
+                                  const n = String(c.projectName ?? "").trim();
+                                  if (n) return n;
+                                  if (c.tokenMint) return shortWallet(c.tokenMint);
+                                  return "Project";
+                                })();
+                                const ticker = (() => {
+                                  const s = String(c.projectSymbol ?? "").trim();
+                                  return s ? `$${s}` : "";
+                                })();
+                                const showTicker = Boolean(ticker) && displayName !== ticker;
+
+                                const statusLower = String(c.status ?? "").toLowerCase();
+                                const statusLabel =
+                                  statusLower.includes("resolved_success") || statusLower.includes("completed")
+                                    ? "shipped"
+                                    : statusLower.includes("failed") || statusLower.includes("resolved_failure")
+                                      ? "failed"
+                                      : "active";
+
+                                const canNavigate = c.commitmentId || c.isMock;
+                                const caKey = `${c.key}:ca`;
+                                const timeAgo = c.lastActivityUnix ? unixAgoShort(c.lastActivityUnix, nowUnix) : "–";
+
+                                return (
+                                  <div
+                                    key={c.key}
+                                    className={`spotlightCard ${!canNavigate ? "spotlightCardDisabled" : ""}`}
+                                    onClick={() => {
+                                      if (!canNavigate) return;
+                                      if (c.isMock) {
+                                        const mockId = c.key.replace("mock:", "").split(":")[0];
+                                        router.push(`/commit/mock-${mockId}`);
+                                      } else {
+                                        router.push(`/commit/${encodeURIComponent(c.commitmentId)}`);
+                                      }
+                                    }}
+                                  >
+                                    <div className="spotlightBanner">
+                                      {c.projectBannerUrl ? (
+                                        <img
+                                          src={c.projectBannerUrl}
+                                          alt=""
+                                          onError={(ev) => { (ev.currentTarget as HTMLImageElement).style.display = "none"; }}
+                                        />
+                                      ) : null}
+                                    </div>
+
+                                    <div className="spotlightBody">
+                                      <div className="spotlightTop">
+                                        <div className="spotlightPfp">
+                                          {c.projectImageUrl ? (
+                                            <img
+                                              src={c.projectImageUrl}
+                                              alt=""
+                                              onError={(ev) => { (ev.currentTarget as HTMLImageElement).style.display = "none"; }}
+                                            />
+                                          ) : null}
+                                        </div>
+                                        <div className="spotlightInfo">
+                                          <div className="spotlightTitle">
+                                            <span className="spotlightName">{displayName}</span>
+                                            {showTicker ? <span className="spotlightTicker">{ticker}</span> : null}
+                                          </div>
+                                          <div className="spotlightMeta">
+                                            <span className={`spotlightStatus spotlightStatus--${statusLabel}`}>{statusLabel}</span>
+                                            <span className="spotlightDot">·</span>
+                                            <span>{timeAgo}</span>
+                                          </div>
+                                        </div>
+                                        <div className="spotlightBadge">
+                                          <span className="spotlightBadgeVal">{fmtSol2(escrowed)}</span>
+                                          <span className="spotlightBadgeUnit">SOL</span>
+                                        </div>
+                                      </div>
+
+                                      {c.projectDesc ? <div className="spotlightDesc">{c.projectDesc}</div> : null}
+
+                                      <div className="spotlightStats">
+                                        <div className="spotlightStat">
+                                          <span className="spotlightStatLabel">Escrowed</span>
+                                          <span className="spotlightStatValue">{fmtSol2(escrowed)} SOL</span>
+                                        </div>
+                                        <div className="spotlightStat">
+                                          <span className="spotlightStatLabel">Progress</span>
+                                          <span className="spotlightStatValue">{c.milestonesDone}/{c.milestonesTotal}</span>
+                                        </div>
+                                      </div>
+
+                                      <div className="spotlightProgress">
+                                        <div className="spotlightProgressBar">
+                                          <div className="spotlightProgressFill" style={{ width: `${Math.round(pct * 100)}%` }} />
+                                        </div>
+                                      </div>
+
+                                      <div className="discoverCardFoot" onClick={(ev) => ev.stopPropagation()}>
+                                        <div className="discoverCardFootLeft">
+                                          {c.tokenMint ? (
+                                            <button
+                                              className="discoverCardCopy"
+                                              type="button"
+                                              onClick={() => copyTimeline(c.tokenMint, caKey)}
+                                              title="Copy contract address"
+                                            >
+                                              <span className="discoverCardCopyLabel">CA</span>
+                                              <span className="discoverCardCopyVal mono" title={c.tokenMint}>
+                                                {shortWallet(c.tokenMint)}
+                                              </span>
+                                              {timelineCopied === caKey ? <span className="discoverCardCopyCheck">Copied</span> : null}
+                                            </button>
+                                          ) : null}
+                                        </div>
+                                        <div className="discoverCardSocials">
+                                          {c.websiteUrl ? (
+                                            <a className="discoverCardSocial" href={c.websiteUrl} target="_blank" rel="noreferrer noopener" title="Website" onClick={(e) => e.stopPropagation()}>
+                                              <SocialIcon type="website" />
+                                            </a>
+                                          ) : (
+                                            <span className="discoverCardSocial discoverCardSocialMuted" title="Website">
+                                              <SocialIcon type="website" />
+                                            </span>
+                                          )}
+                                          {c.xUrl ? (
+                                            <a className="discoverCardSocial" href={c.xUrl} target="_blank" rel="noreferrer noopener" title="X" onClick={(e) => e.stopPropagation()}>
+                                              <SocialIcon type="x" />
+                                            </a>
+                                          ) : (
+                                            <span className="discoverCardSocial discoverCardSocialMuted" title="X">
+                                              <SocialIcon type="x" />
+                                            </span>
+                                          )}
+                                          {c.telegramUrl ? (
+                                            <a className="discoverCardSocial" href={c.telegramUrl} target="_blank" rel="noreferrer noopener" title="Telegram" onClick={(e) => e.stopPropagation()}>
+                                              <SocialIcon type="telegram" />
+                                            </a>
+                                          ) : (
+                                            <span className="discoverCardSocial discoverCardSocialMuted" title="Telegram">
+                                              <SocialIcon type="telegram" />
+                                            </span>
+                                          )}
+                                          {c.discordUrl ? (
+                                            <a className="discoverCardSocial" href={c.discordUrl} target="_blank" rel="noreferrer noopener" title="Discord" onClick={(e) => e.stopPropagation()}>
+                                              <SocialIcon type="discord" />
+                                            </a>
+                                          ) : (
+                                            <span className="discoverCardSocial discoverCardSocialMuted" title="Discord">
+                                              <SocialIcon type="discord" />
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )
+                        ) : discoverLiveCards.length === 0 ? (
                           <div className="discoverEmpty">No projects found. Try a different filter.</div>
                         ) : (
                           <div className="discoverGrid">
