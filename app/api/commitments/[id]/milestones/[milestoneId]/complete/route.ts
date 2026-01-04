@@ -11,8 +11,10 @@ import { getSafeErrorMessage } from "../../../../../../lib/safeError";
 export const runtime = "nodejs";
 
 function getClaimDelaySeconds(): number {
-  const raw = Number(process.env.REWARD_CLAIM_DELAY_SECONDS ?? "");
-  if (Number.isFinite(raw) && raw > 0) return Math.floor(raw);
+  const rawStr = process.env.REWARD_CLAIM_DELAY_SECONDS;
+  if (rawStr == null || String(rawStr).trim() === "") return 48 * 60 * 60;
+  const raw = Number(rawStr);
+  if (Number.isFinite(raw) && raw >= 0) return Math.floor(raw);
   return 48 * 60 * 60;
 }
 
@@ -137,7 +139,7 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
           nextMilestones[idx] = {
             ...m,
             reviewOpenedAtUnix: nowUnix,
-            claimableAtUnix: Math.max(completedAtUnix + delaySeconds, nowUnix + cutoffSeconds),
+            claimableAtUnix: completedAtUnix + delaySeconds,
           };
 
           const releasedLamports = sumReleasedLamports(nextMilestones);
@@ -200,12 +202,7 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
       unlockLamports,
       completedAtUnix: nowUnix,
       reviewOpenedAtUnix: matchesEarly ? nowUnix : m.reviewOpenedAtUnix,
-      claimableAtUnix: Math.max(
-        nowUnix + delaySeconds,
-        (matchesEarly
-          ? nowUnix
-          : (Number.isFinite(Number(m.dueAtUnix)) && Number(m.dueAtUnix) > 0 ? Number(m.dueAtUnix) : nowUnix)) + cutoffSeconds
-      ),
+      claimableAtUnix: nowUnix + delaySeconds,
     };
 
     const updated = await updateRewardTotalsAndMilestones({

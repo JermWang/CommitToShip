@@ -1803,6 +1803,14 @@ export function normalizeRewardMilestonesClaimable(input: {
   const { milestones, nowUnix, approvalCounts, approvalThreshold } = input;
   const rejectCounts = input.rejectCounts ?? {};
 
+  const claimDelaySeconds = (() => {
+    const rawStr = process.env.REWARD_CLAIM_DELAY_SECONDS;
+    if (rawStr == null || String(rawStr).trim() === "") return 48 * 60 * 60;
+    const raw = Number(rawStr);
+    if (Number.isFinite(raw) && raw >= 0) return Math.floor(raw);
+    return 48 * 60 * 60;
+  })();
+
   const cutoffSeconds = (() => {
     const raw = Number(process.env.REWARD_VOTE_CUTOFF_SECONDS ?? "");
     if (Number.isFinite(raw) && raw > 0) return Math.floor(raw);
@@ -1844,12 +1852,25 @@ export function normalizeRewardMilestonesClaimable(input: {
         changed = true;
         return { ...m, approvedAtUnix: nowUnix };
       }
-      if (m.claimableAtUnix == null) return m;
-      if (nowUnix < m.claimableAtUnix) return m;
+      const completedAtUnix = Number(m.completedAtUnix ?? 0);
+      const desiredClaimableAtUnix =
+        Number.isFinite(completedAtUnix) && completedAtUnix > 0 ? completedAtUnix + claimDelaySeconds : null;
+
+      if (desiredClaimableAtUnix == null) return m;
+
+      const needsClaimableAtUpdate = Number(m.claimableAtUnix ?? 0) !== desiredClaimableAtUnix;
+      if (needsClaimableAtUpdate) changed = true;
+
+      if (nowUnix < desiredClaimableAtUnix) {
+        if (!needsClaimableAtUpdate) return m;
+        return { ...m, claimableAtUnix: desiredClaimableAtUnix };
+      }
+
       changed = true;
       return {
         ...m,
         status: "claimable" as const,
+        claimableAtUnix: desiredClaimableAtUnix,
         becameClaimableAtUnix: m.becameClaimableAtUnix ?? nowUnix,
       };
     }
@@ -1884,29 +1905,51 @@ export function normalizeRewardMilestonesClaimable(input: {
       };
     }
 
-    if (m.claimableAtUnix == null) return m;
+    const desiredClaimableAtUnix = Number.isFinite(completedAtUnix) && completedAtUnix > 0 ? completedAtUnix + claimDelaySeconds : null;
+    if (desiredClaimableAtUnix == null) return m;
 
     const voteEndUnix = getVoteEndUnix(m);
     if (voteEndUnix == null) return m;
-    if (nowUnix < voteEndUnix) return m;
 
     const approvals = Number(approvalCounts[m.id] ?? 0);
     const rejects = Number(rejectCounts[m.id] ?? 0);
-
     const approved = approvals >= approvalThreshold && approvals > rejects;
+
+    const needsClaimableAtUpdate = Number(m.claimableAtUnix ?? 0) !== desiredClaimableAtUnix;
+    if (needsClaimableAtUpdate) changed = true;
+
+    if (claimDelaySeconds === 0 && approved) {
+      changed = true;
+      return {
+        ...m,
+        status: "claimable" as const,
+        approvedAtUnix: m.approvedAtUnix ?? nowUnix,
+        claimableAtUnix: desiredClaimableAtUnix,
+        becameClaimableAtUnix: m.becameClaimableAtUnix ?? nowUnix,
+      };
+    }
+
+    if (nowUnix < voteEndUnix) {
+      if (!needsClaimableAtUpdate) return m;
+      return { ...m, claimableAtUnix: desiredClaimableAtUnix };
+    }
 
     changed = true;
     if (approved) {
+      const nextStatus = nowUnix >= desiredClaimableAtUnix ? ("claimable" as const) : ("approved" as const);
       return {
         ...m,
-        status: "approved" as const,
+        status: nextStatus,
         approvedAtUnix: m.approvedAtUnix ?? nowUnix,
+        claimableAtUnix: desiredClaimableAtUnix,
+        becameClaimableAtUnix: nextStatus === "claimable" ? (m.becameClaimableAtUnix ?? nowUnix) : m.becameClaimableAtUnix,
       };
     }
     return {
       ...m,
       status: "failed" as const,
       failedAtUnix: m.failedAtUnix ?? nowUnix,
+      claimableAtUnix: desiredClaimableAtUnix,
     };
   });
   return { milestones: next, changed };
