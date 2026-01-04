@@ -58,9 +58,9 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
         c.status !== "archived" &&
         (c.creatorPubkey === walletPubkey ||
           c.authority === walletPubkey ||
-          c.destinationOnFail === walletPubkey ||
+          (c.kind === "personal" && c.destinationOnFail === walletPubkey) ||
           (treasuryWallet ? c.authority === treasuryWallet : false) ||
-          (treasuryWallet ? c.destinationOnFail === treasuryWallet : false))
+          (treasuryWallet ? (c.kind === "personal" && c.destinationOnFail === treasuryWallet) : false))
     );
 
     if (creatorCommitments.length === 0) {

@@ -400,7 +400,7 @@ export async function POST(req: Request) {
       const record = {
         ...baseRecord,
         authority: creatorPubkey.toBase58(),
-        destinationOnFail: payoutPubkey.toBase58(),
+        destinationOnFail: escrowPubkey,
       };
 
       stage = "insert_commitment";

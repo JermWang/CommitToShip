@@ -60,6 +60,18 @@ export async function POST(req: Request) {
     const kind = (typeof body.kind === "string" ? body.kind : "personal") as CommitmentKind;
 
     if (kind === "creator_reward") {
+      const forbiddenAuthority = typeof body.authority === "string" ? body.authority.trim() : "";
+      const forbiddenDestinationOnFail = typeof body.destinationOnFail === "string" ? body.destinationOnFail.trim() : "";
+      if (forbiddenAuthority || forbiddenDestinationOnFail) {
+        return NextResponse.json(
+          {
+            error: "creator_reward commitments do not allow authority/destinationOnFail overrides",
+            hint: "Failure handling for creator rewards is system-controlled via milestone failure distributions.",
+          },
+          { status: 400 }
+        );
+      }
+
       const creator = new PublicKey(String(body.creatorPubkey ?? ""));
 
       const rawMode = typeof body.creatorFeeMode === "string" ? body.creatorFeeMode.trim() : "";

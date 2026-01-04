@@ -245,6 +245,8 @@ export default function CommitDashboardClient(props: Props) {
   const router = useRouter();
   const toast = useToast();
 
+  const isManagedCreatorFeeMode = String(props.creatorFeeMode ?? "assisted") === "managed";
+
   async function copyAny(text: string) {
     try {
       if (!window.isSecureContext || !navigator.clipboard?.writeText) {
@@ -277,7 +279,7 @@ export default function CommitDashboardClient(props: Props) {
   const [adminBusy, setAdminBusy] = useState<string | null>(null);
   const [adminError, setAdminError] = useState<string | null>(null);
 
-  const [pumpCreatorPubkeyInput, setPumpCreatorPubkeyInput] = useState<string>(String(props.creatorPubkey ?? ""));
+  const [pumpCreatorPubkeyInput, setPumpCreatorPubkeyInput] = useState<string>(String(props.authority ?? ""));
   const [pumpBusy, setPumpBusy] = useState<string | null>(null);
   const [pumpError, setPumpError] = useState<string | null>(null);
   const [pumpStatus, setPumpStatus] = useState<any>(null);
@@ -1799,24 +1801,30 @@ export default function CommitDashboardClient(props: Props) {
         </div>
 
         {kind === "creator_reward" ? (
-          <div className={styles.receiptBlock}>
-            <div className={styles.receiptLabel}>Creator wallet</div>
-            <div className={styles.receiptValue}>
-              {(() => {
-                const pk = String(props.creatorPubkey ?? "");
-                const p = pk ? profilesByWallet[pk] : null;
-                const label = p?.displayName?.trim() ? String(p.displayName) : shortWallet(pk);
-                return pk ? (
-                  <a className={styles.receiptValue} href={`/u/${encodeURIComponent(pk)}`}>
-                    {p?.avatarUrl ? <img src={String(p.avatarUrl)} alt="" style={{ width: 18, height: 18, borderRadius: 999, objectFit: "cover", marginRight: 8, verticalAlign: "middle" }} /> : null}
-                    <span style={{ verticalAlign: "middle" }}>{label}</span>
-                  </a>
-                ) : (
-                  ""
-                );
-              })()}
+          <>
+            <div className={styles.receiptBlock}>
+              <div className={styles.receiptLabel}>Custody wallet (fees)</div>
+              <div className={styles.receiptValue}>{String(props.authority ?? "")}</div>
             </div>
-          </div>
+            <div className={styles.receiptBlock}>
+              <div className={styles.receiptLabel}>Creator payout wallet</div>
+              <div className={styles.receiptValue}>
+                {(() => {
+                  const pk = String(props.creatorPubkey ?? "");
+                  const p = pk ? profilesByWallet[pk] : null;
+                  const label = p?.displayName?.trim() ? String(p.displayName) : shortWallet(pk);
+                  return pk ? (
+                    <a className={styles.receiptValue} href={`/u/${encodeURIComponent(pk)}`}>
+                      {p?.avatarUrl ? <img src={String(p.avatarUrl)} alt="" style={{ width: 18, height: 18, borderRadius: 999, objectFit: "cover", marginRight: 8, verticalAlign: "middle" }} /> : null}
+                      <span style={{ verticalAlign: "middle" }}>{label}</span>
+                    </a>
+                  ) : (
+                    ""
+                  );
+                })()}
+              </div>
+            </div>
+          </>
         ) : (
           <>
             <div className={styles.receiptBlock}>
@@ -1896,7 +1904,9 @@ export default function CommitDashboardClient(props: Props) {
           <div className={styles.receiptBlock}>
             <div className={styles.receiptLabel}>Pump.fun Creator Fees</div>
             <div className={styles.smallNote} style={{ marginTop: 8 }}>
-              Connect the creator wallet to check and claim fees.
+              {isManagedCreatorFeeMode
+                ? "Managed mode: fees are swept server-side from the custody wallet."
+                : "Connect the creator wallet to check and claim fees."}
             </div>
 
             {pumpError ? <div className={styles.smallNote} style={{ marginTop: 10, color: "rgba(180, 40, 60, 0.86)" }}>{pumpError}</div> : null}
@@ -1906,15 +1916,17 @@ export default function CommitDashboardClient(props: Props) {
                 className={styles.adminInput}
                 value={pumpCreatorPubkeyInput}
                 onChange={(e) => setPumpCreatorPubkeyInput(e.target.value)}
-                placeholder="Creator wallet pubkey"
+                placeholder="Custody wallet pubkey"
               />
-              <button
-                className={styles.actionBtn}
-                onClick={connectPumpCreatorWallet}
-                disabled={pumpBusy != null}
-              >
-                {pumpBusy === "connect" ? "Connecting…" : pumpWalletPubkey ? "Wallet Connected" : "Connect Wallet"}
-              </button>
+              {!isManagedCreatorFeeMode ? (
+                <button
+                  className={styles.actionBtn}
+                  onClick={connectPumpCreatorWallet}
+                  disabled={pumpBusy != null}
+                >
+                  {pumpBusy === "connect" ? "Connecting…" : pumpWalletPubkey ? "Wallet Connected" : "Connect Wallet"}
+                </button>
+              ) : null}
               <button
                 className={styles.actionBtn}
                 onClick={pumpCheckStatus}
@@ -1922,13 +1934,15 @@ export default function CommitDashboardClient(props: Props) {
               >
                 {pumpBusy === "check" ? "Checking…" : "Check"}
               </button>
-              <button
-                className={`${styles.actionBtn} ${styles.actionPrimary}`}
-                onClick={pumpClaimFees}
-                disabled={pumpBusy != null || !pumpWalletPubkey}
-              >
-                {pumpBusy === "claim" ? "Claiming…" : "Claim"}
-              </button>
+              {!isManagedCreatorFeeMode ? (
+                <button
+                  className={`${styles.actionBtn} ${styles.actionPrimary}`}
+                  onClick={pumpClaimFees}
+                  disabled={pumpBusy != null || !pumpWalletPubkey}
+                >
+                  {pumpBusy === "claim" ? "Claiming…" : "Claim"}
+                </button>
+              ) : null}
             </div>
 
             {pumpStatus?.creatorVault ? (

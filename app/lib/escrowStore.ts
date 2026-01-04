@@ -804,7 +804,7 @@ export function createRewardCommitmentRecord(input: {
     id: input.id,
     statement: input.statement,
     authority: input.creatorPubkey,
-    destinationOnFail: input.creatorPubkey,
+    destinationOnFail: input.escrowPubkey,
     amountLamports: 0,
     deadlineUnix: nowUnix(),
     escrowPubkey: input.escrowPubkey,
@@ -830,6 +830,12 @@ export function createRewardCommitmentRecord(input: {
 
 export function publicView(r: CommitmentRecord): Omit<CommitmentRecord, "escrowSecretKey"> {
   const { escrowSecretKey: _ignored, ...rest } = r;
+  if (r.kind === "creator_reward") {
+    return {
+      ...rest,
+      destinationOnFail: r.escrowPubkey,
+    };
+  }
   return rest;
 }
 
