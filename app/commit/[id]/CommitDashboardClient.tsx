@@ -1562,7 +1562,7 @@ export default function CommitDashboardClient(props: Props) {
                                   {showApprovals ? (
                                     <div className={styles.voteProgress}>
                                       <div className={styles.voteProgressMeta}>
-                                        ${fmtUsd(approvals)} / ${fmtUsd(threshold)}
+                                        {Math.floor(approvals)}/{Math.floor(threshold)} approvals
                                       </div>
                                       <div className={styles.voteProgressBar} aria-hidden="true">
                                         <div className={styles.voteProgressFill} style={{ width: `${Math.round(pct * 100)}%` }} />
@@ -1660,7 +1660,7 @@ export default function CommitDashboardClient(props: Props) {
                           </div>
                           {showApprovals && m.completedAtUnix != null ? (
                             <div className={styles.smallNote} style={{ marginTop: 6 }}>
-                              Approval weight ${fmtUsd(approvals)} / ${fmtUsd(threshold)}
+                              Approvals {Math.floor(approvals)}/{Math.floor(threshold)}
                             </div>
                           ) : null}
                         </div>

@@ -1694,24 +1694,18 @@ export async function getRewardMilestoneVoteCounts(commitmentId: string): Promis
     return 24 * 60 * 60;
   })();
 
-  const canary = (() => {
-    const raw = String(process.env.CTS_CANARY_REWARD_VOTING ?? "").trim().toLowerCase();
-    return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
-  })();
-
   const getVoteWindow = (m: RewardMilestone): { startUnix: number; endUnix: number } | null => {
     const completedAtUnix = Number(m.completedAtUnix ?? 0);
     if (!Number.isFinite(completedAtUnix) || completedAtUnix <= 0) return null;
 
+    const reviewOpenedAtUnix = Number((m as any).reviewOpenedAtUnix ?? 0);
+    const hasReview = Number.isFinite(reviewOpenedAtUnix) && reviewOpenedAtUnix > 0;
+
     const dueAtUnix = Number(m.dueAtUnix ?? 0);
-    const startUnix =
-      Number.isFinite(dueAtUnix) && dueAtUnix > 0
-        ? Math.floor(dueAtUnix)
-        : completedAtUnix;
-    const endUnix =
-      Number.isFinite(dueAtUnix) && dueAtUnix > 0
-        ? Math.floor(dueAtUnix) + cutoffSeconds
-        : completedAtUnix + cutoffSeconds;
+    const hasDue = Number.isFinite(dueAtUnix) && dueAtUnix > 0;
+
+    const startUnix = hasReview ? Math.floor(reviewOpenedAtUnix) : hasDue ? Math.floor(dueAtUnix) : completedAtUnix;
+    const endUnix = hasReview ? startUnix + cutoffSeconds : hasDue ? Math.floor(dueAtUnix) + cutoffSeconds : completedAtUnix + cutoffSeconds;
     return { startUnix, endUnix };
   };
 
@@ -1738,12 +1732,10 @@ export async function getRewardMilestoneVoteCounts(commitmentId: string): Promis
       for (const v of bySigner.values()) {
         if (!v) continue;
         const createdAtUnix = Number((v as any).createdAtUnix ?? 0);
-        const weightUsd = Number((v as any).weightUsd ?? 0);
         const vote: RewardMilestoneVote = String((v as any).vote ?? "approve") === "reject" ? "reject" : "approve";
         if (!Number.isFinite(createdAtUnix) || createdAtUnix < w.startUnix || createdAtUnix >= w.endUnix) continue;
-        const weight = canary ? 1 : Number.isFinite(weightUsd) && weightUsd > 0 ? weightUsd : 20;
-        if (vote === "reject") rejects += weight;
-        else approvals += weight;
+        if (vote === "reject") rejects += 1;
+        else approvals += 1;
       }
 
       approvalCounts[milestoneId] = approvals;
@@ -1779,16 +1771,13 @@ export async function getRewardMilestoneVoteCounts(commitmentId: string): Promis
     if (!w) continue;
     if (!Number.isFinite(createdAtUnix) || createdAtUnix < w.startUnix || createdAtUnix >= w.endUnix) continue;
 
-    const v = Number(row.project_value_usd ?? 0);
-    const weight = canary ? 1 : Number.isFinite(v) && v > 0 ? v : 20;
-
     if (vote === "reject") {
-      rejectCounts[milestoneId] = Number(rejectCounts[milestoneId] ?? 0) + weight;
+      rejectCounts[milestoneId] = Number(rejectCounts[milestoneId] ?? 0) + 1;
     } else {
-      approvalCounts[milestoneId] = Number(approvalCounts[milestoneId] ?? 0) + weight;
+      approvalCounts[milestoneId] = Number(approvalCounts[milestoneId] ?? 0) + 1;
     }
 
-    totalCounts[milestoneId] = Number(totalCounts[milestoneId] ?? 0) + weight;
+    totalCounts[milestoneId] = Number(totalCounts[milestoneId] ?? 0) + 1;
   }
   return { approvalCounts, rejectCounts, totalCounts };
 }
@@ -1799,24 +1788,9 @@ export async function getRewardMilestoneApprovalCounts(commitmentId: string): Pr
 }
 
 export function getRewardApprovalThreshold(): number {
-  const canary = (() => {
-    const raw = String(process.env.CTS_CANARY_REWARD_VOTING ?? "").trim().toLowerCase();
-    return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
-  })();
-
-  if (canary) {
-    const raw = Number(process.env.REWARD_APPROVAL_THRESHOLD ?? "");
-    const count = Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 2;
-    return count;
-  }
-
-  const explicitUsd = Number(process.env.REWARD_APPROVAL_THRESHOLD_USD ?? "");
-  if (Number.isFinite(explicitUsd) && explicitUsd > 0) return explicitUsd;
-
   const raw = Number(process.env.REWARD_APPROVAL_THRESHOLD ?? "");
-  const count = Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 3;
-  const minUsd = 20;
-  return count * minUsd;
+  const count = Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 20;
+  return count;
 }
 
 export function normalizeRewardMilestonesClaimable(input: {
@@ -1918,9 +1892,8 @@ export function normalizeRewardMilestonesClaimable(input: {
 
     const approvals = Number(approvalCounts[m.id] ?? 0);
     const rejects = Number(rejectCounts[m.id] ?? 0);
-    const total = approvals + rejects;
 
-    const approved = total >= approvalThreshold && approvals > rejects;
+    const approved = approvals >= approvalThreshold && approvals > rejects;
 
     changed = true;
     if (approved) {

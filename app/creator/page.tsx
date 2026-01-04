@@ -1027,6 +1027,9 @@ export default function CreatorDashboardPage() {
                   const dueLabel = m.dueAtUnix ? `Due ${formatDate(m.dueAtUnix)}` : "";
                   const unlockLamports = effectiveUnlockLamports(m, selectedProject.commitment.totalFundedLamports);
                   const reviewMode = milestoneReviewMode[m.id] ?? "deadline";
+                  const approvalCount = Number((m as any).approvalCount ?? 0);
+                  const approvalGoal = Number((m as any).approvalThreshold ?? 0);
+                  const approvalPct = approvalGoal > 0 ? Math.max(0, Math.min(1, approvalCount / approvalGoal)) : 0;
 
                   return (
                     <div key={m.id} className={`${styles.milestoneItem} ${statusClass}`}>
@@ -1047,10 +1050,17 @@ export default function CreatorDashboardPage() {
                               <span>{dueLabel}</span>
                             </>
                           ) : null}
-                          {m.status === "locked" && m.completedAtUnix && (
+                          {m.status === "locked" && m.completedAtUnix && approvalGoal > 0 && (
                             <>
                               <span className={styles.milestoneDot}>·</span>
-                              <span>Awaiting {m.approvalCount}/{m.approvalThreshold} votes</span>
+                              <div className={styles.milestoneApprovalProgress}>
+                                <div className={styles.milestoneApprovalMeta}>
+                                  {Math.floor(approvalCount)}/{Math.floor(approvalGoal)}
+                                </div>
+                                <div className={styles.milestoneApprovalBar} aria-hidden="true">
+                                  <div className={styles.milestoneApprovalFill} style={{ width: `${Math.round(approvalPct * 100)}%` }} />
+                                </div>
+                              </div>
                             </>
                           )}
                           {m.releasedAtUnix && (
