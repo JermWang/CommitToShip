@@ -3535,8 +3535,17 @@ body[data-skin="app"] .timelineReceipt:hover {
 .discoverCardHeader {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  justify-content: space-between;
+  gap: 12px;
 }
+
+ .discoverCardHeaderRow {
+   display: flex;
+   align-items: flex-start;
+   gap: 10px;
+   flex: 1;
+   min-width: 0;
+ }
 
 .discoverCardImg {
   width: 52px;
@@ -3560,16 +3569,25 @@ body[data-skin="app"] .timelineReceipt:hover {
 }
 
 .discoverCardName {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
   font-size: 15px;
   font-weight: 600;
   color: rgba(255,255,255,0.95);
+  min-width: 0;
+}
+
+.discoverCardTitleText {
+  min-width: 0;
+  flex: 1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .discoverCardSymbol {
-  margin-left: 6px;
+  flex-shrink: 0;
   font-size: 12px;
   font-weight: 500;
   color: rgba(255,255,255,0.45);

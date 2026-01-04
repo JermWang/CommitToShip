@@ -1098,6 +1098,14 @@ export default function Home() {
     return new Intl.NumberFormat("en-US", { maximumFractionDigits: 6 }).format(sol);
   }
 
+  function fmtSol2(lamports?: number): string {
+    if (lamports == null) return "";
+    const v = Number(lamports);
+    if (!Number.isFinite(v)) return "";
+    const sol = v / 1_000_000_000;
+    return new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(sol);
+  }
+
   async function copyTimeline(text: string, key: string) {
     try {
       if (!window.isSecureContext || !navigator.clipboard?.writeText) {
@@ -2257,8 +2265,17 @@ export default function Home() {
                           const escrowed = Math.max(0, Number(c.escrowedLamports || 0));
                           const pct = target > 0 ? clamp01(escrowed / target) : (escrowed > 0 ? 1 : 0);
 
-                          const title = c.projectName || (c.projectSymbol ? `$${c.projectSymbol}` : c.tokenMint ? shortWallet(c.tokenMint) : "Project");
-                          const symbol = c.projectSymbol ? `$${c.projectSymbol}` : "";
+                          const displayName = (() => {
+                            const n = String(c.projectName ?? "").trim();
+                            if (n) return n;
+                            if (c.tokenMint) return shortWallet(c.tokenMint);
+                            return "Project";
+                          })();
+                          const ticker = (() => {
+                            const s = String(c.projectSymbol ?? "").trim();
+                            return s ? `$${s}` : "";
+                          })();
+                          const showTicker = Boolean(ticker) && displayName !== ticker;
 
                           const statusLower = String(c.status ?? "").toLowerCase();
                           const statusLabel =
@@ -2287,28 +2304,30 @@ export default function Home() {
                               }}
                             >
                               <div className="discoverCardHeader">
-                                <div className="discoverCardImg">
-                                  {c.projectImageUrl ? (
-                                    <img
-                                      src={c.projectImageUrl}
-                                      alt=""
-                                      onError={(ev) => { (ev.currentTarget as HTMLImageElement).style.display = "none"; }}
-                                    />
-                                  ) : null}
-                                </div>
-                                <div className="discoverCardInfo">
-                                  <div className="discoverCardName">
-                                    {title}
-                                    {symbol && title !== symbol ? <span className="discoverCardSymbol">{symbol}</span> : null}
+                                <div className="discoverCardHeaderRow">
+                                  <div className="discoverCardImg">
+                                    {c.projectImageUrl ? (
+                                      <img
+                                        src={c.projectImageUrl}
+                                        alt=""
+                                        onError={(ev) => { (ev.currentTarget as HTMLImageElement).style.display = "none"; }}
+                                      />
+                                    ) : null}
                                   </div>
-                                  <div className="discoverCardMeta">
-                                    <span className={`discoverCardStatus discoverCardStatus--${statusLabel}`}>{statusLabel}</span>
-                                    <span className="discoverCardDot">·</span>
-                                    <span>{timeAgo}</span>
+                                  <div className="discoverCardInfo">
+                                    <div className="discoverCardName">
+                                      <span className="discoverCardTitleText">{displayName}</span>
+                                      {showTicker ? <span className="discoverCardSymbol">{ticker}</span> : null}
+                                    </div>
+                                    <div className="discoverCardMeta">
+                                      <span className={`discoverCardStatus discoverCardStatus--${statusLabel}`}>{statusLabel}</span>
+                                      <span className="discoverCardDot">·</span>
+                                      <span>{timeAgo}</span>
+                                    </div>
                                   </div>
                                 </div>
                                 <div className="discoverCardBadge">
-                                  <span className="discoverCardEscrowVal">{fmtSol(escrowed)}</span>
+                                  <span className="discoverCardEscrowVal">{fmtSol2(escrowed)}</span>
                                   <span className="discoverCardEscrowUnit">SOL</span>
                                 </div>
                               </div>
@@ -2320,7 +2339,7 @@ export default function Home() {
                               <div className="discoverCardStats">
                                 <div className="discoverCardStat">
                                   <span className="discoverCardStatLabel">Escrowed</span>
-                                  <span className="discoverCardStatValue discoverCardStatValueGreen">{fmtSol(escrowed)} SOL</span>
+                                  <span className="discoverCardStatValue discoverCardStatValueGreen">{fmtSol2(escrowed)} SOL</span>
                                 </div>
                                 <div className="discoverCardStat">
                                   <span className="discoverCardStatLabel">Progress</span>
