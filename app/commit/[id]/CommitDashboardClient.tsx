@@ -1639,6 +1639,15 @@ export default function CommitDashboardClient(props: Props) {
                   return "Locked";
                 })();
 
+                const statusPillClass = (() => {
+                  if (m.status === "released") return styles.milestonePillReleased;
+                  if (m.status === "claimable") return styles.milestonePillClaimable;
+                  if (m.status === "approved") return styles.milestonePillApproved;
+                  if (m.status === "failed") return styles.milestonePillFailed;
+                  if (m.completedAtUnix != null) return styles.milestonePillPending;
+                  return styles.milestonePillLocked;
+                })();
+
                 const timing = (() => {
                   if (m.status === "released" && m.releasedAtUnix != null) return `Released ${unixToLocal(m.releasedAtUnix)}`;
                   if (m.status === "claimable") return "Ready for release";
@@ -1703,7 +1712,7 @@ export default function CommitDashboardClient(props: Props) {
                         <div style={{ minWidth: 0 }}>
                           <div className={styles.milestoneTitle}>{m.title}</div>
                           <div className={styles.milestoneMeta}>
-                            <span className={styles.milestonePill}>{statusLabel}</span>
+                            <span className={`${styles.milestonePill} ${statusPillClass}`}>{statusLabel}</span>
                             <span className={styles.milestoneMuted}>{timing}</span>
                             {showVoteCountdown ? (
                               <span className={styles.voteCountdownPill}>
