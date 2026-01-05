@@ -8,6 +8,7 @@ import { getConnection } from "../../../lib/solana";
 import { getOrCreateLaunchTreasuryWallet } from "../../../lib/launchTreasuryStore";
 import { auditLog } from "../../../lib/auditLog";
 import { getAdminCookieName, getAdminSessionWallet, getAllowedAdminWallets, verifyAdminOrigin } from "../../../lib/adminSession";
+import { verifyCreatorAuthOrThrow } from "../../../lib/creatorAuth";
 
 export const runtime = "nodejs";
 
@@ -55,30 +56,6 @@ export async function POST(req: Request) {
 
     verifyAdminOrigin(req);
 
-    if (!isPublicLaunchEnabled()) {
-      const cookieHeader = String(req.headers.get("cookie") ?? "");
-      const hasAdminCookie = cookieHeader.includes(`${getAdminCookieName()}=`);
-      const allowed = getAllowedAdminWallets();
-      const adminWallet = await getAdminSessionWallet(req);
-
-      if (!adminWallet) {
-        await auditLog("admin_launch_prepare_denied", { hasAdminCookie });
-        return NextResponse.json(
-          {
-            error: hasAdminCookie
-              ? "Admin session not found or expired. Try Admin Sign-In again."
-              : "Admin Sign-In required",
-          },
-          { status: 401 }
-        );
-      }
-
-      if (!allowed.has(adminWallet)) {
-        await auditLog("admin_launch_prepare_denied", { adminWallet });
-        return NextResponse.json({ error: "Not an allowed admin wallet" }, { status: 401 });
-      }
-    }
-
     const body = (await req.json().catch(() => null)) as any;
 
     const payerWallet = typeof body?.payerWallet === "string" ? body.payerWallet.trim() : "";
@@ -92,6 +69,36 @@ export async function POST(req: Request) {
       payerPubkey = new PublicKey(payerWallet);
     } catch {
       return NextResponse.json({ error: "Invalid payer wallet address" }, { status: 400 });
+    }
+
+    if (!isPublicLaunchEnabled()) {
+      const cookieHeader = String(req.headers.get("cookie") ?? "");
+      const hasAdminCookie = cookieHeader.includes(`${getAdminCookieName()}=`);
+      const allowed = getAllowedAdminWallets();
+      const adminWallet = await getAdminSessionWallet(req);
+
+      const adminOk = Boolean(adminWallet) && allowed.has(String(adminWallet));
+      if (!adminOk) {
+        try {
+          verifyCreatorAuthOrThrow({
+            payload: body?.creatorAuth,
+            action: "launch_access",
+            expectedWalletPubkey: payerPubkey.toBase58(),
+            maxSkewSeconds: 5 * 60,
+          });
+        } catch (e) {
+          const msg = (e as Error)?.message ?? String(e);
+          await auditLog("launch_prepare_denied", { hasAdminCookie, adminWallet: adminWallet ?? null, error: msg });
+          const status = msg.toLowerCase().includes("not approved") ? 403 : 401;
+          return NextResponse.json(
+            {
+              error: msg,
+              hint: "If you're part of the closed beta, ask to be added to CTS_CREATOR_WALLET_PUBKEYS.",
+            },
+            { status }
+          );
+        }
+      }
     }
     const { record: treasury, created } = await getOrCreateLaunchTreasuryWallet({ payerWallet: payerPubkey.toBase58() });
     const walletId = treasury.walletId;

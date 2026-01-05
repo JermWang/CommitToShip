@@ -8,8 +8,14 @@ import { verifyAdminOrigin } from "../../../lib/adminSession";
 import { getProjectProfile, upsertProjectProfile } from "../../../lib/projectProfilesStore";
 import { getConnection, getMintAuthorityBase58, getTokenMetadataUpdateAuthorityBase58 } from "../../../lib/solana";
 import { getSafeErrorMessage } from "../../../lib/safeError";
+import { getAllowedCreatorWallets } from "../../../lib/creatorAuth";
 
 export const runtime = "nodejs";
+
+function isPublicLaunchEnabled(): boolean {
+  const raw = String(process.env.CTS_PUBLIC_LAUNCHES ?? "").trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
 
 export async function GET(_req: Request, ctx: { params: { mint: string } }) {
   try {
@@ -55,6 +61,19 @@ export async function POST(req: Request, ctx: { params: { mint: string } }) {
       }
 
       const devWallet = new PublicKey(devWalletPubkey);
+
+      if (!isPublicLaunchEnabled()) {
+        const allowed = getAllowedCreatorWallets();
+        if (!allowed.has(devWallet.toBase58())) {
+          return NextResponse.json(
+            {
+              error: "Wallet is not approved for closed beta",
+              hint: "Ask to be added to CTS_CREATOR_WALLET_PUBKEYS.",
+            },
+            { status: 403 }
+          );
+        }
+      }
       const nowUnix = Math.floor(Date.now() / 1000);
       if (Math.abs(nowUnix - timestampUnix) > 5 * 60) {
         return NextResponse.json({ error: "Verification timestamp expired" }, { status: 400 });

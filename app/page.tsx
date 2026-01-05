@@ -176,6 +176,7 @@ export default function Home() {
   const timelineRef = useRef<HTMLDivElement | null>(null);
   const timelineHydratedRef = useRef(false);
   const timelineUrlRef = useRef<string>("");
+  const launchCreatorAuthRef = useRef<null | { walletPubkey: string; signatureB58: string; timestampUnix: number }>(null);
 
   const router = useRouter();
   const [rawSearch, setRawSearch] = useState<string>("");
@@ -305,7 +306,7 @@ export default function Home() {
       }
 
       if (commitPath === "automated") {
-        if (!adminWalletPubkey) issues.push("Admin sign-in required to launch.");
+        // Closed beta permission is enforced server-side via admin session OR allowlisted creatorAuth.
       }
       
       // Milestones are set up post-launch, no validation needed here
@@ -446,9 +447,37 @@ export default function Home() {
   }
 
   async function uploadLaunchAsset(input: { kind: "icon" | "banner"; file: File }): Promise<{ publicUrl: string; path: string }> {
+    const provider = getSolanaProvider();
+    if (!provider?.connect) throw new Error("Wallet provider not found");
+    await provider.connect();
+
+    const payerWallet = provider?.publicKey?.toBase58?.();
+    if (!payerWallet) throw new Error("Failed to read wallet public key");
+
+    const creatorAuth = await (async () => {
+      if (adminWalletPubkey) return undefined;
+
+      const cached = launchCreatorAuthRef.current;
+      const nowUnix = Math.floor(Date.now() / 1000);
+      if (cached && cached.walletPubkey === payerWallet && Math.abs(nowUnix - cached.timestampUnix) < 4 * 60) return cached;
+
+      if (!provider.signMessage) throw new Error("Wallet does not support message signing");
+      const timestampUnix = nowUnix;
+      const message = `Commit To Ship\nCreator Auth\nAction: launch_access\nWallet: ${payerWallet}\nTimestamp: ${timestampUnix}`;
+      const signed = await provider.signMessage(new TextEncoder().encode(message), "utf8");
+      const signatureBytes: Uint8Array = signed?.signature ?? signed;
+      const signatureB58 = bs58.encode(signatureBytes);
+
+      const next = { walletPubkey: payerWallet, signatureB58, timestampUnix };
+      launchCreatorAuthRef.current = next;
+      return next;
+    })();
+
     const info = await apiPost<any>("/api/launch/assets/upload-url", {
       kind: input.kind,
       contentType: input.file.type || "image/png",
+      payerWallet,
+      creatorAuth: creatorAuth || undefined,
     });
 
     const signedUrl = String(info?.signedUrl ?? "");
@@ -1246,10 +1275,6 @@ export default function Home() {
     try {
       // Automated launch mode - use /api/launch
       if (commitKind === "creator_reward" && commitPath === "automated") {
-        if (!adminWalletPubkey) {
-          throw new Error("Admin sign-in required to launch");
-        }
-
         const provider = getSolanaProvider();
         if (!provider?.connect) throw new Error("Wallet provider not found");
         const connectRes = await provider.connect();
@@ -1257,6 +1282,24 @@ export default function Home() {
         if (!pk) throw new Error("Failed to read wallet public key");
         if (!provider.signAndSendTransaction) {
           throw new Error("Wallet does not support signAndSendTransaction");
+        }
+
+        let creatorAuth: { walletPubkey: string; signatureB58: string; timestampUnix: number } | undefined;
+        if (!adminWalletPubkey) {
+          if (!provider.signMessage) throw new Error("Wallet does not support message signing");
+          const nowUnix = Math.floor(Date.now() / 1000);
+          const cached = launchCreatorAuthRef.current;
+          if (cached && cached.walletPubkey === pk && Math.abs(nowUnix - cached.timestampUnix) < 4 * 60) {
+            creatorAuth = cached;
+          } else {
+            const timestampUnix = nowUnix;
+            const message = `Commit To Ship\nCreator Auth\nAction: launch_access\nWallet: ${pk}\nTimestamp: ${timestampUnix}`;
+            const signed = await provider.signMessage(new TextEncoder().encode(message), "utf8");
+            const signatureBytes: Uint8Array = signed?.signature ?? signed;
+            const signatureB58 = bs58.encode(signatureBytes);
+            creatorAuth = { walletPubkey: pk, signatureB58, timestampUnix };
+            launchCreatorAuthRef.current = creatorAuth;
+          }
         }
 
         setStep("validate", { status: "done" });
@@ -1276,6 +1319,7 @@ export default function Home() {
         }>("/api/launch/prepare", {
           payerWallet,
           devBuySol: 0,
+          creatorAuth,
         });
 
         let fundSig = "";
@@ -1311,6 +1355,7 @@ export default function Home() {
           discordUrl: draftDiscordUrl.trim(),
           devBuySol: 0,
           fundingSig: fundSig || undefined,
+          creatorAuth,
         };
 
         type LaunchExecuteResponse =
@@ -1373,6 +1418,7 @@ export default function Home() {
               tokenMint: launched.tokenMint,
               creatorWallet: launched.creatorWallet,
               devBuySol: postBuySol,
+              creatorAuth,
             });
 
             const txBase64 = String((devBuyTx as any)?.txBase64 ?? "");

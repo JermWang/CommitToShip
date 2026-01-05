@@ -12,6 +12,7 @@ import { createRewardCommitmentRecord, insertCommitment, listCommitments } from 
 import { upsertProjectProfile } from "../../../lib/projectProfilesStore";
 import { auditLog } from "../../../lib/auditLog";
 import { getAdminCookieName, getAdminSessionWallet, getAllowedAdminWallets, verifyAdminOrigin } from "../../../lib/adminSession";
+import { verifyCreatorAuthOrThrow } from "../../../lib/creatorAuth";
 
 export const runtime = "nodejs";
 
@@ -82,37 +83,50 @@ export async function POST(req: Request) {
 
     verifyAdminOrigin(req);
 
+    stage = "read_body";
+    const body = (await req.json()) as any;
+
+    payerWallet = typeof body?.payerWallet === "string" ? body.payerWallet.trim() : "";
+    if (!payerWallet) return NextResponse.json({ error: "payerWallet is required" }, { status: 400 });
+    try {
+      payerPubkey = new PublicKey(payerWallet);
+    } catch {
+      return NextResponse.json({ error: "Invalid payer wallet address" }, { status: 400 });
+    }
+
     if (!isPublicLaunchEnabled()) {
       const cookieHeader = String(req.headers.get("cookie") ?? "");
       const hasAdminCookie = cookieHeader.includes(`${getAdminCookieName()}=`);
       const allowed = getAllowedAdminWallets();
       const adminWallet = await getAdminSessionWallet(req);
 
-      if (!adminWallet) {
-        await auditLog("admin_launch_denied", { hasAdminCookie });
-        return NextResponse.json(
-          {
-            error: hasAdminCookie
-              ? "Admin session not found or expired. Try Admin Sign-In again."
-              : "Admin Sign-In required",
-          },
-          { status: 401 }
-        );
-      }
-
-      if (!allowed.has(adminWallet)) {
-        await auditLog("admin_launch_denied", { adminWallet });
-        return NextResponse.json({ error: "Not an allowed admin wallet" }, { status: 401 });
+      const adminOk = Boolean(adminWallet) && allowed.has(String(adminWallet));
+      if (!adminOk) {
+        try {
+          verifyCreatorAuthOrThrow({
+            payload: body?.creatorAuth,
+            action: "launch_access",
+            expectedWalletPubkey: payerPubkey.toBase58(),
+            maxSkewSeconds: 5 * 60,
+          });
+        } catch (e) {
+          const msg = (e as Error)?.message ?? String(e);
+          await auditLog("launch_execute_denied", { hasAdminCookie, adminWallet: adminWallet ?? null, payerWallet, error: msg });
+          const status = msg.toLowerCase().includes("not approved") ? 403 : 401;
+          return NextResponse.json(
+            {
+              error: msg,
+              hint: "If you're part of the closed beta, ask to be added to CTS_CREATOR_WALLET_PUBKEYS.",
+            },
+            { status }
+          );
+        }
       }
     }
-
-    stage = "read_body";
-    const body = (await req.json()) as any;
 
     walletId = typeof body.walletId === "string" ? body.walletId.trim() : "";
     treasuryWallet = typeof body.treasuryWallet === "string" ? body.treasuryWallet.trim() : "";
     creatorWallet = typeof body.creatorWallet === "string" ? body.creatorWallet.trim() : "";
-    payerWallet = typeof body.payerWallet === "string" ? body.payerWallet.trim() : "";
 
     if (!treasuryWallet) treasuryWallet = creatorWallet;
 
@@ -151,11 +165,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid payout wallet address" }, { status: 400 });
     }
 
-    try {
-      payerPubkey = new PublicKey(payerWallet);
-    } catch {
-      return NextResponse.json({ error: "Invalid payer wallet address" }, { status: 400 });
-    }
+    // payerPubkey is validated earlier for closed beta auth
 
     try {
       treasuryPubkey = new PublicKey(treasuryWallet);

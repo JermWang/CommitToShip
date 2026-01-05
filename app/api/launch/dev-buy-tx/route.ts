@@ -8,6 +8,7 @@ import { getSafeErrorMessage } from "../../../lib/safeError";
 import { getConnection } from "../../../lib/solana";
 import { buildUnsignedPumpfunBuyTx } from "../../../lib/pumpfun";
 import { getAdminCookieName, getAdminSessionWallet, getAllowedAdminWallets, verifyAdminOrigin } from "../../../lib/adminSession";
+import { verifyCreatorAuthOrThrow } from "../../../lib/creatorAuth";
 
 export const runtime = "nodejs";
 
@@ -55,28 +56,6 @@ export async function POST(req: Request) {
 
     verifyAdminOrigin(req);
 
-    if (!isPublicLaunchEnabled()) {
-      const cookieHeader = String(req.headers.get("cookie") ?? "");
-      const hasAdminCookie = cookieHeader.includes(`${getAdminCookieName()}=`);
-      const allowed = getAllowedAdminWallets();
-      const adminWallet = await getAdminSessionWallet(req);
-
-      if (!adminWallet) {
-        await auditLog("admin_launch_devbuy_denied", { hasAdminCookie });
-        return NextResponse.json(
-          {
-            error: hasAdminCookie ? "Admin session not found or expired. Try Admin Sign-In again." : "Admin Sign-In required",
-          },
-          { status: 401 }
-        );
-      }
-
-      if (!allowed.has(adminWallet)) {
-        await auditLog("admin_launch_devbuy_denied", { adminWallet });
-        return NextResponse.json({ error: "Not an allowed admin wallet" }, { status: 401 });
-      }
-    }
-
     const body = (await req.json().catch(() => ({}))) as any;
 
     const payerWallet = typeof body?.payerWallet === "string" ? body.payerWallet.trim() : "";
@@ -89,6 +68,42 @@ export async function POST(req: Request) {
     if (!payerWallet) return NextResponse.json({ error: "payerWallet is required" }, { status: 400 });
     if (!tokenMint) return NextResponse.json({ error: "tokenMint is required" }, { status: 400 });
     if (!creatorWallet) return NextResponse.json({ error: "creatorWallet is required" }, { status: 400 });
+
+    try {
+      new PublicKey(payerWallet);
+    } catch {
+      return NextResponse.json({ error: "Invalid payerWallet" }, { status: 400 });
+    }
+
+    if (!isPublicLaunchEnabled()) {
+      const cookieHeader = String(req.headers.get("cookie") ?? "");
+      const hasAdminCookie = cookieHeader.includes(`${getAdminCookieName()}=`);
+      const allowed = getAllowedAdminWallets();
+      const adminWallet = await getAdminSessionWallet(req);
+
+      const adminOk = Boolean(adminWallet) && allowed.has(String(adminWallet));
+      if (!adminOk) {
+        try {
+          verifyCreatorAuthOrThrow({
+            payload: body?.creatorAuth,
+            action: "launch_access",
+            expectedWalletPubkey: payerWallet,
+            maxSkewSeconds: 5 * 60,
+          });
+        } catch (e) {
+          const msg = (e as Error)?.message ?? String(e);
+          await auditLog("launch_devbuy_denied", { hasAdminCookie, adminWallet: adminWallet ?? null, payerWallet, error: msg });
+          const status = msg.toLowerCase().includes("not approved") ? 403 : 401;
+          return NextResponse.json(
+            {
+              error: msg,
+              hint: "If you're part of the closed beta, ask to be added to CTS_CREATOR_WALLET_PUBKEYS.",
+            },
+            { status }
+          );
+        }
+      }
+    }
 
     if (devBuySol <= 0) {
       return NextResponse.json({ ok: true, devBuySol: 0, txBase64: null, txFormat: null });

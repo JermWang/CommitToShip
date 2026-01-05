@@ -1,10 +1,19 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
+import { PublicKey } from "@solana/web3.js";
 
 import { checkRateLimit } from "../../../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../../../lib/safeError";
+import { auditLog } from "../../../../lib/auditLog";
+import { getAdminCookieName, getAdminSessionWallet, getAllowedAdminWallets, verifyAdminOrigin } from "../../../../lib/adminSession";
+import { verifyCreatorAuthOrThrow } from "../../../../lib/creatorAuth";
 
 export const runtime = "nodejs";
+
+function isPublicLaunchEnabled(): boolean {
+  const raw = String(process.env.CTS_PUBLIC_LAUNCHES ?? "").trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
 
 function requiredEnv(name: string): string {
   const v = String(process.env[name] ?? "").trim();
@@ -67,6 +76,8 @@ export async function POST(req: Request) {
       return res;
     }
 
+    verifyAdminOrigin(req);
+
     const missing = missingEnvVars();
     if (missing.length) {
       return NextResponse.json(
@@ -79,6 +90,46 @@ export async function POST(req: Request) {
     }
 
     const body = (await req.json().catch(() => null)) as any;
+
+    const payerWallet = typeof body?.payerWallet === "string" ? body.payerWallet.trim() : "";
+    if (!payerWallet) return NextResponse.json({ error: "payerWallet is required" }, { status: 400 });
+
+    try {
+      // Validate for clearer errors before auth gates.
+      new PublicKey(payerWallet);
+    } catch {
+      return NextResponse.json({ error: "Invalid payerWallet" }, { status: 400 });
+    }
+
+    if (!isPublicLaunchEnabled()) {
+      const cookieHeader = String(req.headers.get("cookie") ?? "");
+      const hasAdminCookie = cookieHeader.includes(`${getAdminCookieName()}=`);
+      const allowed = getAllowedAdminWallets();
+      const adminWallet = await getAdminSessionWallet(req);
+
+      const adminOk = Boolean(adminWallet) && allowed.has(String(adminWallet));
+      if (!adminOk) {
+        try {
+          verifyCreatorAuthOrThrow({
+            payload: body?.creatorAuth,
+            action: "launch_access",
+            expectedWalletPubkey: payerWallet,
+            maxSkewSeconds: 5 * 60,
+          });
+        } catch (e) {
+          const msg = (e as Error)?.message ?? String(e);
+          await auditLog("launch_assets_denied", { hasAdminCookie, adminWallet: adminWallet ?? null, payerWallet, error: msg });
+          const status = msg.toLowerCase().includes("not approved") ? 403 : 401;
+          return NextResponse.json(
+            {
+              error: msg,
+              hint: "If you're part of the closed beta, ask to be added to CTS_CREATOR_WALLET_PUBKEYS.",
+            },
+            { status }
+          );
+        }
+      }
+    }
 
     const kindRaw = typeof body?.kind === "string" ? body.kind.trim().toLowerCase() : "";
     const kind: "icon" | "banner" = kindRaw === "banner" ? "banner" : "icon";

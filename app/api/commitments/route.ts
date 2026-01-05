@@ -9,8 +9,14 @@ import { checkRateLimit } from "../../lib/rateLimit";
 import { getConnection, getMintAuthorityBase58, getTokenMetadataUpdateAuthorityBase58, verifyTokenExistsOnChain } from "../../lib/solana";
 import { privyCreateSolanaWallet } from "../../lib/privy";
 import { getSafeErrorMessage } from "../../lib/safeError";
+import { getAllowedCreatorWallets } from "../../lib/creatorAuth";
 
 export const runtime = "nodejs";
+
+function isPublicLaunchEnabled(): boolean {
+  const raw = String(process.env.CTS_PUBLIC_LAUNCHES ?? "").trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
 
 async function createEscrow(): Promise<{ escrowPubkey: string; escrowSecretKeyB58: string }> {
   if (process.env.NODE_ENV === "production") {
@@ -94,6 +100,19 @@ export async function POST(req: Request) {
       const devWallet = new PublicKey(devWalletPubkey);
       if (devWallet.toBase58() !== creator.toBase58()) {
         return NextResponse.json({ error: "creatorPubkey must match connected dev wallet" }, { status: 400 });
+      }
+
+      if (!isPublicLaunchEnabled()) {
+        const allowed = getAllowedCreatorWallets();
+        if (!allowed.has(devWallet.toBase58())) {
+          return NextResponse.json(
+            {
+              error: "Wallet is not approved for closed beta",
+              hint: "Ask to be added to CTS_CREATOR_WALLET_PUBKEYS.",
+            },
+            { status: 403 }
+          );
+        }
       }
 
       const nowUnix = Math.floor(Date.now() / 1000);

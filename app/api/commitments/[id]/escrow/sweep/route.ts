@@ -8,8 +8,14 @@ import { getSafeErrorMessage } from "../../../../../lib/safeError";
 import { getChainUnixTime, getConnection } from "../../../../../lib/solana";
 import { getCommitment } from "../../../../../lib/escrowStore";
 import { sweepManagedCreatorFeesToEscrow } from "../../../../../lib/escrowSweep";
+import { getAllowedCreatorWallets } from "../../../../../lib/creatorAuth";
 
 export const runtime = "nodejs";
+
+function isPublicLaunchEnabled(): boolean {
+  const raw = String(process.env.CTS_PUBLIC_LAUNCHES ?? "").trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
 
 function expectedSweepMessage(input: { commitmentId: string; timestampUnix: number }): string {
   return `Commit To Ship\nEscrow Sweep\nCommitment: ${input.commitmentId}\nTimestamp: ${input.timestampUnix}`;
@@ -57,6 +63,19 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
 
     const creator = new PublicKey(creatorPubkeyRaw);
     const creatorPubkey = creator.toBase58();
+
+    if (!isPublicLaunchEnabled()) {
+      const allowed = getAllowedCreatorWallets();
+      if (!allowed.has(creatorPubkey)) {
+        return NextResponse.json(
+          {
+            error: "Wallet is not approved for closed beta",
+            hint: "Ask to be added to CTS_CREATOR_WALLET_PUBKEYS.",
+          },
+          { status: 403 }
+        );
+      }
+    }
 
     const msg = expectedSweepMessage({ commitmentId, timestampUnix: Math.floor(timestampUnix) });
     let signature: Uint8Array;
