@@ -343,7 +343,7 @@ export default async function CommitDashboardPage({ params }: { params: { id: st
     const unlockedLamports = computeUnlockedLamports(normalized.milestones);
 
     const releasedLamports = sumReleasedLamports(normalized.milestones);
-    const totalFundedLamports = Math.max(record.totalFundedLamports ?? 0, balanceLamports + releasedLamports);
+    const totalFundedLamports = Math.max(0, balanceLamports + releasedLamports);
 
     const allReleased = normalized.milestones.length > 0 && normalized.milestones.every((m) => m.status === "released");
     const nextStatus = allReleased ? "completed" : (record.status === "completed" ? "completed" : "active");

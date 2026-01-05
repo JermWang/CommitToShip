@@ -10,6 +10,13 @@ import { getSafeErrorMessage } from "../../../../../../lib/safeError";
 
 export const runtime = "nodejs";
 
+function computeUnlockedLamports(milestones: RewardMilestone[]): number {
+  return milestones.reduce((acc, m) => {
+    if (m.status === "claimable" || m.status === "released") return acc + Number(m.unlockLamports || 0);
+    return acc;
+  }, 0);
+}
+
 function getClaimDelaySeconds(): number {
   const rawStr = process.env.REWARD_CLAIM_DELAY_SECONDS;
   if (rawStr == null || String(rawStr).trim() === "") return 48 * 60 * 60;
@@ -143,11 +150,12 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
           };
 
           const releasedLamports = sumReleasedLamports(nextMilestones);
-          const totalFundedLamports = Math.max(Number(record.totalFundedLamports ?? 0), Number(balanceLamports) + releasedLamports);
+          const totalFundedLamports = Math.max(0, Number(balanceLamports) + releasedLamports);
 
           const updated = await updateRewardTotalsAndMilestones({
             id,
             milestones: nextMilestones,
+            unlockedLamports: computeUnlockedLamports(nextMilestones),
             totalFundedLamports,
             status: record.status === "created" ? "active" : record.status,
           });
@@ -182,7 +190,7 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
     }
 
     const releasedLamports = sumReleasedLamports(milestones);
-    const totalFundedLamports = Math.max(Number(record.totalFundedLamports ?? 0), Number(balanceLamports) + releasedLamports);
+    const totalFundedLamports = Math.max(0, Number(balanceLamports) + releasedLamports);
 
     const currentUnlockLamports = Number(m.unlockLamports ?? 0);
     const currentUnlockPercent = Number(m.unlockPercent ?? 0);

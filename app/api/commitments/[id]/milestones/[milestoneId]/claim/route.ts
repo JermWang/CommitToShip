@@ -248,7 +248,13 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
 
         const unlockedLamportsNext = computeUnlockedLamports(nextMilestones);
         const releasedLamports = sumReleasedLamports(nextMilestones);
-        const totalFundedLamports = Math.max(record.totalFundedLamports ?? 0, balanceLamports + releasedLamports);
+        let balanceLamportsAfter = balanceLamports;
+        try {
+          balanceLamportsAfter = await getBalanceLamports(connection, escrowPk);
+        } catch {
+          balanceLamportsAfter = balanceLamports;
+        }
+        const totalFundedLamports = Math.max(0, balanceLamportsAfter + releasedLamports);
         const allReleased = nextMilestones.length > 0 && nextMilestones.every((x) => x.status === "released");
 
         const updated = await updateRewardTotalsAndMilestones({
@@ -321,7 +327,13 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
 
           const unlockedLamportsNext = computeUnlockedLamports(nextMilestones);
           const releasedLamports = sumReleasedLamports(nextMilestones);
-          const totalFundedLamports = Math.max(record.totalFundedLamports ?? 0, balanceLamports + releasedLamports);
+          let balanceLamportsAfter = balanceLamports;
+          try {
+            balanceLamportsAfter = await getBalanceLamports(connection, escrowPk);
+          } catch {
+            balanceLamportsAfter = balanceLamports;
+          }
+          const totalFundedLamports = Math.max(0, balanceLamportsAfter + releasedLamports);
 
           const allReleased = nextMilestones.length > 0 && nextMilestones.every((x) => x.status === "released");
 
@@ -365,7 +377,13 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
 
               const unlockedLamportsNext = computeUnlockedLamports(nextMilestones);
               const releasedLamports = sumReleasedLamports(nextMilestones);
-              const totalFundedLamports = Math.max(record.totalFundedLamports ?? 0, balanceLamports + releasedLamports);
+              let balanceLamportsAfter = balanceLamports;
+              try {
+                balanceLamportsAfter = await getBalanceLamports(connection, escrowPk);
+              } catch {
+                balanceLamportsAfter = balanceLamports;
+              }
+              const totalFundedLamports = Math.max(0, balanceLamportsAfter + releasedLamports);
               const allReleased = nextMilestones.length > 0 && nextMilestones.every((x) => x.status === "released");
 
               const updated = await updateRewardTotalsAndMilestones({
@@ -445,7 +463,13 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
 
       const unlockedLamportsNext = computeUnlockedLamports(nextMilestones);
       const releasedLamports = sumReleasedLamports(nextMilestones);
-      const totalFundedLamports = Math.max(record.totalFundedLamports ?? 0, balanceLamports + releasedLamports);
+      let balanceLamportsAfter = balanceLamports;
+      try {
+        balanceLamportsAfter = await getBalanceLamports(connection, escrowPk);
+      } catch {
+        balanceLamportsAfter = balanceLamports;
+      }
+      const totalFundedLamports = Math.max(0, balanceLamportsAfter + releasedLamports);
 
       const allReleased = nextMilestones.length > 0 && nextMilestones.every((x) => x.status === "released");
 
@@ -490,7 +514,13 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
 
           const unlockedLamportsNext = computeUnlockedLamports(nextMilestones);
           const releasedLamports = sumReleasedLamports(nextMilestones);
-          const totalFundedLamports = Math.max(record.totalFundedLamports ?? 0, balanceLamports + releasedLamports);
+          let balanceLamportsAfter = balanceLamports;
+          try {
+            balanceLamportsAfter = await getBalanceLamports(connection, escrowPk);
+          } catch {
+            balanceLamportsAfter = balanceLamports;
+          }
+          const totalFundedLamports = Math.max(0, balanceLamportsAfter + releasedLamports);
           const allReleased = nextMilestones.length > 0 && nextMilestones.every((x) => x.status === "released");
 
           const updated = await updateRewardTotalsAndMilestones({

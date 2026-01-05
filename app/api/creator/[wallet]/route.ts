@@ -153,6 +153,7 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
 
       const releasedLamports = sumReleasedLamports(normalized.milestones);
       const unlockedLamports = computeUnlockedLamports(normalized.milestones);
+      const earnedLamports = Math.max(0, balanceLamports + releasedLamports);
       const claimableLamports = normalized.milestones
         .filter((m) => m.status === "claimable")
         .reduce((acc, m) => acc + Number(m.unlockLamports || 0), 0);
@@ -175,7 +176,7 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
       completedMilestones += milestonesCompleted;
       releasedMilestones += milestonesReleased;
       claimableMilestones += milestonesClaimable;
-      totalEarnedLamports += commitment.totalFundedLamports ?? 0;
+      totalEarnedLamports += earnedLamports;
       totalReleasedLamports += releasedLamports;
       totalClaimableLamports += claimableLamports;
       totalPendingLamports += pendingLamports;
@@ -275,7 +276,10 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
       }
 
       projects.push({
-        commitment: publicView(commitment),
+        commitment: publicView({
+          ...commitment,
+          totalFundedLamports: earnedLamports,
+        }),
         projectProfile,
         escrow: {
           balanceLamports,

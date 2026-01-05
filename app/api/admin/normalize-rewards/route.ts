@@ -94,7 +94,7 @@ export async function POST(req: Request) {
 
         const unlockedLamports = computeUnlockedLamports(normalized.milestones);
         const releasedLamports = sumReleasedLamports(normalized.milestones);
-        const totalFundedLamports = Math.max(c.totalFundedLamports ?? 0, balanceLamports + releasedLamports);
+        const totalFundedLamports = Math.max(0, balanceLamports + releasedLamports);
 
         const allReleased = normalized.milestones.length > 0 && normalized.milestones.every((m) => m.status === "released");
         const nextStatus = allReleased ? "completed" : (c.status === "completed" ? "completed" : "active");

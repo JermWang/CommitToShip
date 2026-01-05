@@ -88,7 +88,7 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
     const balanceLamports = await getBalanceLamports(connection, escrowPk);
 
     const releasedLamports = sumReleasedLamports(milestones);
-    const totalFundedLamports = Math.max(Number(record.totalFundedLamports ?? 0), Number(balanceLamports) + releasedLamports);
+    const totalFundedLamports = Math.max(0, Number(balanceLamports) + releasedLamports);
 
     const unlockLamportsRaw = Number(m.unlockLamports ?? 0);
     const unlockPercent = Number(m.unlockPercent ?? 0);

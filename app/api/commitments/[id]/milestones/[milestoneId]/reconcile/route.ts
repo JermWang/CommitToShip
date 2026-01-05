@@ -88,7 +88,7 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
 
       const unlockedLamports = computeUnlockedLamports(nextMilestones);
       const releasedLamports = sumReleasedLamports(nextMilestones);
-      const totalFundedLamports = Math.max(record.totalFundedLamports ?? 0, balanceLamports + releasedLamports);
+      const totalFundedLamports = Math.max(0, balanceLamports + releasedLamports);
       const allReleased = nextMilestones.length > 0 && nextMilestones.every((m) => m.status === "released");
 
       const updated = await updateRewardTotalsAndMilestones({
