@@ -24,6 +24,7 @@ import {
   getBalanceLamports,
   getChainUnixTime,
   getConnection,
+  closeNativeWsolTokenAccounts,
   findRecentSystemTransferSignature,
   keypairFromBase58Secret,
   transferLamports,
@@ -116,7 +117,8 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
     const connection = getConnection();
     const escrowPk = new PublicKey(record.escrowPubkey);
 
-    const [balanceLamports, nowUnix] = await Promise.all([getBalanceLamports(connection, escrowPk), getChainUnixTime(connection)]);
+    const [balanceLamports0, nowUnix] = await Promise.all([getBalanceLamports(connection, escrowPk), getChainUnixTime(connection)]);
+    let balanceLamports = balanceLamports0;
 
     const milestones: RewardMilestone[] = Array.isArray(record.milestones) ? (record.milestones.slice() as RewardMilestone[]) : [];
     const idx = milestones.findIndex((m: RewardMilestone) => m.id === milestoneId);
@@ -157,8 +159,29 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
       return NextResponse.json({ error: "Invalid milestone unlock amount" }, { status: 500 });
     }
 
+    const escrowRef = getEscrowSignerRef(record);
+    const to = creatorPk;
+
     const reservedLamports = await getMilestoneFailureReservedLamports(id);
-    const availableLamports = Math.max(0, Math.floor(balanceLamports - reservedLamports));
+    let availableLamports = Math.max(0, Math.floor(balanceLamports - reservedLamports));
+
+    if (availableLamports < unlockLamports) {
+      try {
+        await closeNativeWsolTokenAccounts({
+          connection,
+          owner: escrowPk,
+          destination: escrowPk,
+          signer:
+            escrowRef.kind === "privy"
+              ? { kind: "privy", walletId: escrowRef.walletId }
+              : { kind: "keypair", keypair: keypairFromBase58Secret(escrowRef.escrowSecretKeyB58) },
+        });
+        balanceLamports = await getBalanceLamports(connection, escrowPk);
+        availableLamports = Math.max(0, Math.floor(balanceLamports - reservedLamports));
+      } catch (e) {
+        void e;
+      }
+    }
 
     if (availableLamports < unlockLamports) {
       return NextResponse.json(
@@ -173,9 +196,6 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
         { status: 400 }
       );
     }
-
-    const escrowRef = getEscrowSignerRef(record);
-    const to = creatorPk;
 
     const claim = await tryAcquireRewardMilestonePayoutClaim({
       commitmentId: id,

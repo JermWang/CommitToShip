@@ -1,8 +1,23 @@
-import { Connection, Finality, Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
+import { Connection, Finality, Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction } from "@solana/web3.js";
 import bs58 from "bs58";
 
 import { confirmSignatureViaRpc, getConnection as getConnectionRpc, getServerCommitment, withRetry } from "./rpc";
 import { privySignAndSendSolanaTransaction } from "./privy";
+
+const WSOL_MINT = new PublicKey("So11111111111111111111111111111111111111112");
+const TOKEN_PROGRAM_ID = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+
+function buildCloseTokenAccountIx(input: { tokenAccount: PublicKey; destination: PublicKey; owner: PublicKey }): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: TOKEN_PROGRAM_ID,
+    keys: [
+      { pubkey: input.tokenAccount, isSigner: false, isWritable: true },
+      { pubkey: input.destination, isSigner: false, isWritable: true },
+      { pubkey: input.owner, isSigner: true, isWritable: false },
+    ],
+    data: Buffer.from([9]),
+  });
+}
 
 export function getConnection(): Connection {
   return getConnectionRpc();
@@ -139,6 +154,78 @@ export async function getMintAuthorityBase58(input: { connection: Connection; mi
   const mintAuthority = parsed?.info?.mintAuthority;
   if (typeof mintAuthority === "string" && mintAuthority.length) return mintAuthority;
   return null;
+}
+
+export async function closeNativeWsolTokenAccounts(input: {
+  connection: Connection;
+  owner: PublicKey;
+  destination: PublicKey;
+  signer: { kind: "privy"; walletId: string } | { kind: "keypair"; keypair: Keypair };
+  maxAccountsToClose?: number;
+}): Promise<{ closed: number; signatures: string[] }> {
+  const { connection, owner, destination, signer } = input;
+  const maxAccountsToClose = Math.max(1, Math.min(30, Number(input.maxAccountsToClose ?? 12) || 12));
+
+  const c = getServerCommitment();
+  const finality: Finality = c === "finalized" ? "finalized" : "confirmed";
+  const res = await withRetry(() => connection.getParsedTokenAccountsByOwner(owner, { mint: WSOL_MINT }, finality));
+  const tokenAccountsToClose: PublicKey[] = [];
+  for (const a of res.value) {
+    const parsed: any = a.account?.data?.parsed;
+    const info = parsed?.info;
+    const isNative = info?.isNative;
+    const amountStr = info?.tokenAmount?.amount;
+    const amount = typeof amountStr === "string" ? Number(amountStr) : 0;
+    if (!isNative) continue;
+    if (!Number.isFinite(amount) || amount <= 0) continue;
+    tokenAccountsToClose.push(a.pubkey);
+    if (tokenAccountsToClose.length >= maxAccountsToClose) break;
+  }
+
+  if (!tokenAccountsToClose.length) return { closed: 0, signatures: [] };
+
+  const feePayer = await getFeePayerKeypair();
+  const processed = "processed" as const;
+
+  let closed = 0;
+  const signatures: string[] = [];
+
+  for (let i = 0; i < tokenAccountsToClose.length; i += 3) {
+    const batch = tokenAccountsToClose.slice(i, i + 3);
+    if (!batch.length) break;
+
+    const { blockhash, lastValidBlockHeight } = await withRetry(() => connection.getLatestBlockhash(processed));
+    const tx = new Transaction();
+    tx.recentBlockhash = blockhash;
+    tx.lastValidBlockHeight = lastValidBlockHeight;
+    tx.feePayer = feePayer ? feePayer.publicKey : owner;
+    for (const ta of batch) {
+      tx.add(buildCloseTokenAccountIx({ tokenAccount: ta, destination, owner }));
+    }
+
+    if (feePayer) tx.partialSign(feePayer);
+
+    if (signer.kind === "keypair") {
+      const signers = feePayer ? [feePayer, signer.keypair] : [signer.keypair];
+      const signature = await withRetry(() => connection.sendTransaction(tx, signers, { skipPreflight: false, preflightCommitment: processed }));
+      await confirmSignatureViaRpc(connection, signature, c);
+      signatures.push(signature);
+    } else {
+      const txBytes = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
+      const txBase64 = Buffer.from(Uint8Array.from(txBytes)).toString("base64");
+      const sent = await privySignAndSendSolanaTransaction({
+        walletId: String(signer.walletId),
+        caip2: getSolanaCaip2(),
+        transactionBase64: txBase64,
+      });
+      await confirmTransactionSignature({ connection, signature: sent.signature, blockhash, lastValidBlockHeight });
+      signatures.push(sent.signature);
+    }
+
+    closed += batch.length;
+  }
+
+  return { closed, signatures };
 }
 
 const TOKEN_METADATA_PROGRAM_ID = new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");

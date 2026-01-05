@@ -1763,26 +1763,6 @@ export default function CommitDashboardClient(props: Props) {
                           ) : null}
                         </div>
                       ) : null}
-
-                      {canRelease ? (
-                        <div className={styles.milestoneAction}>
-                          <div className={styles.smallNote}>Claim release (escrow transfer to creator wallet).</div>
-                          {underfunded ? (
-                            <div className={styles.smallNote} style={{ marginTop: 8, color: "rgba(180, 40, 60, 0.86)" }}>
-                              Escrow underfunded. Balance {fmtSol(balanceLamports)} SOL, requires {fmtSol(unlockLamports)} SOL.
-                            </div>
-                          ) : null}
-                          <div className={styles.actions} style={{ marginTop: 10 }}>
-                            <button
-                              className={`${styles.actionBtn} ${styles.actionPrimary}`}
-                              onClick={() => releaseMilestone(m.id)}
-                              disabled={!canAdminAct || underfunded || adminBusy === `release:${m.id}`}
-                            >
-                              {adminBusy === `release:${m.id}` ? "Releasing…" : "Release"}
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
                     </div>
                   </div>
                 );
