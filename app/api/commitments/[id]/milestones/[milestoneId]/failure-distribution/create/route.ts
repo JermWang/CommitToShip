@@ -8,8 +8,10 @@ import { auditLog } from "../../../../../../../lib/auditLog";
 import { checkRateLimit } from "../../../../../../../lib/rateLimit";
 import {
   RewardMilestone,
+  countRewardMilestoneSignalsBySigner,
   getCommitment,
   getEscrowSignerRef,
+  getRewardMilestoneSignalFirstSeenUnixBySigner,
   getMilestoneFailureReservedLamports,
   getMilestoneFailureDistribution,
   insertMilestoneFailureDistributionAllocations,
@@ -35,6 +37,64 @@ export const runtime = "nodejs";
 function isMilestoneFailurePayoutsEnabled(): boolean {
   const raw = String(process.env.CTS_ENABLE_FAILURE_DISTRIBUTION_PAYOUTS ?? "").trim().toLowerCase();
   return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
+
+function isParticipationWeightedFailurePayoutsEnabled(): boolean {
+  const raw = String(process.env.CTS_ENABLE_PARTICIPATION_WEIGHTED_FAILURE_PAYOUTS ?? "").trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
+
+function getVoteCutoffSeconds(): number {
+  const raw = Number(process.env.REWARD_VOTE_CUTOFF_SECONDS ?? "");
+  if (Number.isFinite(raw) && raw > 0) return Math.floor(raw);
+  return 24 * 60 * 60;
+}
+
+function getParticipationWindowMilestones(): number {
+  const raw = Number(process.env.CTS_PARTICIPATION_WINDOW_MILESTONES ?? "");
+  if (Number.isFinite(raw) && raw > 0) return Math.floor(raw);
+  return 20;
+}
+
+function getStreaksGraceMisses(): number {
+  const raw = Number(process.env.CTS_STREAKS_GRACE_MISSES ?? "");
+  if (Number.isFinite(raw) && raw >= 0) return Math.floor(raw);
+  return 2;
+}
+
+function clamp(n: number, min: number, max: number): number {
+  if (!Number.isFinite(n)) return min;
+  if (n < min) return min;
+  if (n > max) return max;
+  return n;
+}
+
+function streaksMultiplierFromMisses(input: { misses: number; graceMisses: number }): number {
+  const misses = Math.max(0, Math.floor(Number(input.misses ?? 0)));
+  const grace = Math.max(0, Math.floor(Number(input.graceMisses ?? 0)));
+
+  const gracePenalty = 0.05;
+  const extraPenalty = 0.1;
+
+  const penalizedGraceMisses = Math.min(misses, grace);
+  const extraMisses = Math.max(0, misses - grace);
+  const penalty = penalizedGraceMisses * gracePenalty + extraMisses * extraPenalty;
+  return clamp(2.0 - penalty, 0.5, 2.0);
+}
+
+function getVoteWindowUnix(input: { milestone: RewardMilestone; cutoffSeconds: number }): { startUnix: number; endUnix: number } | null {
+  const completedAtUnix = Number(input.milestone.completedAtUnix ?? 0);
+  if (!Number.isFinite(completedAtUnix) || completedAtUnix <= 0) return null;
+
+  const reviewOpenedAtUnix = Number((input.milestone as any).reviewOpenedAtUnix ?? 0);
+  const dueAtUnix = Number((input.milestone as any).dueAtUnix ?? 0);
+  const hasReview = Number.isFinite(reviewOpenedAtUnix) && reviewOpenedAtUnix > 0;
+  const hasDue = Number.isFinite(dueAtUnix) && dueAtUnix > 0;
+
+  const startUnix = hasReview ? Math.floor(reviewOpenedAtUnix) : hasDue ? Math.floor(dueAtUnix) : completedAtUnix;
+  const endUnix = hasReview ? startUnix + input.cutoffSeconds : hasDue ? Math.floor(dueAtUnix) + input.cutoffSeconds : completedAtUnix + input.cutoffSeconds;
+  if (!Number.isFinite(endUnix) || endUnix <= startUnix) return null;
+  return { startUnix, endUnix };
 }
 
 export async function POST(req: Request, ctx: { params: { id: string; milestoneId: string } }) {
@@ -134,6 +194,57 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
 
     const snapshots = await listRewardVoterSnapshotsByMilestone({ commitmentId, milestoneId });
 
+    const participationEnabled = isParticipationWeightedFailurePayoutsEnabled();
+    const participationMultiplierByWallet = new Map<string, number>();
+
+    if (participationEnabled) {
+      const signerPubkeys = Array.from(
+        new Set(
+          snapshots
+            .map((s) => String(s.signerPubkey ?? "").trim())
+            .filter(Boolean)
+        )
+      );
+
+      const cutoffSeconds = getVoteCutoffSeconds();
+      const endedOpportunities = milestones
+        .map((milestone) => {
+          const w = getVoteWindowUnix({ milestone, cutoffSeconds });
+          if (!w) return null;
+          if (w.endUnix > nowUnix) return null;
+          return { milestoneId: milestone.id, startUnix: w.startUnix, endUnix: w.endUnix };
+        })
+        .filter(Boolean) as Array<{ milestoneId: string; startUnix: number; endUnix: number }>;
+
+      const windowN = getParticipationWindowMilestones();
+      const recentWindow = endedOpportunities.sort((a, b) => b.endUnix - a.endUnix || a.milestoneId.localeCompare(b.milestoneId)).slice(0, windowN);
+      const windowMilestoneIds = recentWindow.map((m) => m.milestoneId);
+
+      if (signerPubkeys.length && windowMilestoneIds.length) {
+        const [voteCounts, firstSeen] = await Promise.all([
+          countRewardMilestoneSignalsBySigner({ commitmentId, milestoneIds: windowMilestoneIds, signerPubkeys }),
+          getRewardMilestoneSignalFirstSeenUnixBySigner({ commitmentId, signerPubkeys }),
+        ]);
+
+        const graceMisses = getStreaksGraceMisses();
+
+        for (const walletPubkey of signerPubkeys) {
+          const firstSeenUnix = Number(firstSeen.get(walletPubkey) ?? 0);
+          const opportunities = recentWindow.reduce((acc, m) => {
+            if (!Number.isFinite(firstSeenUnix) || firstSeenUnix <= 0) return acc + 1;
+            return m.endUnix >= firstSeenUnix ? acc + 1 : acc;
+          }, 0);
+          const votes = Number(voteCounts.get(walletPubkey) ?? 0);
+
+          const safeOpp = Number.isFinite(opportunities) && opportunities > 0 ? Math.floor(opportunities) : 0;
+          const safeVotes = Number.isFinite(votes) && votes > 0 ? Math.floor(votes) : 0;
+          const misses = safeOpp > 0 ? Math.max(0, safeOpp - safeVotes) : 0;
+          const mult = streaksMultiplierFromMisses({ misses, graceMisses });
+          participationMultiplierByWallet.set(walletPubkey, mult);
+        }
+      }
+    }
+
     const weightsByWallet = new Map<string, number>();
     for (const s of snapshots) {
       const pk = String(s.signerPubkey ?? "").trim();
@@ -142,7 +253,9 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
       const multBps = Number(s.shipMultiplierBps ?? 10000);
       if (!Number.isFinite(base) || base <= 0) continue;
       if (!Number.isFinite(multBps) || multBps <= 0) continue;
-      const w = base * (multBps / 10000);
+      const baseWeight = base * (multBps / 10000);
+      const participationMult = participationEnabled ? Number(participationMultiplierByWallet.get(pk) ?? 1) : 1;
+      const w = baseWeight * participationMult;
       if (!Number.isFinite(w) || w <= 0) continue;
       weightsByWallet.set(pk, (weightsByWallet.get(pk) ?? 0) + w);
     }
@@ -297,6 +410,7 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
       forfeitedLamports,
       buybackLamports,
       voterPotLamports: effectiveVoterPotLamports,
+      participationWeighted: participationEnabled,
       buybackTxSig,
       voterPotTxSig,
     });

@@ -186,7 +186,7 @@ async function privySignAndSendViaRpc(input: {
       try {
         const parsed = Transaction.from(raw);
         const sigBytes = parsed.signatures?.[0]?.signature;
-        if (sigBytes) candidateSig = bs58.encode(sigBytes);
+        if (sigBytes) candidateSig = bs58.encode(Uint8Array.from(sigBytes));
       } catch {
         // ignore
       }
@@ -205,6 +205,11 @@ async function privySignAndSendViaRpc(input: {
       } catch (e) {
         const msg = String((e as any)?.message ?? e ?? "");
         const lower = msg.toLowerCase();
+
+        if (lower.includes("405") || lower.includes("method not allowed")) {
+          throw new Error("RPC endpoint rejected request (HTTP 405). Check SOLANA_RPC_URL.");
+        }
+
         const retryable =
           (lower.includes("blockhash") && (lower.includes("expired") || lower.includes("not found"))) ||
           lower.includes("block height exceeded") ||
@@ -232,6 +237,80 @@ async function privySignAndSendViaRpc(input: {
   }
 
   throw new Error("Failed to send Privy transaction");
+}
+
+async function sendSignedTransactionViaRpcWithRetries(input: {
+  connection: Connection;
+  build: (latest: { blockhash: string; lastValidBlockHeight: number }) => { tx: Transaction; signers: Keypair[] };
+  maxAttempts?: number;
+}): Promise<string> {
+  const maxAttempts = Math.max(1, Math.min(6, Number(input.maxAttempts ?? 4) || 4));
+  const processed = "processed" as Commitment;
+  const finality = getServerCommitment();
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const latest = await withRetry(() => input.connection.getLatestBlockhash(processed));
+      const { tx, signers } = input.build(latest);
+
+      tx.sign(...signers);
+
+      let candidateSig = "";
+      try {
+        const sigBytes = tx.signatures?.[0]?.signature;
+        if (sigBytes) candidateSig = bs58.encode(Uint8Array.from(sigBytes));
+      } catch {
+        // ignore
+      }
+
+      const raw = tx.serialize();
+
+      try {
+        const sentSig = await withRetry(() =>
+          input.connection.sendRawTransaction(raw, {
+            skipPreflight: false,
+            preflightCommitment: processed,
+            maxRetries: 3,
+          })
+        );
+
+        await confirmSignatureViaRpc(input.connection, sentSig, finality);
+        return sentSig;
+      } catch (e) {
+        const msg = String((e as any)?.message ?? e ?? "");
+        const lower = msg.toLowerCase();
+
+        if (lower.includes("405") || lower.includes("method not allowed")) {
+          throw new Error("RPC endpoint rejected request (HTTP 405). Check SOLANA_RPC_URL.");
+        }
+
+        const retryable =
+          (lower.includes("blockhash") && (lower.includes("expired") || lower.includes("not found"))) ||
+          lower.includes("block height exceeded") ||
+          lower.includes("blockheight exceeded") ||
+          lower.includes("timed out") ||
+          lower.includes("timeout") ||
+          lower.includes("node is behind");
+
+        if (candidateSig) {
+          try {
+            await confirmSignatureViaRpc(input.connection, candidateSig, finality);
+            return candidateSig;
+          } catch {
+            // ignore
+          }
+        }
+
+        if (!retryable || attempt === maxAttempts - 1) throw e;
+        await new Promise((r) => setTimeout(r, 350 + attempt * 500));
+      }
+    } catch (e) {
+      if (attempt === maxAttempts - 1) throw e;
+      await new Promise((r) => setTimeout(r, 250 + attempt * 400));
+    }
+  }
+
+  throw new Error("Failed to send transaction");
 }
 
 export async function findSystemTransferSignature(input: {
@@ -566,21 +645,24 @@ export async function transferLamports(opts: {
     tx.lastValidBlockHeight = lastValidBlockHeight;
     tx.feePayer = from.publicKey;
 
-    tx.add(
-      SystemProgram.transfer({
-        fromPubkey: from.publicKey,
-        toPubkey: to,
-        lamports,
-      })
-    );
+    tx.add(SystemProgram.transfer({ fromPubkey: from.publicKey, toPubkey: to, lamports }));
 
     const msg = tx.compileMessage();
     const fee = await withRetry(() => connection.getFeeForMessage(msg, c));
     const feeLamports = fee.value ?? 5000;
     if (balance < lamports + feeLamports) throw new Error("Insufficient balance to cover amount + fees");
 
-    const signature = await withRetry(() => connection.sendTransaction(tx, [from], { skipPreflight: false, preflightCommitment: processed }));
-    await confirmSignatureViaRpc(connection, signature, c);
+    const signature = await sendSignedTransactionViaRpcWithRetries({
+      connection,
+      build: (latest) => {
+        const t = new Transaction();
+        t.recentBlockhash = latest.blockhash;
+        t.lastValidBlockHeight = latest.lastValidBlockHeight;
+        t.feePayer = from.publicKey;
+        t.add(SystemProgram.transfer({ fromPubkey: from.publicKey, toPubkey: to, lamports }));
+        return { tx: t, signers: [from] };
+      },
+    });
     return { signature, amountLamports: lamports };
   }
 
@@ -591,16 +673,19 @@ export async function transferLamports(opts: {
   tx.lastValidBlockHeight = lastValidBlockHeight;
   tx.feePayer = feePayer.publicKey;
 
-  tx.add(
-    SystemProgram.transfer({
-      fromPubkey: from.publicKey,
-      toPubkey: to,
-      lamports,
-    })
-  );
+  tx.add(SystemProgram.transfer({ fromPubkey: from.publicKey, toPubkey: to, lamports }));
 
-  const signature = await withRetry(() => connection.sendTransaction(tx, [feePayer, from], { skipPreflight: false, preflightCommitment: processed }));
-  await confirmSignatureViaRpc(connection, signature, c);
+  const signature = await sendSignedTransactionViaRpcWithRetries({
+    connection,
+    build: (latest) => {
+      const t = new Transaction();
+      t.recentBlockhash = latest.blockhash;
+      t.lastValidBlockHeight = latest.lastValidBlockHeight;
+      t.feePayer = feePayer.publicKey;
+      t.add(SystemProgram.transfer({ fromPubkey: from.publicKey, toPubkey: to, lamports }));
+      return { tx: t, signers: [feePayer, from] };
+    },
+  });
   return { signature, amountLamports: lamports };
 }
 
@@ -626,13 +711,7 @@ export async function transferAllLamports(opts: {
     tx.lastValidBlockHeight = lastValidBlockHeight;
     tx.feePayer = from.publicKey;
 
-    tx.add(
-      SystemProgram.transfer({
-        fromPubkey: from.publicKey,
-        toPubkey: to,
-        lamports: balance,
-      })
-    );
+    tx.add(SystemProgram.transfer({ fromPubkey: from.publicKey, toPubkey: to, lamports: balance }));
 
     const msg = tx.compileMessage();
     const fee = await withRetry(() => connection.getFeeForMessage(msg, c));
@@ -640,14 +719,17 @@ export async function transferAllLamports(opts: {
     lamportsToSend = balance - feeLamports;
     if (lamportsToSend <= 0) throw new Error("Insufficient balance to cover fees");
 
-    tx.instructions[0] = SystemProgram.transfer({
-      fromPubkey: from.publicKey,
-      toPubkey: to,
-      lamports: lamportsToSend,
+    const signature = await sendSignedTransactionViaRpcWithRetries({
+      connection,
+      build: (latest) => {
+        const t = new Transaction();
+        t.recentBlockhash = latest.blockhash;
+        t.lastValidBlockHeight = latest.lastValidBlockHeight;
+        t.feePayer = from.publicKey;
+        t.add(SystemProgram.transfer({ fromPubkey: from.publicKey, toPubkey: to, lamports: lamportsToSend }));
+        return { tx: t, signers: [from] };
+      },
     });
-
-    const signature = await withRetry(() => connection.sendTransaction(tx, [from], { skipPreflight: false, preflightCommitment: processed }));
-    await confirmSignatureViaRpc(connection, signature, c);
     return { signature, amountLamports: lamportsToSend };
   }
 
@@ -656,15 +738,18 @@ export async function transferAllLamports(opts: {
   tx.lastValidBlockHeight = lastValidBlockHeight;
   tx.feePayer = feePayer.publicKey;
 
-  tx.add(
-    SystemProgram.transfer({
-      fromPubkey: from.publicKey,
-      toPubkey: to,
-      lamports: lamportsToSend,
-    })
-  );
+  tx.add(SystemProgram.transfer({ fromPubkey: from.publicKey, toPubkey: to, lamports: lamportsToSend }));
 
-  const signature = await withRetry(() => connection.sendTransaction(tx, [feePayer, from], { skipPreflight: false, preflightCommitment: processed }));
-  await confirmSignatureViaRpc(connection, signature, c);
+  const signature = await sendSignedTransactionViaRpcWithRetries({
+    connection,
+    build: (latest) => {
+      const t = new Transaction();
+      t.recentBlockhash = latest.blockhash;
+      t.lastValidBlockHeight = latest.lastValidBlockHeight;
+      t.feePayer = feePayer.publicKey;
+      t.add(SystemProgram.transfer({ fromPubkey: from.publicKey, toPubkey: to, lamports: lamportsToSend }));
+      return { tx: t, signers: [feePayer, from] };
+    },
+  });
   return { signature, amountLamports: lamportsToSend };
 }

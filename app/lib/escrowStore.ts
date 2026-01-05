@@ -1235,6 +1235,95 @@ export async function listRewardVoterSnapshots(commitmentId: string): Promise<Re
   }));
  }
 
+export async function getRewardMilestoneSignalFirstSeenUnixBySigner(input: {
+  commitmentId: string;
+  signerPubkeys: string[];
+}): Promise<Map<string, number>> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  const commitmentId = String(input.commitmentId);
+  const signerPubkeys = Array.isArray(input.signerPubkeys) ? input.signerPubkeys.map((s) => String(s)).filter(Boolean) : [];
+  const out = new Map<string, number>();
+
+  if (!commitmentId || signerPubkeys.length === 0) return out;
+
+  if (!hasDatabase()) {
+    const signerSet = new Set(signerPubkeys);
+    const byMilestone = mem.rewardSignals.get(commitmentId);
+    if (!byMilestone) return out;
+    for (const bySigner of byMilestone.values()) {
+      for (const [signer, v] of bySigner.entries()) {
+        if (!signerSet.has(signer)) continue;
+        const createdAtUnix = Number((v as any)?.createdAtUnix ?? 0);
+        if (!Number.isFinite(createdAtUnix) || createdAtUnix <= 0) continue;
+        const prev = out.get(signer);
+        if (prev == null || createdAtUnix < prev) out.set(signer, createdAtUnix);
+      }
+    }
+    return out;
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    "select signer_pubkey, min(created_at_unix) as first_seen from reward_milestone_signals where commitment_id=$1 and signer_pubkey = any($2) group by signer_pubkey",
+    [commitmentId, signerPubkeys]
+  );
+  for (const row of res.rows ?? []) {
+    const signer = String(row.signer_pubkey ?? "").trim();
+    const firstSeen = Number(row.first_seen ?? 0);
+    if (!signer) continue;
+    if (!Number.isFinite(firstSeen) || firstSeen <= 0) continue;
+    out.set(signer, firstSeen);
+  }
+  return out;
+}
+
+export async function countRewardMilestoneSignalsBySigner(input: {
+  commitmentId: string;
+  milestoneIds: string[];
+  signerPubkeys: string[];
+}): Promise<Map<string, number>> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  const commitmentId = String(input.commitmentId);
+  const milestoneIds = Array.isArray(input.milestoneIds) ? input.milestoneIds.map((s) => String(s)).filter(Boolean) : [];
+  const signerPubkeys = Array.isArray(input.signerPubkeys) ? input.signerPubkeys.map((s) => String(s)).filter(Boolean) : [];
+  const out = new Map<string, number>();
+
+  if (!commitmentId || milestoneIds.length === 0 || signerPubkeys.length === 0) return out;
+
+  if (!hasDatabase()) {
+    const signerSet = new Set(signerPubkeys);
+    const byMilestone = mem.rewardSignals.get(commitmentId);
+    if (!byMilestone) return out;
+    for (const milestoneId of milestoneIds) {
+      const bySigner = byMilestone.get(milestoneId);
+      if (!bySigner) continue;
+      for (const signer of bySigner.keys()) {
+        if (!signerSet.has(signer)) continue;
+        out.set(signer, Number(out.get(signer) ?? 0) + 1);
+      }
+    }
+    return out;
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    "select signer_pubkey, count(*)::bigint as cnt from reward_milestone_signals where commitment_id=$1 and milestone_id = any($2) and signer_pubkey = any($3) group by signer_pubkey",
+    [commitmentId, milestoneIds, signerPubkeys]
+  );
+  for (const row of res.rows ?? []) {
+    const signer = String(row.signer_pubkey ?? "").trim();
+    const cnt = Number(row.cnt ?? 0);
+    if (!signer) continue;
+    if (!Number.isFinite(cnt) || cnt <= 0) continue;
+    out.set(signer, Math.floor(cnt));
+  }
+  return out;
+}
+
  function milestoneFailureKey(input: { commitmentId: string; milestoneId: string }): string {
   return `${input.commitmentId}:${input.milestoneId}`;
  }
