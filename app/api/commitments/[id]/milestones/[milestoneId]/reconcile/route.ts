@@ -15,8 +15,7 @@ import {
   sumReleasedLamports,
   updateRewardTotalsAndMilestones,
 } from "../../../../../../lib/escrowStore";
-import { getBalanceLamports, getChainUnixTime, getConnection } from "../../../../../../lib/solana";
-import { findRecentSystemTransferSignature } from "../../../../../../lib/solana";
+import { findSystemTransferSignature, getBalanceLamports, getChainUnixTime, getConnection } from "../../../../../../lib/solana";
 import { getSafeErrorMessage } from "../../../../../../lib/safeError";
 
 export const runtime = "nodejs";
@@ -111,7 +110,14 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
 
     const toPk = new PublicKey(claim.toPubkey);
     const lamports = Number(claim.amountLamports);
-    const foundSig = await findRecentSystemTransferSignature({ connection, fromPubkey: escrowPk, toPubkey: toPk, lamports, limit: 50 });
+    const foundSig = await findSystemTransferSignature({
+      connection,
+      fromPubkey: escrowPk,
+      toPubkey: toPk,
+      lamports,
+      minBlockTimeUnix: Math.max(0, Number(claim.createdAtUnix ?? 0) - 300),
+      maxTransactionsToInspect: 300,
+    });
 
     if (foundSig) {
       await setRewardMilestonePayoutClaimTxSig({ commitmentId: id, milestoneId, txSig: foundSig });
