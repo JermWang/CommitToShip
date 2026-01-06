@@ -8,12 +8,12 @@ const nextConfig = {
       "base-uri 'self'",
       "object-src 'none'",
       "frame-ancestors 'none'",
-      "frame-src 'self' https://dexscreener.com https://*.dexscreener.com https://*.tradingview.com",
+      "frame-src 'self' chrome-extension: moz-extension: https://dexscreener.com https://*.dexscreener.com https://*.tradingview.com https://solflare.com https://*.solflare.com https://backpack.app https://*.backpack.app https://phantom.app https://*.phantom.app",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data: https:",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       isDev ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'" : "script-src 'self' 'unsafe-inline'",
-      isDev ? "connect-src 'self' https: wss: ws:" : "connect-src 'self' https: wss:",
+      isDev ? "connect-src 'self' https: wss: ws: chrome-extension: moz-extension:" : "connect-src 'self' https: wss: chrome-extension: moz-extension:",
     ].join('; ');
 
     return [
