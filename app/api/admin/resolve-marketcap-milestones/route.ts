@@ -13,7 +13,7 @@ import {
   updateRewardTotalsAndMilestones,
 } from "../../../lib/escrowStore";
 import { fetchDexScreenerPairsByTokenMint, pickBestDexScreenerPair } from "../../../lib/dexScreener";
-import { getCanonicalPair, insertTokenMarketSnapshot, listTokenMarketSnapshots, upsertCanonicalPair } from "../../../lib/tokenMarketStore";
+import { findFirstTokenMarketSnapshotAbovePrice, getCanonicalPair, insertTokenMarketSnapshot, upsertCanonicalPair } from "../../../lib/tokenMarketStore";
 import {
   getBalanceLamports,
   getChainUnixTime,
@@ -86,12 +86,13 @@ function getMaxGapSeconds(): number {
   return 120;
 }
 
-function median(values: number[]): number {
-  const v = values.filter((x) => Number.isFinite(x)).sort((a, b) => a - b);
-  if (!v.length) return 0;
-  const mid = Math.floor(v.length / 2);
-  if (v.length % 2 === 1) return v[mid];
-  return (v[mid - 1] + v[mid]) / 2;
+function getLookbackSeconds(): number {
+  const rawStr = process.env.CTS_MC_LOOKBACK_SECONDS;
+  if (rawStr != null && String(rawStr).trim() !== "") {
+    const raw = Number(rawStr);
+    if (Number.isFinite(raw) && raw > 0) return Math.floor(raw);
+  }
+  return 365 * 24 * 60 * 60;
 }
 
 function computeUnlockLamports(input: { milestone: RewardMilestone; totalFundedLamports: number }): number {
@@ -113,45 +114,6 @@ function supplyUiAmount(input: { supplyRaw: bigint; decimals: number }): number 
   const wholeNum = Number(whole);
   const fracNum = fracStr.length ? Number(`0.${fracStr}`) : 0;
   return (Number.isFinite(wholeNum) ? wholeNum : 0) + (Number.isFinite(fracNum) ? fracNum : 0);
-}
-
-function longestAboveRunSeconds(input: { points: Array<{ t: number; above: boolean }>; maxGapSeconds: number }): { runSeconds: number; startUnix: number | null; endUnix: number | null } {
-  const pts = input.points.slice().sort((a, b) => a.t - b.t);
-  let best = 0;
-  let bestStart: number | null = null;
-  let bestEnd: number | null = null;
-
-  let curStart: number | null = null;
-  let curEnd: number | null = null;
-
-  for (const p of pts) {
-    if (!p.above) {
-      curStart = null;
-      curEnd = null;
-      continue;
-    }
-
-    if (curStart == null) {
-      curStart = p.t;
-      curEnd = p.t;
-    } else {
-      if (p.t - (curEnd ?? p.t) > input.maxGapSeconds) {
-        curStart = p.t;
-        curEnd = p.t;
-      } else {
-        curEnd = p.t;
-      }
-    }
-
-    const span = curStart != null && curEnd != null ? Math.max(0, curEnd - curStart) : 0;
-    if (span > best) {
-      best = span;
-      bestStart = curStart;
-      bestEnd = curEnd;
-    }
-  }
-
-  return { runSeconds: best, startUnix: bestStart, endUnix: bestEnd };
 }
 
 async function ingestLatestSnapshot(input: { tokenMint: string; chainId: string; minLiquidityUsd: number; nowUnix: number }) {
@@ -248,10 +210,11 @@ export async function POST(req: Request) {
 
     const minLiquidityUsd = getMinLiquidityUsd();
     const minVolumeH1Usd = getMinVolumeH1Usd();
-    const minMinutesAbove = getMinMinutesAbove();
-    const minSamples = getMinSamples();
-    const maxGapSeconds = getMaxGapSeconds();
+    void getMinMinutesAbove;
+    void getMinSamples;
+    void getMaxGapSeconds;
     const claimDelaySeconds = getClaimDelaySeconds();
+    const lookbackSeconds = getLookbackSeconds();
 
     const all = await listCommitments();
     const targets = all.filter((c) => {
@@ -300,13 +263,7 @@ export async function POST(req: Request) {
 
       const supplyUi = supplyUiAmount({ supplyRaw, decimals: Number(mintInfo.decimals) });
 
-      const sinceUnix = nowUnix - minMinutesAbove * 60;
-      const snaps = await listTokenMarketSnapshots({ tokenMint, chainId, pairAddress: canonical.pairAddress, sinceUnix });
-
-      if (snaps.length < minSamples) {
-        results.push({ id: c.id, ok: true, step: "evaluate", confirmed: false, reason: "insufficient_samples", samples: snaps.length });
-        continue;
-      }
+      const sinceUnix = Math.max(1, nowUnix - lookbackSeconds);
 
       const milestones: RewardMilestone[] = Array.isArray(c.milestones) ? (c.milestones.slice() as RewardMilestone[]) : [];
 
@@ -327,29 +284,24 @@ export async function POST(req: Request) {
           continue;
         }
 
-        const mcaps = snaps.map((s) => s.priceUsd * supplyUi);
-        const vols = snaps.map((s) => Number(s.volumeH1Usd ?? 0));
-        const liqs = snaps.map((s) => Number(s.liquidityUsd ?? 0));
-
-        const minLiq = liqs.reduce((acc, v) => (Number.isFinite(v) ? Math.min(acc, v) : acc), Number.POSITIVE_INFINITY);
-        if (!Number.isFinite(minLiq) || minLiq < minLiquidityUsd) {
-          results.push({ id: c.id, milestoneId: m.id, ok: true, step: "evaluate", confirmed: false, reason: "liq_floor" });
+        if (!Number.isFinite(supplyUi) || supplyUi <= 0) {
+          results.push({ id: c.id, milestoneId: m.id, ok: false, step: "evaluate", error: "Invalid token supply" });
           continue;
         }
 
-        const medVol = median(vols);
-        if (minVolumeH1Usd > 0) {
-          if (!Number.isFinite(medVol) || medVol < minVolumeH1Usd) {
-            results.push({ id: c.id, milestoneId: m.id, ok: true, step: "evaluate", confirmed: false, reason: "vol_floor" });
-            continue;
-          }
-        }
+        const minPriceUsd = thresholdUsd / supplyUi;
+        const hit = await findFirstTokenMarketSnapshotAbovePrice({
+          tokenMint,
+          chainId,
+          pairAddress: canonical.pairAddress,
+          sinceUnix,
+          minPriceUsd,
+          minLiquidityUsd,
+          minVolumeH1Usd,
+        });
 
-        const points = snaps.map((s) => ({ t: Number(s.fetchedAtUnix), above: s.priceUsd * supplyUi >= thresholdUsd }));
-        const run = longestAboveRunSeconds({ points, maxGapSeconds });
-
-        if (run.runSeconds < minMinutesAbove * 60) {
-          results.push({ id: c.id, milestoneId: m.id, ok: true, step: "evaluate", confirmed: false, reason: "time_above", runSeconds: run.runSeconds });
+        if (!hit) {
+          results.push({ id: c.id, milestoneId: m.id, ok: true, step: "evaluate", confirmed: false, reason: "threshold_not_hit", sinceUnix });
           continue;
         }
 
@@ -364,13 +316,26 @@ export async function POST(req: Request) {
           continue;
         }
 
+        const hitAtUnix = Number(hit.fetchedAtUnix);
+        const hitMarketCapUsd = Number(hit.priceUsd) * supplyUi;
+        const completedAtUnix = Number.isFinite(hitAtUnix) && hitAtUnix > 0 ? Math.min(nowUnix, Math.floor(hitAtUnix)) : nowUnix;
+        const desiredClaimableAtUnix = completedAtUnix + claimDelaySeconds;
+        const nextStatus = nowUnix >= desiredClaimableAtUnix ? ("claimable" as const) : ("approved" as const);
+
         const evidence = {
           tokenMint,
           chainId,
           thresholdUsd,
           confirmedAtUnix: nowUnix,
-          claimableAtUnix: nowUnix + claimDelaySeconds,
-          windowSinceUnix: sinceUnix,
+          hitAtUnix: completedAtUnix,
+          hit: {
+            fetchedAtUnix: hit.fetchedAtUnix,
+            priceUsd: hit.priceUsd,
+            liquidityUsd: hit.liquidityUsd,
+            volumeH1Usd: hit.volumeH1Usd,
+            volumeH24Usd: hit.volumeH24Usd,
+            marketCapUsd: hitMarketCapUsd,
+          },
           canonicalPair: {
             pairAddress: canonical.pairAddress,
             dexId: canonical.dexId,
@@ -385,16 +350,11 @@ export async function POST(req: Request) {
           floors: {
             minLiquidityUsd,
             minVolumeH1Usd,
-            minMinutesAbove,
+            lookbackSeconds,
           },
           observed: {
-            samples: snaps.length,
-            minLiquidityUsd: minLiq,
-            medianVolumeH1Usd: medVol,
-            medianMarketCapUsd: median(mcaps),
-            bestRunSeconds: run.runSeconds,
-            bestRunStartUnix: run.startUnix,
-            bestRunEndUnix: run.endUnix,
+            sinceUnix,
+            minPriceUsd,
           },
         };
 
@@ -427,10 +387,11 @@ export async function POST(req: Request) {
         milestones[i] = {
           ...m,
           unlockLamports,
-          completedAtUnix: nowUnix,
-          approvedAtUnix: nowUnix,
-          claimableAtUnix: nowUnix + claimDelaySeconds,
-          status: "approved",
+          completedAtUnix,
+          approvedAtUnix: completedAtUnix,
+          claimableAtUnix: desiredClaimableAtUnix,
+          becameClaimableAtUnix: nextStatus === "claimable" ? (m.becameClaimableAtUnix ?? nowUnix) : m.becameClaimableAtUnix,
+          status: nextStatus,
           autoConfirmedAtUnix: nowUnix,
           autoEvidence: evidence,
         };
@@ -447,12 +408,13 @@ export async function POST(req: Request) {
           pairAddress: canonical.pairAddress,
           dexId: canonical.dexId,
           confirmedAtUnix: nowUnix,
-          claimableAtUnix: nowUnix + claimDelaySeconds,
+          hitAtUnix: completedAtUnix,
+          claimableAtUnix: desiredClaimableAtUnix,
           unlockLamports,
-          samples: snaps.length,
-          minLiquidityUsd: minLiq,
-          medianVolumeH1Usd: medVol,
-          bestRunSeconds: run.runSeconds,
+          hitPriceUsd: Number(hit.priceUsd),
+          hitMarketCapUsd,
+          hitLiquidityUsd: Number(hit.liquidityUsd),
+          hitVolumeH1Usd: Number(hit.volumeH1Usd),
           mintAuthority: mintAuthority ?? null,
         });
 

@@ -153,6 +153,16 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
     const idx = milestones.findIndex((m) => m.id === milestoneId);
     if (idx < 0) return NextResponse.json({ error: "Milestone not found" }, { status: 404 });
 
+    if (String((milestones[idx] as any)?.autoKind ?? "") === "market_cap") {
+      return NextResponse.json(
+        {
+          error: "Vote rewards are disabled for market cap milestones",
+          hint: "Market cap milestones are auto-resolved and do not use holder voting.",
+        },
+        { status: 409 }
+      );
+    }
+
     const connection = getConnection();
     const nowUnix = await getChainUnixTime(connection);
 

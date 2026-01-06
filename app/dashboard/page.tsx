@@ -7,7 +7,7 @@ import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 
 import { useToast } from "@/app/components/ToastProvider";
 import styles from "./Dashboard.module.css";
-import { CreatorDashboardPage } from "../creator/page";
+import CreatorDashboardPage from "../creator/page";
 
 type ClaimableAllResult = {
   ok: boolean;
@@ -256,7 +256,7 @@ export default function DashboardPage() {
       </div>
 
       {tab === "creator" ? (
-        <CreatorDashboardPage embedded />
+        <CreatorDashboardPage />
       ) : !connected ? (
         <div className={styles.card}>
           <div className={styles.cardHeader}>

@@ -203,6 +203,17 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
     if (idx < 0) return NextResponse.json({ error: "Milestone not found" }, { status: 404 });
 
     const milestone = milestones[idx];
+    if (String((milestone as any)?.autoKind ?? "") === "market_cap") {
+      return NextResponse.json(
+        {
+          error: "Voting is disabled for market cap milestones",
+          code: "vote_disabled_marketcap",
+          hint: "This milestone is auto-resolved by the platform based on market cap. No holder voting is required.",
+        },
+        { status: 409 }
+      );
+    }
+
     if (milestone.status === "released") {
       return NextResponse.json(
         {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import bs58 from "bs58";
@@ -20,6 +20,10 @@ type MilestoneData = {
   claimableAtUnix?: number;
   releasedAtUnix?: number;
   releasedTxSig?: string;
+  autoKind?: "market_cap";
+  marketCapThresholdUsd?: number;
+  requireNoMintAuthority?: boolean;
+  autoConfirmedAtUnix?: number;
   index: number;
   approvalCount: number;
   approvalThreshold: number;
@@ -114,13 +118,41 @@ type CreatorData = {
   summary: SummaryData;
 };
 
-type CreatorDashboardProps = {
-  embedded?: boolean;
-};
-
 function fmtSol(lamports: number): string {
   const sol = lamports / 1_000_000_000;
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 }).format(sol);
+}
+
+function parseUsdShorthand(rawInput: string): number | null {
+  const raw = String(rawInput ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[$,_\s]/g, "");
+  if (!raw) return null;
+
+  const m = raw.match(/^([0-9]+(?:\.[0-9]+)?)([kmb])?$/);
+  if (!m) return null;
+
+  const n = Number(m[1]);
+  if (!Number.isFinite(n) || n <= 0) return null;
+
+  const suf = String(m[2] ?? "");
+  const mult = suf === "k" ? 1_000 : suf === "m" ? 1_000_000 : suf === "b" ? 1_000_000_000 : 1;
+
+  const out = Math.floor(n * mult);
+  if (!Number.isFinite(out) || out <= 0) return null;
+  if (!Number.isSafeInteger(out)) return null;
+  return out;
+}
+
+function fmtUsdShort(value: number): string {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return "0";
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000_000) return `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(abs / 1_000_000_000)}B`;
+  if (abs >= 1_000_000) return `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(abs / 1_000_000)}M`;
+  if (abs >= 1_000) return `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(abs / 1_000)}K`;
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(abs);
 }
 
 function shortWallet(pk: string): string {
@@ -193,8 +225,10 @@ function makeRequestId(): string {
 type TimeFilter = "all" | "30d" | "90d" | "1y";
 type StatusFilter = "all" | "active" | "completed" | "failed";
 
-export function CreatorDashboardPage(props: CreatorDashboardProps) {
+function CreatorDashboardPage() {
   const router = useRouter();
+  const pathname = usePathname();
+  const embedded = Boolean(pathname && pathname.startsWith("/dashboard"));
   const toast = useToast();
   const { publicKey, connected, signMessage } = useWallet();
   const { setVisible } = useWalletModal();
@@ -206,6 +240,8 @@ export function CreatorDashboardPage(props: CreatorDashboardProps) {
   const [newMilestoneTitle, setNewMilestoneTitle] = useState<string>("");
   const [newMilestoneUnlockPercent, setNewMilestoneUnlockPercent] = useState<string>("25");
   const [newMilestoneDueLocal, setNewMilestoneDueLocal] = useState<string>(() => toDatetimeLocalValue(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)));
+  const [newMilestoneKind, setNewMilestoneKind] = useState<"manual" | "market_cap">("manual");
+  const [newMilestoneThresholdUsd, setNewMilestoneThresholdUsd] = useState<string>("10m");
 
   const [editingMilestoneId, setEditingMilestoneId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState<string>("");
@@ -387,6 +423,10 @@ export function CreatorDashboardPage(props: CreatorDashboardProps) {
     return `Commit To Ship\nAdd Milestone\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}\nTitle: ${input.title}\nUnlockPercent: ${input.unlockPercent}\nDueAtUnix: ${input.dueAtUnix}`;
   }, []);
 
+  const milestoneAddMarketCapMessage = useCallback((input: { commitmentId: string; requestId: string; title: string; unlockPercent: number; thresholdUsd: number }): string => {
+    return `Commit To Ship\nAdd Market Cap Milestone\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}\nTitle: ${input.title}\nUnlockPercent: ${input.unlockPercent}\nThresholdUsd: ${input.thresholdUsd}`;
+  }, []);
+
   const milestoneCompleteMessage = useCallback((input: { commitmentId: string; milestoneId: string; review?: "early" }): string => {
     const base = `Commit To Ship\nMilestone Completion\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}`;
     if (input.review === "early") return `${base}\nReview: early`;
@@ -423,13 +463,6 @@ export function CreatorDashboardPage(props: CreatorDashboardProps) {
       return;
     }
 
-    const dueAtMs = new Date(String(newMilestoneDueLocal ?? "")).getTime();
-    if (!Number.isFinite(dueAtMs) || dueAtMs <= 0) {
-      toast({ kind: "error", message: "Due date required" });
-      return;
-    }
-    const dueAtUnix = Math.floor(dueAtMs / 1000);
-
     const totalNext = selectedAllocatedPercent + unlockPercent;
     if (totalNext > 100) {
       toast({ kind: "error", message: `Total allocation cannot exceed 100% (would be ${totalNext}%).` });
@@ -437,23 +470,70 @@ export function CreatorDashboardPage(props: CreatorDashboardProps) {
     }
 
     const requestId = makeRequestId();
-    const message = milestoneAddMessage({ commitmentId, requestId, title, unlockPercent, dueAtUnix });
+
+    const isMarketCap = newMilestoneKind === "market_cap";
+    const message = isMarketCap
+      ? milestoneAddMarketCapMessage({
+          commitmentId,
+          requestId,
+          title,
+          unlockPercent,
+          thresholdUsd: parseUsdShorthand(newMilestoneThresholdUsd) ?? 0,
+        })
+      : milestoneAddMessage({
+          commitmentId,
+          requestId,
+          title,
+          unlockPercent,
+          dueAtUnix: Math.floor(new Date(String(newMilestoneDueLocal ?? "")).getTime() / 1000),
+        });
 
     setMilestoneBusy("add");
     try {
-      const signature = await signText(message);
-      await postJson(`/api/commitments/${encodeURIComponent(commitmentId)}/milestones/add`, {
-        requestId,
-        title,
-        unlockPercent,
-        dueAtUnix,
-        message,
-        signature,
-      });
+      if (isMarketCap) {
+        const tokenMint = String(selectedProject.commitment.tokenMint ?? "").trim();
+        if (!tokenMint) {
+          toast({ kind: "error", message: "Token mint required for market cap milestones" });
+          return;
+        }
 
+        const thresholdUsd = parseUsdShorthand(newMilestoneThresholdUsd);
+        if (!thresholdUsd) {
+          toast({ kind: "error", message: "Market cap threshold required (e.g. 10m, 250k)" });
+          return;
+        }
+
+        const signature = await signText(message);
+        await postJson(`/api/commitments/${encodeURIComponent(commitmentId)}/milestones/add-marketcap`, {
+          requestId,
+          title,
+          unlockPercent,
+          thresholdUsd,
+          message,
+          signature,
+        });
+      } else {
+        const dueAtMs = new Date(String(newMilestoneDueLocal ?? "")).getTime();
+        if (!Number.isFinite(dueAtMs) || dueAtMs <= 0) {
+          toast({ kind: "error", message: "Due date required" });
+          return;
+        }
+        const dueAtUnix = Math.floor(dueAtMs / 1000);
+
+        const signature = await signText(message);
+        await postJson(`/api/commitments/${encodeURIComponent(commitmentId)}/milestones/add`, {
+          requestId,
+          title,
+          unlockPercent,
+          dueAtUnix,
+          message,
+          signature,
+        });
+      }
       setNewMilestoneTitle("");
       setNewMilestoneUnlockPercent("25");
       setNewMilestoneDueLocal(toDatetimeLocalValue(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)));
+      setNewMilestoneThresholdUsd("10m");
       toast({ kind: "success", message: "Milestone added" });
       await refreshSelected();
     } catch (e) {
@@ -461,7 +541,7 @@ export function CreatorDashboardPage(props: CreatorDashboardProps) {
     } finally {
       setMilestoneBusy(null);
     }
-  }, [milestoneAddMessage, newMilestoneDueLocal, newMilestoneTitle, newMilestoneUnlockPercent, postJson, refreshSelected, selectedAllocatedPercent, selectedProject, signText, signerPubkey, toast]);
+  }, [milestoneAddMarketCapMessage, milestoneAddMessage, newMilestoneDueLocal, newMilestoneKind, newMilestoneThresholdUsd, newMilestoneTitle, newMilestoneUnlockPercent, postJson, refreshSelected, selectedAllocatedPercent, selectedProject, signText, signerPubkey, toast]);
 
   const submitCompleteMilestone = useCallback(async (milestoneId: string, opts?: { review?: "early" }) => {
     if (!selectedProject) return;
@@ -654,8 +734,8 @@ export function CreatorDashboardPage(props: CreatorDashboardProps) {
   const summary = data.summary;
 
   return (
-    <div className={styles.page} style={props.embedded ? ({ padding: 0, maxWidth: "none" } as any) : undefined}>
-      {!props.embedded ? (
+    <div className={styles.page} style={embedded ? ({ padding: 0, maxWidth: "none" } as any) : undefined}>
+      {!embedded ? (
         <div className={styles.header}>
           <div className={styles.headerLeft}>
             <h1 className={styles.title}>Creator Dashboard</h1>
@@ -950,6 +1030,23 @@ export function CreatorDashboardPage(props: CreatorDashboardProps) {
                 {milestoneManagerOpen ? (
                   <div style={{ marginTop: 12 }}>
                     <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                      <select
+                        value={newMilestoneKind}
+                        onChange={(e) => setNewMilestoneKind(e.target.value === "market_cap" ? "market_cap" : "manual")}
+                        disabled={milestoneBusy != null}
+                        style={{
+                          width: 200,
+                          padding: "10px 12px",
+                          borderRadius: 10,
+                          border: "1px solid rgba(255,255,255,0.15)",
+                          background: "rgba(0,0,0,0.30)",
+                          color: "#fff",
+                          fontSize: 13,
+                        }}
+                      >
+                        <option value="manual">Manual milestone</option>
+                        <option value="market_cap">Market cap milestone</option>
+                      </select>
                       <input
                         value={newMilestoneTitle}
                         onChange={(e) => setNewMilestoneTitle(e.target.value)}
@@ -966,21 +1063,39 @@ export function CreatorDashboardPage(props: CreatorDashboardProps) {
                           fontSize: 13,
                         }}
                       />
-                      <input
-                        type="datetime-local"
-                        value={newMilestoneDueLocal}
-                        onChange={(e) => setNewMilestoneDueLocal(e.target.value)}
-                        disabled={milestoneBusy != null}
-                        style={{
-                          width: 220,
-                          padding: "10px 12px",
-                          borderRadius: 10,
-                          border: "1px solid rgba(255,255,255,0.15)",
-                          background: "rgba(0,0,0,0.30)",
-                          color: "#fff",
-                          fontSize: 13,
-                        }}
-                      />
+                      {newMilestoneKind === "market_cap" ? (
+                        <input
+                          value={newMilestoneThresholdUsd}
+                          onChange={(e) => setNewMilestoneThresholdUsd(e.target.value)}
+                          placeholder="Market cap threshold (e.g. 10m)"
+                          disabled={milestoneBusy != null}
+                          style={{
+                            width: 220,
+                            padding: "10px 12px",
+                            borderRadius: 10,
+                            border: "1px solid rgba(255,255,255,0.15)",
+                            background: "rgba(0,0,0,0.30)",
+                            color: "#fff",
+                            fontSize: 13,
+                          }}
+                        />
+                      ) : (
+                        <input
+                          type="datetime-local"
+                          value={newMilestoneDueLocal}
+                          onChange={(e) => setNewMilestoneDueLocal(e.target.value)}
+                          disabled={milestoneBusy != null}
+                          style={{
+                            width: 220,
+                            padding: "10px 12px",
+                            borderRadius: 10,
+                            border: "1px solid rgba(255,255,255,0.15)",
+                            background: "rgba(0,0,0,0.30)",
+                            color: "#fff",
+                            fontSize: 13,
+                          }}
+                        />
+                      )}
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <input
                           value={newMilestoneUnlockPercent}
@@ -1057,6 +1172,12 @@ export function CreatorDashboardPage(props: CreatorDashboardProps) {
                             <>
                               <span className={styles.milestoneDot}>·</span>
                               <span>{m.unlockPercent}%</span>
+                            </>
+                          ) : null}
+                          {(m as any).autoKind === "market_cap" ? (
+                            <>
+                              <span className={styles.milestoneDot}>·</span>
+                              <span>Market cap ${fmtUsdShort(Number((m as any).marketCapThresholdUsd ?? 0))}</span>
                             </>
                           ) : null}
                           {dueLabel ? (
@@ -1358,6 +1479,4 @@ export function CreatorDashboardPage(props: CreatorDashboardProps) {
   );
 }
 
-export default function CreatorDashboardRoute() {
-  return <CreatorDashboardPage />;
-}
+export default CreatorDashboardPage;

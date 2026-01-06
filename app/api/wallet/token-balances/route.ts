@@ -36,7 +36,7 @@ export async function POST(req: Request) {
 
     const body = (await req.json().catch(() => null)) as any;
     const walletPubkey = typeof body?.walletPubkey === "string" ? body.walletPubkey.trim() : "";
-    const tokenMintsIn = Array.isArray(body?.tokenMints) ? body.tokenMints : [];
+    const tokenMintsIn: unknown[] = Array.isArray(body?.tokenMints) ? body.tokenMints : [];
 
     if (!walletPubkey) return NextResponse.json({ error: "walletPubkey required" }, { status: 400 });
 
@@ -47,10 +47,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid walletPubkey" }, { status: 400 });
     }
 
-    const tokenMints = Array.from(
+    const tokenMints: string[] = Array.from(
       new Set(
         tokenMintsIn
-          .map((s: any) => String(s ?? "").trim())
+          .map((s: unknown) => String(s ?? "").trim())
           .filter((s: string) => s.length > 0)
       )
     );

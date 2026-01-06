@@ -288,3 +288,75 @@ export async function listTokenMarketSnapshots(input: {
     marketCapUsd: row.market_cap_usd == null ? null : Number(row.market_cap_usd),
   }));
 }
+
+export async function findFirstTokenMarketSnapshotAbovePrice(input: {
+  tokenMint: string;
+  chainId: string;
+  pairAddress: string;
+  sinceUnix: number;
+  minPriceUsd: number;
+  minLiquidityUsd?: number;
+  minVolumeH1Usd?: number;
+}): Promise<TokenMarketSnapshot | null> {
+  await ensureSchema();
+
+  const tokenMint = String(input.tokenMint ?? "").trim();
+  const chainId = String(input.chainId ?? "").trim().toLowerCase();
+  const pairAddress = String(input.pairAddress ?? "").trim();
+  const sinceUnix = Math.floor(Number(input.sinceUnix ?? 0));
+  const minPriceUsd = Number(input.minPriceUsd ?? 0);
+
+  const minLiquidityUsd = Number(input.minLiquidityUsd ?? 0);
+  const minVolumeH1Usd = Number(input.minVolumeH1Usd ?? 0);
+
+  if (!tokenMint || !chainId || !pairAddress) return null;
+  if (!Number.isFinite(sinceUnix) || sinceUnix <= 0) return null;
+  if (!Number.isFinite(minPriceUsd) || minPriceUsd <= 0) return null;
+
+  const safeMinLiq = Number.isFinite(minLiquidityUsd) && minLiquidityUsd > 0 ? minLiquidityUsd : 0;
+  const safeMinVol = Number.isFinite(minVolumeH1Usd) && minVolumeH1Usd > 0 ? minVolumeH1Usd : 0;
+
+  if (!hasDatabase()) {
+    const k = `${chainId}:${tokenMint}:${pairAddress}`;
+    const all = mem.snapshotsByKey.get(k) ?? [];
+    const found = all
+      .filter((s) => Number(s.fetchedAtUnix) >= sinceUnix)
+      .filter((s) => Number(s.priceUsd) >= minPriceUsd)
+      .filter((s) => Number(s.liquidityUsd ?? 0) >= safeMinLiq)
+      .filter((s) => Number(s.volumeH1Usd ?? 0) >= safeMinVol)
+      .sort((a, b) => Number(a.fetchedAtUnix) - Number(b.fetchedAtUnix));
+    return found[0] ?? null;
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    `select token_mint, chain_id, pair_address, dex_id, fetched_at_unix, price_usd, liquidity_usd, volume_h1_usd, volume_h24_usd, fdv_usd, market_cap_usd
+     from token_market_snapshots
+     where token_mint=$1
+       and chain_id=$2
+       and pair_address=$3
+       and fetched_at_unix >= $4
+       and price_usd >= $5
+       and liquidity_usd >= $6
+       and volume_h1_usd >= $7
+     order by fetched_at_unix asc
+     limit 1`,
+    [tokenMint, chainId, pairAddress, String(sinceUnix), minPriceUsd, safeMinLiq, safeMinVol]
+  );
+
+  const row = res.rows?.[0];
+  if (!row) return null;
+  return {
+    tokenMint: String(row.token_mint),
+    chainId: String(row.chain_id),
+    pairAddress: String(row.pair_address),
+    dexId: String(row.dex_id),
+    fetchedAtUnix: Number(row.fetched_at_unix),
+    priceUsd: Number(row.price_usd),
+    liquidityUsd: Number(row.liquidity_usd),
+    volumeH1Usd: Number(row.volume_h1_usd),
+    volumeH24Usd: Number(row.volume_h24_usd),
+    fdvUsd: row.fdv_usd == null ? null : Number(row.fdv_usd),
+    marketCapUsd: row.market_cap_usd == null ? null : Number(row.market_cap_usd),
+  };
+}
