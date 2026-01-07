@@ -21,6 +21,20 @@ import {
 
 export const runtime = "nodejs";
 
+const COMPUTE_BUDGET_PROGRAM_ID = new PublicKey("ComputeBudget111111111111111111111111111111");
+
+function stripComputeBudgetInstructions(tx: Transaction): Transaction {
+  const out = new Transaction();
+  out.recentBlockhash = tx.recentBlockhash;
+  out.lastValidBlockHeight = tx.lastValidBlockHeight;
+  out.feePayer = tx.feePayer ?? undefined;
+  for (const ix of tx.instructions) {
+    if (ix.programId.equals(COMPUTE_BUDGET_PROGRAM_ID)) continue;
+    out.add(ix);
+  }
+  return out;
+}
+
 function isVoteRewardPayoutsEnabled(): boolean {
   const raw = String(process.env.CTS_ENABLE_VOTE_REWARD_PAYOUTS ?? "").trim().toLowerCase();
   return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
@@ -212,7 +226,7 @@ export async function POST(req: Request) {
             expected.add(createIx);
             expected.add(transferIx);
 
-            const msgA = tx.serializeMessage();
+            const msgA = stripComputeBudgetInstructions(tx).serializeMessage();
             const msgB = expected.serializeMessage();
             if (Buffer.compare(Buffer.from(msgA), Buffer.from(msgB)) !== 0) {
               await client.query("rollback");
@@ -344,11 +358,17 @@ export async function POST(req: Request) {
         expected.add(createIx);
         expected.add(transferIx);
 
-        const msgA = tx.serializeMessage();
+        const msgA = stripComputeBudgetInstructions(tx).serializeMessage();
         const msgB = expected.serializeMessage();
         if (Buffer.compare(Buffer.from(msgA), Buffer.from(msgB)) !== 0) {
           await client.query("rollback");
-          return NextResponse.json({ error: "Signed transaction does not match expected claim" }, { status: 400 });
+          return NextResponse.json(
+            {
+              error: "Signed transaction does not match expected claim",
+              hint: "Your wallet may have modified the prepared transaction (e.g. priority fee). Try disabling priority fees and retry.",
+            },
+            { status: 400 }
+          );
         }
 
         const inserted = await client.query(
