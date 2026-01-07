@@ -299,22 +299,24 @@ export default function DashboardPage() {
             </div>
             <div className={styles.summaryCard}>
               <div className={styles.summaryLabel}>$SHIP balance</div>
-              <div className={styles.summaryValue}>{shipBusy ? "…" : shipUiAmount.toLocaleString("en-US", { maximumFractionDigits: 4 })}</div>
+              <div className={`${styles.summaryValue} ${styles.summaryValueGreen}`}>
+                {shipBusy ? "…" : shipUiAmount.toLocaleString("en-US", { maximumFractionDigits: 4 })}
+              </div>
               {shipError ? <div className={styles.error}>{shipError}</div> : null}
             </div>
             <div className={styles.summaryCard}>
               <div className={styles.summaryLabel}>Claimable $SHIP</div>
-              <div className={styles.summaryValue}>{claimableBusy ? "…" : totalClaimableUi}</div>
+              <div className={`${styles.summaryValue} ${styles.summaryValueBlue}`}>{claimableBusy ? "…" : totalClaimableUi}</div>
               {claimableError ? <div className={styles.error}>{claimableError}</div> : null}
             </div>
             <div className={styles.summaryCard}>
               <div className={styles.summaryLabel}>Distributions</div>
-              <div className={styles.summaryValue}>{claimableBusy ? "…" : `${totalDistributions}`}</div>
+              <div className={`${styles.summaryValue} ${styles.summaryValueOrange}`}>{claimableBusy ? "…" : `${totalDistributions}`}</div>
               <div className={styles.smallNote}>{claimableBusy ? "" : `${totalCommitments} projects`}</div>
             </div>
           </div>
 
-          <div className={styles.card}>
+          <div className={`${styles.card} ${styles.cardAccentGreen}`}>
             <div className={styles.cardHeader}>
               <div>
                 <div className={styles.cardTitle}>Global claim</div>
@@ -356,7 +358,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className={styles.card}>
+          <div className={`${styles.card} ${styles.cardAccentBlue}`}>
             <div className={styles.cardHeader}>
               <div>
                 <div className={styles.cardTitle}>Claimable by project</div>
@@ -399,7 +401,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className={styles.card}>
+          <div className={`${styles.card} ${styles.cardAccentOrange}`}>
             <div className={styles.cardHeader}>
               <div>
                 <div className={styles.cardTitle}>Voting history</div>
