@@ -1,7 +1,6 @@
 "use client";
 
 import { Connection, PublicKey, SystemProgram, Transaction, clusterApiUrl } from "@solana/web3.js";
-import { Buffer } from "buffer";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import bs58 from "bs58";
@@ -202,10 +201,6 @@ function milestoneFailureClaimMessage(input: {
   return `Commit To Ship\nMilestone Failure Voter Claim\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}`;
 }
 
-function voteRewardClaimAllMessage(input: { commitmentId: string; walletPubkey: string; timestampUnix: number }): string {
-  return `Commit To Ship\nVote Reward Claim All\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}\nCommitment: ${input.commitmentId}`;
-}
-
 function unixToLocal(unix: number): string {
   return new Date(unix * 1000).toLocaleString();
 }
@@ -353,14 +348,6 @@ export default function CommitDashboardClient(props: Props) {
   const [milestoneFailureClaimBusy, setMilestoneFailureClaimBusy] = useState<string | null>(null);
   const [milestoneFailureClaimError, setMilestoneFailureClaimError] = useState<Record<string, string>>({});
   const [milestoneFailureClaimResult, setMilestoneFailureClaimResult] = useState<Record<string, any>>({});
-
-  const [voteRewardClaimableBusy, setVoteRewardClaimableBusy] = useState<boolean>(false);
-  const [voteRewardClaimableError, setVoteRewardClaimableError] = useState<string | null>(null);
-  const [voteRewardClaimableResult, setVoteRewardClaimableResult] = useState<any>(null);
-
-  const [voteRewardClaimAllBusy, setVoteRewardClaimAllBusy] = useState<boolean>(false);
-  const [voteRewardClaimAllError, setVoteRewardClaimAllError] = useState<string | null>(null);
-  const [voteRewardClaimAllResult, setVoteRewardClaimAllResult] = useState<any>(null);
 
   const [fundWalletPubkey, setFundWalletPubkey] = useState<string | null>(null);
   const [fundBusy, setFundBusy] = useState<string | null>(null);
@@ -871,84 +858,6 @@ export default function CommitDashboardClient(props: Props) {
       setMilestoneFailureClaimError((prev) => ({ ...prev, [milestoneId]: (e as Error).message }));
     } finally {
       setMilestoneFailureClaimBusy(null);
-    }
-  }
-
-  async function refreshVoteRewardClaimable() {
-    setVoteRewardClaimableError(null);
-    setVoteRewardClaimableResult(null);
-    setVoteRewardClaimableBusy(true);
-    try {
-      const provider = getSolanaProvider();
-      if (!provider?.publicKey) {
-        if (!provider?.connect) throw new Error("Wallet provider not found");
-        await provider.connect();
-      }
-      if (!provider?.publicKey?.toBase58) throw new Error("Failed to read wallet public key");
-
-      const walletPubkey = provider.publicKey.toBase58();
-      setHolderWalletPubkey(walletPubkey);
-
-      const res = await jsonPost(`/api/vote-reward/claimable`, {
-        walletPubkey,
-        commitmentId: id,
-      });
-
-      setVoteRewardClaimableResult(res);
-    } catch (e) {
-      setVoteRewardClaimableError((e as Error).message);
-    } finally {
-      setVoteRewardClaimableBusy(false);
-    }
-  }
-
-  async function claimAllVoteRewards() {
-    setVoteRewardClaimAllError(null);
-    setVoteRewardClaimAllResult(null);
-    setVoteRewardClaimAllBusy(true);
-    try {
-      const provider = getSolanaProvider();
-      if (!provider?.publicKey) {
-        if (!provider?.connect) throw new Error("Wallet provider not found");
-        await provider.connect();
-      }
-      if (!provider?.publicKey?.toBase58) throw new Error("Failed to read wallet public key");
-
-      if (!provider.signTransaction) throw new Error("Wallet does not support transaction signing");
-
-      const walletPubkey = provider.publicKey.toBase58();
-      setHolderWalletPubkey(walletPubkey);
-
-      const prepared = await jsonPost(`/api/vote-reward/claim-all`, {
-        walletPubkey,
-        commitmentId: id,
-        action: "prepare",
-      });
-
-      const txBase64 = String(prepared?.transactionBase64 ?? "");
-      if (!txBase64) throw new Error("Failed to prepare claim transaction");
-
-      const tx = Transaction.from(Buffer.from(txBase64, "base64"));
-      const signedTx = await provider.signTransaction(tx);
-      const signedTxBase64 = Buffer.from(signedTx.serialize({ requireAllSignatures: false, verifySignatures: false })).toString("base64");
-
-      const res = await jsonPost(`/api/vote-reward/claim-all`, {
-        walletPubkey,
-        commitmentId: id,
-        action: "finalize",
-        signedTransactionBase64: signedTxBase64,
-      });
-
-      setVoteRewardClaimAllResult(res);
-      const sig = String(res?.signature ?? "").trim();
-      toast({ kind: "success", message: sig ? `Claim submitted: ${sig}` : "Claim submitted" });
-      await refreshVoteRewardClaimable();
-    } catch (e) {
-      const msg = (e as Error).message;
-      setVoteRewardClaimAllError(msg);
-      toast({ kind: "error", message: msg });
-    } finally {
-      setVoteRewardClaimAllBusy(false);
     }
   }
 
@@ -1487,49 +1396,11 @@ export default function CommitDashboardClient(props: Props) {
             </div>
 
             <div className={styles.smallNote} style={{ marginTop: 10 }}>
-              Voter rewards ($SHIP) accumulate over time. You can claim them all at once.
-            </div>
-
-            {voteRewardClaimableError ? (
-              <div className={styles.smallNote} style={{ marginTop: 8, color: "rgba(180, 40, 60, 0.86)" }}>
-                {voteRewardClaimableError}
-              </div>
-            ) : null}
-
-            {voteRewardClaimAllError ? (
-              <div className={styles.smallNote} style={{ marginTop: 8, color: "rgba(180, 40, 60, 0.86)" }}>
-                {voteRewardClaimAllError}
-              </div>
-            ) : null}
-
-            {voteRewardClaimableResult?.ok ? (
-              <div className={styles.smallNote} style={{ marginTop: 8 }}>
-                Claimable: {String(voteRewardClaimableResult?.amountRaw ?? "0")} (raw) across {Number(voteRewardClaimableResult?.distributions ?? 0)} distribution{Number(voteRewardClaimableResult?.distributions ?? 0) === 1 ? "" : "s"}
-              </div>
-            ) : null}
-
-            {voteRewardClaimAllResult?.ok ? (
-              <div className={styles.smallNote} style={{ marginTop: 8 }}>
-                Claimed {String(voteRewardClaimAllResult?.amountRaw ?? "0")} (raw)
-                {voteRewardClaimAllResult?.signature ? ` via ${shortSig(String(voteRewardClaimAllResult?.signature))}` : ""}
-              </div>
-            ) : null}
-
-            <div className={styles.actions} style={{ marginTop: 10, justifyContent: "flex-start" }}>
-              <button className={styles.actionBtn} onClick={connectHolderWallet} disabled={holderBusy != null || voteRewardClaimableBusy || voteRewardClaimAllBusy}>
-                {holderWalletPubkey ? "Wallet Connected" : holderBusy === "connect" ? "Connecting…" : "Connect Wallet"}
-              </button>
-              <button className={styles.actionBtn} onClick={refreshVoteRewardClaimable} disabled={!holderWalletPubkey || voteRewardClaimableBusy || voteRewardClaimAllBusy}>
-                {voteRewardClaimableBusy ? "Refreshing…" : "Refresh $SHIP Claimable"}
-              </button>
-              <button className={`${styles.actionBtn} ${styles.actionPrimary}`} onClick={claimAllVoteRewards} disabled={!holderWalletPubkey || voteRewardClaimAllBusy || voteRewardClaimableBusy}>
-                {voteRewardClaimAllBusy ? "Claiming…" : "Claim All $SHIP"}
-              </button>
-              {voteRewardClaimAllResult?.signature ? (
-                <button className={styles.actionBtn} type="button" onClick={() => openExplorerTx(String(voteRewardClaimAllResult?.signature))}>
-                  View on Solscan
-                </button>
-              ) : null}
+              Voter rewards ($SHIP) accumulate over time. Claim them from your Holder dashboard.
+              <span> </span>
+              <a href="/dashboard" style={{ color: "rgba(134, 239, 172, 0.95)", textDecoration: "none", fontWeight: 650 }}>
+                Open dashboard
+              </a>
             </div>
 
             {props.status !== "failed" ? (
