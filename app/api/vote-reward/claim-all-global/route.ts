@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { Keypair, PublicKey, Transaction } from "@solana/web3.js";
+import { Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction } from "@solana/web3.js";
 import bs58 from "bs58";
 import { Buffer } from "buffer";
 import nacl from "tweetnacl";
@@ -22,6 +22,7 @@ import {
 export const runtime = "nodejs";
 
 const COMPUTE_BUDGET_PROGRAM_ID = new PublicKey("ComputeBudget111111111111111111111111111111");
+const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
 
 function stripComputeBudgetInstructions(tx: Transaction): Transaction {
   const out = new Transaction();
@@ -33,6 +34,89 @@ function stripComputeBudgetInstructions(tx: Transaction): Transaction {
     out.add(ix);
   }
   return out;
+}
+
+function instructionsEqual(a: TransactionInstruction, b: TransactionInstruction): boolean {
+  if (!a.programId.equals(b.programId)) return false;
+  if (Buffer.compare(Buffer.from(a.data), Buffer.from(b.data)) !== 0) return false;
+  if (a.keys.length !== b.keys.length) return false;
+  for (let i = 0; i < a.keys.length; i++) {
+    const ak = a.keys[i];
+    const bk = b.keys[i];
+    if (!ak.pubkey.equals(bk.pubkey)) return false;
+    if (ak.isSigner !== bk.isSigner) return false;
+    if (ak.isWritable !== bk.isWritable) return false;
+  }
+  return true;
+}
+
+function validateClaimTransaction(input: {
+  tx: Transaction;
+  faucetOwner: PublicKey;
+  expectedCreateIx: TransactionInstruction;
+  expectedTransferIx: TransactionInstruction;
+}):
+  | { ok: true }
+  | {
+      ok: false;
+      actualProgramIds: string[];
+      expectedProgramIds: string[];
+    } {
+  const stripped = stripComputeBudgetInstructions(input.tx);
+  const ixs = stripped.instructions;
+
+  const transferIdx = ixs.findIndex((ix) => instructionsEqual(ix, input.expectedTransferIx));
+  if (transferIdx < 0) {
+    return {
+      ok: false,
+      actualProgramIds: ixs.map((ix) => ix.programId.toBase58()),
+      expectedProgramIds: [input.expectedCreateIx.programId.toBase58(), input.expectedTransferIx.programId.toBase58()],
+    };
+  }
+
+  const createIdx = ixs.findIndex((ix) => instructionsEqual(ix, input.expectedCreateIx));
+  const matched = new Set<number>([transferIdx]);
+  if (createIdx >= 0) matched.add(createIdx);
+
+  for (let idx = 0; idx < ixs.length; idx++) {
+    if (matched.has(idx)) continue;
+    const ix = ixs[idx];
+    const pid = ix.programId;
+    const allowedExtra = pid.equals(SystemProgram.programId) || pid.equals(MEMO_PROGRAM_ID);
+    if (!allowedExtra) {
+      return {
+        ok: false,
+        actualProgramIds: ixs.map((t) => t.programId.toBase58()),
+        expectedProgramIds: [input.expectedCreateIx.programId.toBase58(), input.expectedTransferIx.programId.toBase58()],
+      };
+    }
+
+    for (const k of ix.keys) {
+      if (k.isSigner && k.pubkey.equals(input.faucetOwner)) {
+        return {
+          ok: false,
+          actualProgramIds: ixs.map((t) => t.programId.toBase58()),
+          expectedProgramIds: [input.expectedCreateIx.programId.toBase58(), input.expectedTransferIx.programId.toBase58()],
+        };
+      }
+    }
+  }
+
+  let faucetSignerUses = 0;
+  for (const ix of ixs) {
+    for (const k of ix.keys) {
+      if (k.isSigner && k.pubkey.equals(input.faucetOwner)) faucetSignerUses++;
+    }
+  }
+  if (faucetSignerUses !== 1) {
+    return {
+      ok: false,
+      actualProgramIds: ixs.map((t) => t.programId.toBase58()),
+      expectedProgramIds: [input.expectedCreateIx.programId.toBase58(), input.expectedTransferIx.programId.toBase58()],
+    };
+  }
+
+  return { ok: true };
 }
 
 function isVoteRewardPayoutsEnabled(): boolean {
@@ -226,14 +310,15 @@ export async function POST(req: Request) {
             expected.add(createIx);
             expected.add(transferIx);
 
-            const msgA = stripComputeBudgetInstructions(tx).serializeMessage();
-            const msgB = expected.serializeMessage();
-            if (Buffer.compare(Buffer.from(msgA), Buffer.from(msgB)) !== 0) {
+            const v = validateClaimTransaction({ tx, faucetOwner, expectedCreateIx: createIx, expectedTransferIx: transferIx });
+            if (!v.ok) {
               await client.query("rollback");
               return NextResponse.json(
                 {
                   error: "Found pending vote reward claims",
                   hint: "A claim is already in progress. Wait a moment and try again.",
+                  actualProgramIds: v.actualProgramIds,
+                  expectedProgramIds: v.expectedProgramIds,
                 },
                 { status: 409 }
               );
@@ -358,14 +443,15 @@ export async function POST(req: Request) {
         expected.add(createIx);
         expected.add(transferIx);
 
-        const msgA = stripComputeBudgetInstructions(tx).serializeMessage();
-        const msgB = expected.serializeMessage();
-        if (Buffer.compare(Buffer.from(msgA), Buffer.from(msgB)) !== 0) {
+        const v = validateClaimTransaction({ tx, faucetOwner, expectedCreateIx: createIx, expectedTransferIx: transferIx });
+        if (!v.ok) {
           await client.query("rollback");
           return NextResponse.json(
             {
               error: "Signed transaction does not match expected claim",
               hint: "Your wallet may have modified the prepared transaction (e.g. priority fee). Try disabling priority fees and retry.",
+              actualProgramIds: v.actualProgramIds,
+              expectedProgramIds: v.expectedProgramIds,
             },
             { status: 400 }
           );
