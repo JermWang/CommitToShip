@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction } from "@solana/web3.js";
+import { Keypair, PublicKey, Transaction, TransactionInstruction } from "@solana/web3.js";
 import bs58 from "bs58";
 import { Buffer } from "buffer";
 import nacl from "tweetnacl";
@@ -22,7 +22,6 @@ import {
 export const runtime = "nodejs";
 
 const COMPUTE_BUDGET_PROGRAM_ID = new PublicKey("ComputeBudget111111111111111111111111111111");
-const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
 
 function stripComputeBudgetInstructions(tx: Transaction): Transaction {
   const out = new Transaction();
@@ -81,18 +80,8 @@ function validateClaimTransaction(input: {
   for (let idx = 0; idx < ixs.length; idx++) {
     if (matched.has(idx)) continue;
     const ix = ixs[idx];
-    const pid = ix.programId;
-    const allowedExtra = pid.equals(SystemProgram.programId) || pid.equals(MEMO_PROGRAM_ID);
-    if (!allowedExtra) {
-      return {
-        ok: false,
-        actualProgramIds: ixs.map((t) => t.programId.toBase58()),
-        expectedProgramIds: [input.expectedCreateIx.programId.toBase58(), input.expectedTransferIx.programId.toBase58()],
-      };
-    }
-
     for (const k of ix.keys) {
-      if (k.isSigner && k.pubkey.equals(input.faucetOwner)) {
+      if (k.pubkey.equals(input.faucetOwner)) {
         return {
           ok: false,
           actualProgramIds: ixs.map((t) => t.programId.toBase58()),
