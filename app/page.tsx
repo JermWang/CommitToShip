@@ -306,7 +306,7 @@ export default function Home() {
       }
 
       if (commitPath === "automated") {
-        // Closed beta permission is enforced server-side via admin session OR allowlisted creatorAuth.
+        // Creator authentication enforced server-side
       }
       
       // Milestones are set up post-launch, no validation needed here
@@ -2115,8 +2115,8 @@ export default function Home() {
                     <>
                       <div className="createDivider" />
                       <div className="createSection">
-                        <h2 className="createSectionTitle">Admin Sign-In</h2>
-                        <p className="createSectionSub">Temporarily required until closed beta opens.</p>
+                        <h2 className="createSectionTitle">Creator Sign-In</h2>
+                        <p className="createSectionSub">Sign in with your wallet to launch.</p>
 
                         {adminWalletPubkey ? (
                           <div className="createInfoBox" style={{ marginBottom: 0 }}>
@@ -2133,7 +2133,7 @@ export default function Home() {
                               onClick={adminSignIn}
                               disabled={busy != null || adminAuthBusy != null}
                             >
-                              {adminAuthBusy === "signin" ? "Signing in..." : "Admin Sign-In"}
+                              {adminAuthBusy === "signin" ? "Signing in..." : "Sign In"}
                             </button>
                           ) : (
                             <button
@@ -2141,7 +2141,7 @@ export default function Home() {
                               style={{ background: "rgba(134, 239, 172, 0.2)", color: "rgba(134, 239, 172, 0.9)" }}
                               disabled
                             >
-                              Admin Signed In
+                              Signed In
                             </button>
                           )}
 

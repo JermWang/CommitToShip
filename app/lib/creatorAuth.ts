@@ -56,9 +56,7 @@ export function verifyCreatorAuthOrThrow(input: {
     throw new Error("creatorAuth wallet mismatch");
   }
 
-  if (!allowed.has(walletPubkey)) {
-    throw new Error("Wallet is not approved for closed beta");
-  }
+  // Closed beta restriction removed - public launch enabled
 
   const nowUnix = Math.floor(Date.now() / 1000);
   if (Math.abs(nowUnix - Math.floor(timestampUnix)) > Math.max(30, input.maxSkewSeconds)) {

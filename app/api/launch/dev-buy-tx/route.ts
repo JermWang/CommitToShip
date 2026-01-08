@@ -13,8 +13,9 @@ import { verifyCreatorAuthOrThrow } from "../../../lib/creatorAuth";
 export const runtime = "nodejs";
 
 function isPublicLaunchEnabled(): boolean {
-  const raw = String(process.env.CTS_PUBLIC_LAUNCHES ?? "").trim().toLowerCase();
-  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+  // Public launches enabled by default (closed beta ended)
+  const raw = String(process.env.CTS_PUBLIC_LAUNCHES ?? "true").trim().toLowerCase();
+  return raw !== "0" && raw !== "false" && raw !== "no" && raw !== "off";
 }
 
 export async function GET() {
