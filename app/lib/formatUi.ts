@@ -41,5 +41,11 @@ export function fmtNumber2(value: unknown): string {
 export function fmtSolFromLamports2(lamports: unknown): string {
   const n = Number(lamports);
   if (!Number.isFinite(n)) return "0.00";
-  return fmtNumber2(n / 1_000_000_000);
+  const sol = n / 1_000_000_000;
+  // Tiny balances (fresh escrows) would otherwise all read "0.00" - show a few more digits instead.
+  if (sol > 0 && sol < 0.01) {
+    if (sol < 0.0001) return "<0.0001";
+    return new Intl.NumberFormat("en-US", { minimumFractionDigits: 3, maximumFractionDigits: 4 }).format(sol);
+  }
+  return fmtNumber2(sol);
 }

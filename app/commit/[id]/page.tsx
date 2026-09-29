@@ -7,6 +7,7 @@ import CommitDashboardClient from "./CommitDashboardClient";
 import {
   RewardMilestone,
   getCommitment,
+  getEffectiveRewardMilestoneUnlockLamports,
   getRewardApprovalThreshold,
   getRewardMilestoneVoteCounts,
   normalizeRewardMilestonesClaimable,
@@ -368,11 +369,13 @@ export default async function CommitDashboardPage({ params }: { params: { id: st
     const statement = (updated as any).statement ? String((updated as any).statement) : "";
     const statementText = statement.trim().length > 0 ? statement.trim() : "Reward Commitment";
 
+    const milestoneCount = (updated.milestones ?? []).length;
+    const effectiveUnlock = (m: RewardMilestone) => getEffectiveRewardMilestoneUnlockLamports({ milestone: m, totalFundedLamports });
     const nextMilestone = (updated.milestones ?? []).find((m) => m.status !== "released") ?? null;
-    const nextUnlockLamports = nextMilestone ? Number(nextMilestone.unlockLamports || 0) : 0;
-    const nextCoverage = nextUnlockLamports > 0 ? clamp01(balanceLamports / nextUnlockLamports) : 1;
+    const nextUnlockLamports = nextMilestone ? effectiveUnlock(nextMilestone) : 0;
+    const nextCoverage = milestoneCount === 0 ? 0 : nextUnlockLamports > 0 ? clamp01(balanceLamports / nextUnlockLamports) : 1;
 
-    const milestoneTotalUnlockLamports = (updated.milestones ?? []).reduce((acc, m) => acc + Number(m.unlockLamports || 0), 0);
+    const milestoneTotalUnlockLamports = (updated.milestones ?? []).reduce((acc, m) => acc + effectiveUnlock(m), 0);
     const compliance = milestoneTotalUnlockLamports > 0 ? clamp01(totalFundedLamports / milestoneTotalUnlockLamports) : 0;
     const feeMode = (updated as any).creatorFeeMode === "managed" ? "managed" : "assisted";
 
@@ -380,6 +383,11 @@ export default async function CommitDashboardPage({ params }: { params: { id: st
 
     const guidance = (() => {
       if (updated.status === "completed") return "All milestones have been released. This page stays as the permanent receipt.";
+      if (milestoneCount === 0) {
+        return feeMode === "managed"
+          ? "Creator fees are collected in this escrow. The creator sets milestones from their dashboard once fees start accumulating."
+          : "No milestones have been set yet. The creator can add them from their dashboard.";
+      }
       if (balanceLamports <= 0) return "Set your creator-reward destination to this escrow address (or transfer manually). Funds accumulate here over time.";
       return "When you complete a milestone, mark it complete. After the delay, it becomes claimable and can be released by admin.";
     })();
@@ -417,14 +425,22 @@ export default async function CommitDashboardPage({ params }: { params: { id: st
                   </div>
                   <div className={styles.heroMetaLines}>
                     <div>Unlocked {fmtSol(unlockedLamports)} SOL</div>
-                    {nextMilestone ? <div>Next unlock {fmtSol(nextUnlockLamports)} SOL</div> : <div>All milestones released</div>}
+                    {nextMilestone ? (
+                      <div>Next unlock {fmtSol(nextUnlockLamports)} SOL</div>
+                    ) : milestoneCount === 0 ? (
+                      <div>No milestones set yet</div>
+                    ) : (
+                      <div>All milestones released</div>
+                    )}
                   </div>
                   <div className={styles.complianceWrap}>
                     <div className={styles.complianceTrack} aria-hidden="true">
                       <div className={styles.complianceFill} style={{ width: `${Math.round(compliance * 100)}%` }} />
                     </div>
                     <div className={styles.complianceText}>
-                      Escrowed {fmtSol(totalFundedLamports)} / {fmtSol(milestoneTotalUnlockLamports)} SOL ({Math.round(compliance * 100)}%)
+                      {milestoneTotalUnlockLamports > 0
+                        ? `Escrowed ${fmtSol(totalFundedLamports)} / ${fmtSol(milestoneTotalUnlockLamports)} SOL (${Math.round(compliance * 100)}%)`
+                        : `Escrowed ${fmtSol(totalFundedLamports)} SOL`}
                     </div>
                   </div>
                 </div>
@@ -595,6 +611,8 @@ export default async function CommitDashboardPage({ params }: { params: { id: st
         </div>
     );
   } catch (e) {
+    // notFound()/redirect() work by throwing - let Next handle those instead of rendering an error card.
+    if (String((e as any)?.digest ?? "").startsWith("NEXT_")) throw e;
     const msg = getSafeErrorMessage(e);
     return (
       <div className={styles.page}>

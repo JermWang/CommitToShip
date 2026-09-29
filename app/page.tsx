@@ -2509,7 +2509,19 @@ export default function Home() {
                             </div>
                           )
                         ) : discoverLiveCards.length === 0 ? (
-                          <div className="discoverEmpty">No projects found. Try a different filter.</div>
+                          <div className="discoverEmpty">
+                            {timelineQuery.trim().length || timelineKindFilter !== "all" || timelineStatusFilter !== "all" ? (
+                              "No projects match these filters."
+                            ) : (
+                              <>
+                                <div className="discoverEmptyTitle">No projects yet</div>
+                                <div className="discoverEmptySub">Be the first to lock your creator fees behind milestones.</div>
+                                <button className="btn btnPrimary discoverEmptyCta" onClick={() => setTabAndUrl("commit")}>
+                                  Create Commitment
+                                </button>
+                              </>
+                            )}
+                          </div>
                         ) : (
                           <div className="discoverGrid">
                             {discoverLiveCards.map((c) => {

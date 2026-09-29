@@ -1648,6 +1648,8 @@ body[data-skin="landing"] .landingRight {
   line-height: 1.65;
   max-width: 52ch;
   font-weight: 450;
+  /* keep the copy legible when the animated ASCII waves drift behind it */
+  text-shadow: 0 0 14px rgba(0, 0, 0, 0.95), 0 0 3px rgba(0, 0, 0, 0.9);
 }
 
 .landingMobileTitle {
@@ -4034,6 +4036,22 @@ body[data-skin="app"] .timelineReceipt:hover {
   text-align: center;
   color: rgba(255,255,255,0.45);
   font-size: 14px;
+}
+
+.discoverEmptyTitle {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.discoverEmptySub {
+  margin-top: 6px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.discoverEmptyCta {
+  margin-top: 18px;
 }
 
 @media (max-width: 700px) {
