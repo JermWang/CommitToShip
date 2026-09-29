@@ -30,7 +30,8 @@ export async function POST(req: Request) {
 
     const mintRaw = String(process.env.CTS_SHIP_TOKEN_MINT ?? "").trim();
     if (!mintRaw) {
-      return NextResponse.json({ error: "CTS_SHIP_TOKEN_MINT is required" }, { status: 500 });
+      // No $SHIP mint configured yet: report a zero balance instead of failing the dashboard.
+      return NextResponse.json({ ok: true, walletPubkey, uiAmount: 0, amountRaw: "0", configured: false });
     }
 
     const mint = new PublicKey(mintRaw);

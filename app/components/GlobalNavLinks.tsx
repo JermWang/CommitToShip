@@ -88,6 +88,7 @@ export default function GlobalNavLinks() {
         >
           <Icon d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z" />
         </Link>
+{X_URL ? (
         <a
           className="globalNavIconBtn"
           href={X_URL}
@@ -98,6 +99,7 @@ export default function GlobalNavLinks() {
         >
           <Icon d="M18.244 2H21l-6.219 7.108L22 22h-7.059l-5.524-7.72L3.445 22H0.687l6.657-7.606L0 2h7.238l4.99 7.014L18.244 2zm-1.236 18h1.528L6.402 3.93H4.76L17.008 20z" />
         </a>
+) : null}
         <WalletMultiButton />
       </div>
 
@@ -121,6 +123,7 @@ export default function GlobalNavLinks() {
             />
           </svg>
         </button>
+{X_URL ? (
         <a
           className="globalNavIconBtn"
           href={X_URL}
@@ -131,6 +134,7 @@ export default function GlobalNavLinks() {
         >
           <Icon d="M18.244 2H21l-6.219 7.108L22 22h-7.059l-5.524-7.72L3.445 22H0.687l6.657-7.606L0 2h7.238l4.99 7.014L18.244 2zm-1.236 18h1.528L6.402 3.93H4.76L17.008 20z" />
         </a>
+) : null}
         <WalletMultiButton />
       </div>
 
@@ -179,6 +183,7 @@ export default function GlobalNavLinks() {
           <Icon d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z" />
           <span>Docs</span>
         </Link>
+{X_URL ? (
         <a
           className="globalNavMenuItem"
           href={X_URL}
@@ -189,6 +194,7 @@ export default function GlobalNavLinks() {
           <Icon d="M18.244 2H21l-6.219 7.108L22 22h-7.059l-5.524-7.72L3.445 22H0.687l6.657-7.606L0 2h7.238l4.99 7.014L18.244 2zm-1.236 18h1.528L6.402 3.93H4.76L17.008 20z" />
           <span>X</span>
         </a>
+) : null}
       </div>
     </nav>
   );

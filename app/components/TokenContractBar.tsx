@@ -26,6 +26,9 @@ export default function TokenContractBar() {
 
   const hasAddr = addr.length > 0;
 
+  // No contract address configured (yet): render nothing rather than a "Not set" pill.
+  if (!hasAddr) return null;
+
   async function onCopy() {
     try {
       if (!hasAddr) return;
