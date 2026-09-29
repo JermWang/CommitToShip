@@ -17,6 +17,7 @@ import {
 import { getBalanceLamports, getChainUnixTime, getConnection } from "../../../lib/solana";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 import { isCronAuthorized } from "../../../lib/cronAuth";
+import { apiError } from "../../../lib/apiError";
 
 export const runtime = "nodejs";
 
@@ -115,7 +116,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, nowUnix, targetCount: capped.length, changedCount, results });
   } catch (e) {
-    await auditLog("admin_normalize_rewards_error", { error: getSafeErrorMessage(e) });
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    await auditLog("admin_normalize_rewards_error", { error: e });
+    return apiError(e, "admin/normalize-rewards");
   }
 }

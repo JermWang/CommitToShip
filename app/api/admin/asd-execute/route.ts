@@ -13,6 +13,7 @@ import { getAsdConfig, insertAsdExecution, listActiveAsdConfigs, updateAsdAfterE
 import { jupiterQuote, jupiterSwapTx } from "../../../lib/jupiter";
 import { privySignSolanaTransaction } from "../../../lib/privy";
 import { isCronAuthorized } from "../../../lib/cronAuth";
+import { apiError } from "../../../lib/apiError";
 
 export const runtime = "nodejs";
 
@@ -298,7 +299,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, nowUnix, swapsEnabled: swapsEnabled(), results });
   } catch (e) {
-    await auditLog("admin_asd_execute_error", { error: getSafeErrorMessage(e) });
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    await auditLog("admin_asd_execute_error", { error: e });
+    return apiError(e, "admin/asd-execute");
   }
 }

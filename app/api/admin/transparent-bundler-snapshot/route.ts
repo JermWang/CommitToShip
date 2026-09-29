@@ -15,6 +15,7 @@ import {
   listTokenMintsWithActiveDeclaredWallets,
 } from "../../../lib/transparentBundlerStore";
 import { isCronAuthorized } from "../../../lib/cronAuth";
+import { apiError } from "../../../lib/apiError";
 
 export const runtime = "nodejs";
 
@@ -90,7 +91,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, count: tokenMints.length, results });
   } catch (e) {
-    await auditLog("admin_tb_snapshot_error", { error: getSafeErrorMessage(e) });
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    await auditLog("admin_tb_snapshot_error", { error: e });
+    return apiError(e, "admin/transparent-bundler-snapshot");
   }
 }

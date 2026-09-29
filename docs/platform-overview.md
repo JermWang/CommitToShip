@@ -125,7 +125,8 @@ When a creator misses deadlines or fails to deliver on milestones, the escrowed 
 | Allocation | Recipient | Purpose |
 |------------|-----------|---------|
 | **50%** | Token holders who voted | Rewards engaged community members proportionally based on holdings and $SHIP multiplier |
-| **50%** | $SHIP buyback treasury | Fuels protocol sustainability through token buybacks |
+| **45%** | $SHIP buyback treasury | Fuels protocol sustainability through token buybacks |
+| **5%** | Vote reward treasury | Funds ongoing $SHIP rewards for participating voters |
 
 This mechanism ensures:
 

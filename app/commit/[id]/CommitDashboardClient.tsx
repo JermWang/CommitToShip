@@ -998,8 +998,8 @@ export default function CommitDashboardClient(props: Props) {
               </div>
             ) : adminModal.kind === "milestoneFailurePayout" ? (
               <div className={styles.smallNote} style={{ marginTop: 10 }}>
-                Approve failure payout for <strong>{adminModal.milestoneTitle}</strong>. This will forfeit this milestone’s allocation and split it <strong>50/50</strong>
-                between buybacks and eligible voters.
+                Approve failure payout for <strong>{adminModal.milestoneTitle}</strong>. This will forfeit this milestone’s allocation: <strong>50%</strong> goes to eligible voters,
+                <strong>45%</strong> to $SHIP buybacks and <strong>5%</strong> to the vote reward treasury.
               </div>
             ) : (
               <div className={styles.smallNote} style={{ marginTop: 10 }}>

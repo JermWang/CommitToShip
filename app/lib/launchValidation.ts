@@ -130,6 +130,9 @@ export async function loadLaunchImage(imageUrl: string): Promise<{ data: Buffer;
   if (own) return own;
 
   if (assetStorageMode() === "supabase") {
+    // Only ever fetch from our own Supabase public bucket (never a foreign host that merely has a matching path).
+    const prefix = supabasePublicPrefix();
+    if (!prefix || !imageUrl.startsWith(prefix)) throw new LaunchInputError("Token image must be uploaded through the launch form");
     const res = await fetch(imageUrl, { redirect: "error", signal: AbortSignal.timeout(15_000) });
     if (!res.ok) throw new LaunchInputError("Failed to load token image. Please re-upload it.");
     const contentType = String(res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
