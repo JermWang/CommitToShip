@@ -20,7 +20,7 @@ function isPublicLaunchEnabled(): boolean {
 }
 
 function resumeMessage(input: { commitmentId: string; requestId: string }): string {
-  return `Commit To Ship\nASD Resume\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}`;
+  return `Ship & Commit\nASD Resume\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}`;
 }
 
 export async function POST(req: Request, ctx: { params: { id: string } }) {

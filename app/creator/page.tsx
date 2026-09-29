@@ -197,7 +197,7 @@ function formatDateTime(unix: number): string {
 }
 
 function sweepMessage(input: { commitmentId: string; timestampUnix: number }): string {
-  return `Commit To Ship\nEscrow Sweep\nCommitment: ${input.commitmentId}\nTimestamp: ${input.timestampUnix}`;
+  return `Ship & Commit\nEscrow Sweep\nCommitment: ${input.commitmentId}\nTimestamp: ${input.timestampUnix}`;
 }
 
 function toDatetimeLocalValue(d: Date): string {
@@ -438,25 +438,25 @@ export default function CreatorDashboardPage() {
   }, [postJson, refreshSelected, selectedProject, signText, signerPubkey, toast]);
 
   const milestoneAddMessage = useCallback((input: { commitmentId: string; requestId: string; title: string; unlockPercent: number; dueAtUnix: number }): string => {
-    return `Commit To Ship\nAdd Milestone\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}\nTitle: ${input.title}\nUnlockPercent: ${input.unlockPercent}\nDueAtUnix: ${input.dueAtUnix}`;
+    return `Ship & Commit\nAdd Milestone\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}\nTitle: ${input.title}\nUnlockPercent: ${input.unlockPercent}\nDueAtUnix: ${input.dueAtUnix}`;
   }, []);
 
   const milestoneAddMarketCapMessage = useCallback((input: { commitmentId: string; requestId: string; title: string; unlockPercent: number; thresholdUsd: number }): string => {
-    return `Commit To Ship\nAdd Market Cap Milestone\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}\nTitle: ${input.title}\nUnlockPercent: ${input.unlockPercent}\nThresholdUsd: ${input.thresholdUsd}`;
+    return `Ship & Commit\nAdd Market Cap Milestone\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}\nTitle: ${input.title}\nUnlockPercent: ${input.unlockPercent}\nThresholdUsd: ${input.thresholdUsd}`;
   }, []);
 
   const milestoneCompleteMessage = useCallback((input: { commitmentId: string; milestoneId: string; review?: "early" }): string => {
-    const base = `Commit To Ship\nMilestone Completion\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}`;
+    const base = `Ship & Commit\nMilestone Completion\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}`;
     if (input.review === "early") return `${base}\nReview: early`;
     return base;
   }, []);
 
   const milestoneClaimMessage = useCallback((input: { commitmentId: string; milestoneId: string }): string => {
-    return `Commit To Ship\nMilestone Claim\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}`;
+    return `Ship & Commit\nMilestone Claim\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}`;
   }, []);
 
   const milestoneEditMessage = useCallback((input: { commitmentId: string; milestoneId: string; requestId: string; title: string; unlockPercent: number; dueAtUnix: number }): string => {
-    return `Commit To Ship\nEdit Milestone\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}\nRequest: ${input.requestId}\nTitle: ${input.title}\nUnlockPercent: ${input.unlockPercent}\nDueAtUnix: ${input.dueAtUnix}`;
+    return `Ship & Commit\nEdit Milestone\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}\nRequest: ${input.requestId}\nTitle: ${input.title}\nUnlockPercent: ${input.unlockPercent}\nDueAtUnix: ${input.dueAtUnix}`;
   }, []);
 
   const submitAddMilestone = useCallback(async () => {
@@ -740,7 +740,7 @@ export default function CreatorDashboardPage() {
         <div className={styles.empty}>
           <img className={styles.emptyIcon} src="/branding/white-logo.png" alt="" />
           <h2>No Projects Yet</h2>
-          <p>You haven&apos;t created any projects with CommitToShip yet.</p>
+          <p>You haven&apos;t created any projects with Ship &amp; Commit yet.</p>
           <button className={styles.createBtn} onClick={() => { window.scrollTo({ top: 0, behavior: "instant" }); router.push("/?tab=commit"); }}>
             Create Your First Project
           </button>

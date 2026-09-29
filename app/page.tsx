@@ -6,9 +6,10 @@ import Image from "next/image";
 import bs58 from "bs58";
 import { Transaction } from "@solana/web3.js";
 
-import ClosedBetaNotice from "./components/ClosedBetaNotice";
 import TokenContractBar from "./components/TokenContractBar";
 import { fmtNumber2, fmtSolFromLamports2 } from "./lib/formatUi";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { useSolanaProvider } from "./lib/useSolanaProvider";
 
 type ProfileSummary = {
   walletPubkey: string;
@@ -172,6 +173,8 @@ type CreateProgressStep = {
 };
 
 export default function Home() {
+  const solanaProvider = useSolanaProvider();
+  const { publicKey: adapterPublicKey } = useWallet();
   const commitmentRef = useRef<HTMLDivElement | null>(null);
   const timelineRef = useRef<HTMLDivElement | null>(null);
   const timelineHydratedRef = useRef(false);
@@ -306,14 +309,21 @@ export default function Home() {
       }
 
       if (commitPath === "automated") {
-        // Creator authentication enforced server-side
+        const name = draftName.trim();
+        const sym = draftSymbol.trim();
+        if (!name.length) issues.push("Enter a coin name.");
+        else if (name.length > 32) issues.push("Coin name must be 32 characters or fewer.");
+        if (!sym.length) issues.push("Enter a ticker.");
+        else if (sym.length > 10) issues.push("Ticker must be 10 characters or fewer.");
+        if (!draftImageUrl.trim().length) issues.push("Upload a coin image.");
+        if (creatorPubkey.trim().length && !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(creatorPubkey.trim())) issues.push("Payout wallet doesn't look like a valid Solana address.");
       }
       
       // Milestones are set up post-launch, no validation needed here
     }
 
     return issues;
-  }, [adminWalletPubkey, amountLamports, authority, commitKind, commitPath, creatorPubkey, deadlineLocal, destinationOnFail, devVerify, rewardTokenMint, statement]);
+  }, [adminWalletPubkey, amountLamports, authority, commitKind, commitPath, creatorPubkey, deadlineLocal, destinationOnFail, devVerify, draftImageUrl, draftName, draftSymbol, rewardTokenMint, statement]);
 
   function datetimeLocalFromUnix(tsUnix: number): string {
     const d = new Date(tsUnix * 1000);
@@ -369,6 +379,21 @@ export default function Home() {
     if (Math.abs(ratio - 3) > 0.1) throw new Error("Banner should be ~3:1 aspect ratio (pump.fun)");
   }
 
+  async function handleIconFile(f: File) {
+    setError(null);
+    setBusy("upload:icon");
+    try {
+      await validatePumpfunAsset(f, "icon");
+      const uploadFn = commitPath === "automated" ? uploadLaunchAsset : uploadProjectAsset;
+      const { publicUrl } = await uploadFn({ kind: "icon", file: f });
+      setDraftImageUrl(publicUrl);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function readJsonSafe(res: Response): Promise<any> {
     const contentType = res.headers.get("content-type") ?? "";
     const text = await res.text();
@@ -404,8 +429,9 @@ export default function Home() {
     const json = await readJsonSafe(res);
     if (!res.ok) {
       const base = json?.error ?? `Request failed (${res.status})`;
+      const hint = typeof json?.hint === "string" && json.hint.trim().length ? ` ${json.hint.trim()}` : "";
       const stage = typeof json?.stage === "string" ? json.stage : "";
-      throw new Error(stage ? `${base} (stage: ${stage})` : base);
+      throw new Error(stage ? `${base}${hint} (stage: ${stage})` : `${base}${hint}`);
     }
     return json as T;
   }
@@ -463,7 +489,7 @@ export default function Home() {
 
       if (!provider.signMessage) throw new Error("Wallet does not support message signing");
       const timestampUnix = nowUnix;
-      const message = `Commit To Ship\nCreator Auth\nAction: launch_access\nWallet: ${payerWallet}\nTimestamp: ${timestampUnix}`;
+      const message = `Ship & Commit\nCreator Auth\nAction: launch_access\nWallet: ${payerWallet}\nTimestamp: ${timestampUnix}`;
       const signed = await provider.signMessage(new TextEncoder().encode(message), "utf8");
       const signatureBytes: Uint8Array = signed?.signature ?? signed;
       const signatureB58 = bs58.encode(signatureBytes);
@@ -574,7 +600,7 @@ export default function Home() {
   }
 
   function getSolanaProvider(): any {
-    return (window as any)?.solana;
+    return solanaProvider;
   }
 
   function base64ToBytes(b64: string): Uint8Array {
@@ -617,7 +643,7 @@ export default function Home() {
 
       const walletPubkey = provider.publicKey.toBase58();
       const timestampUnix = Math.floor(Date.now() / 1000);
-      const message = `Commit To Ship\nDev Verification\nMint: ${tokenMint}\nWallet: ${walletPubkey}\nTimestamp: ${timestampUnix}`;
+      const message = `Ship & Commit\nDev Verification\nMint: ${tokenMint}\nWallet: ${walletPubkey}\nTimestamp: ${timestampUnix}`;
 
       const signed = await provider.signMessage(new TextEncoder().encode(message), "utf8");
       const signatureBytes: Uint8Array = signed?.signature ?? signed;
@@ -1031,7 +1057,7 @@ export default function Home() {
       const projectBannerUrl = projectBannerUrlRaw
         ? projectBannerUrlRaw
         : String(projectSymbol ?? "").trim().toUpperCase() === "SHIP"
-          ? "/branding/COMMITTOSHIP-BANNER.png"
+          ? "/branding/SHIP-AND-COMMIT-BANNER.png"
           : "";
       const projectDesc = project?.description != null ? String(project.description) : "";
       const websiteUrl = project?.websiteUrl != null ? String(project.websiteUrl) : "";
@@ -1275,24 +1301,20 @@ export default function Home() {
       // Automated launch mode - use /api/launch
       if (commitKind === "creator_reward" && commitPath === "automated") {
         const provider = getSolanaProvider();
-        if (!provider?.connect) throw new Error("Wallet provider not found");
         const connectRes = await provider.connect();
         const pk = (connectRes?.publicKey ?? provider.publicKey)?.toBase58?.();
         if (!pk) throw new Error("Failed to read wallet public key");
-        if (!provider.signAndSendTransaction) {
-          throw new Error("Wallet does not support signAndSendTransaction");
-        }
 
+        // Prove control of the wallet (the server requires this on every launch call).
         let creatorAuth: { walletPubkey: string; signatureB58: string; timestampUnix: number } | undefined;
         if (!adminWalletPubkey) {
-          if (!provider.signMessage) throw new Error("Wallet does not support message signing");
           const nowUnix = Math.floor(Date.now() / 1000);
           const cached = launchCreatorAuthRef.current;
           if (cached && cached.walletPubkey === pk && Math.abs(nowUnix - cached.timestampUnix) < 4 * 60) {
             creatorAuth = cached;
           } else {
             const timestampUnix = nowUnix;
-            const message = `Commit To Ship\nCreator Auth\nAction: launch_access\nWallet: ${pk}\nTimestamp: ${timestampUnix}`;
+            const message = `Ship & Commit\nCreator Auth\nAction: launch_access\nWallet: ${pk}\nTimestamp: ${timestampUnix}`;
             const signed = await provider.signMessage(new TextEncoder().encode(message), "utf8");
             const signatureBytes: Uint8Array = signed?.signature ?? signed;
             const signatureB58 = bs58.encode(signatureBytes);
@@ -1302,12 +1324,25 @@ export default function Home() {
         }
 
         setStep("validate", { status: "done" });
-
         setStep("fund", { status: "active" });
 
         const payerWallet = pk;
+        const launchForm = {
+          name: draftName.trim(),
+          symbol: draftSymbol.trim().replace(/^\$+/, ""),
+          description: draftDescription.trim(),
+          imageUrl: draftImageUrl,
+          bannerUrl: draftBannerUrl,
+          statement,
+          payoutWallet: (creatorPubkey.trim() || payerWallet).trim(),
+          websiteUrl: draftWebsiteUrl.trim(),
+          xUrl: draftXUrl.trim(),
+          telegramUrl: draftTelegramUrl.trim(),
+          discordUrl: draftDiscordUrl.trim(),
+        };
+
+        // Validates the form and checks the wallet is eligible BEFORE any SOL is requested.
         const prepare = await apiPost<{
-          walletId: string;
           treasuryWallet: string;
           payerWallet: string;
           requiredLamports: number;
@@ -1319,6 +1354,7 @@ export default function Home() {
           payerWallet,
           devBuySol: 0,
           creatorAuth,
+          launch: launchForm,
         });
 
         let fundSig = "";
@@ -1326,36 +1362,16 @@ export default function Home() {
           const txBase64 = String(prepare?.txBase64 ?? "");
           if (!txBase64) throw new Error("Server did not return a funding transaction");
 
+          setStep("fund", { status: "active", detail: "Approve the top-up in your wallet" });
           const fundTx = Transaction.from(base64ToBytes(txBase64));
           const fundSent = await provider.signAndSendTransaction(fundTx);
           fundSig = String(fundSent?.signature ?? fundSent);
           if (!fundSig) throw new Error("Funding transaction failed to return a signature");
-
-          setStep("fund", { status: "done" });
+          setStep("fund", { status: "done", detail: "Top-up sent" });
         } else {
           setStep("fund", { status: "done", detail: "No top-up needed" });
         }
-        setStep("launch", { status: "active" });
-
-        const launchBody = {
-          walletId: prepare.walletId,
-          treasuryWallet: prepare.treasuryWallet,
-          payerWallet: prepare.payerWallet,
-          name: draftName.trim(),
-          symbol: draftSymbol.trim(),
-          description: draftDescription.trim(),
-          imageUrl: draftImageUrl,
-          bannerUrl: draftBannerUrl,
-          statement,
-          payoutWallet: creatorPubkey.trim(),
-          websiteUrl: draftWebsiteUrl.trim(),
-          xUrl: draftXUrl.trim(),
-          telegramUrl: draftTelegramUrl.trim(),
-          discordUrl: draftDiscordUrl.trim(),
-          devBuySol: 0,
-          fundingSig: fundSig || undefined,
-          creatorAuth,
-        };
+        setStep("launch", { status: "active", detail: fundSig ? "Waiting for top-up to confirm…" : undefined });
 
         type LaunchExecuteResponse =
           | {
@@ -1373,34 +1389,55 @@ export default function Home() {
               launchTxSig: string;
               creatorWallet: string;
               postLaunchError?: string | null;
+              code?: string;
+              error?: string;
             };
 
-        const executeOnce = async () => apiPost<LaunchExecuteResponse>("/api/launch/execute", launchBody);
+        const launchBody = () => ({
+          payerWallet,
+          ...launchForm,
+          devBuySol: 0,
+          fundingSig: fundSig || undefined,
+          creatorAuth,
+        });
+
+        const executeOnce = async () => apiPost<LaunchExecuteResponse>("/api/launch/execute", launchBody());
+        const isNeedsFunding = (r: LaunchExecuteResponse): r is Extract<LaunchExecuteResponse, { needsFunding: true }> =>
+          "needsFunding" in r && Boolean(r.needsFunding);
 
         let launched = await executeOnce();
-        if ("needsFunding" in launched && launched.needsFunding) {
+
+        // The server waits for our top-up to confirm. If the network is slow, retry - never charge twice.
+        for (let i = 0; i < 2 && isNeedsFunding(launched) && fundSig; i++) {
+          setStep("launch", { status: "active", detail: "Still confirming top-up…" });
+          launched = await executeOnce();
+        }
+
+        if (isNeedsFunding(launched)) {
+          if (fundSig) {
+            throw new Error("Your top-up hasn't confirmed yet. Wait a minute, then press Create again - you won't be asked to pay twice.");
+          }
+
           setStep("fund", { status: "active", detail: "Top-up required" });
-
-          const txBase64 = String(launched?.txBase64 ?? "");
-          if (!txBase64) throw new Error("Server did not return a funding transaction");
-
-          const topUpTx = Transaction.from(base64ToBytes(txBase64));
+          const topUpTx = Transaction.from(base64ToBytes(String(launched.txBase64 ?? "")));
           const topUpSent = await provider.signAndSendTransaction(topUpTx);
-          const topUpSig = String(topUpSent?.signature ?? topUpSent);
-          if (!topUpSig) throw new Error("Funding transaction failed to return a signature");
+          fundSig = String(topUpSent?.signature ?? topUpSent);
+          if (!fundSig) throw new Error("Funding transaction failed to return a signature");
 
-          setStep("fund", { status: "done" });
-          setStep("launch", { status: "active" });
+          setStep("fund", { status: "done", detail: "Top-up sent" });
+          setStep("launch", { status: "active", detail: "Waiting for top-up to confirm…" });
 
-          for (let i = 0; i < 3; i++) {
+          launched = await executeOnce();
+          for (let i = 0; i < 2 && isNeedsFunding(launched); i++) {
             launched = await executeOnce();
-            if (!("needsFunding" in launched && launched.needsFunding)) break;
-            await new Promise((r) => setTimeout(r, 1250));
+          }
+          if (isNeedsFunding(launched)) {
+            throw new Error("Your top-up hasn't confirmed yet. Wait a minute, then press Create again - you won't be asked to pay twice.");
           }
         }
 
-        if ("needsFunding" in launched && launched.needsFunding) {
-          throw new Error("Treasury top-up not confirmed yet. Please try again in a few seconds.");
+        if ((launched as any)?.code === "LAUNCH_PENDING") {
+          throw new Error(String((launched as any)?.error ?? "Your launch is still confirming on-chain. Please check your dashboard in a few minutes."));
         }
         setStep("launch", { status: "done" });
 
@@ -1425,11 +1462,7 @@ export default function Home() {
               const buyTx = Transaction.from(base64ToBytes(txBase64));
               const buySent = await provider.signAndSendTransaction(buyTx);
               const buySig = String((buySent as any)?.signature ?? buySent);
-              if (buySig) {
-                setStep("finalize", { detail: `Dev buy sent: ${buySig.slice(0, 12)}...` });
-              } else {
-                setStep("finalize", { detail: "Dev buy sent" });
-              }
+              setStep("finalize", { detail: buySig ? `Dev buy sent: ${buySig.slice(0, 12)}...` : "Dev buy sent" });
             } else {
               setStep("finalize", { detail: "Dev buy skipped" });
             }
@@ -1502,6 +1535,14 @@ export default function Home() {
       setBusy(null);
     }
   }
+
+  // Wallet connected in the header? Use it as the default launch/payout wallet.
+  useEffect(() => {
+    const pk = adapterPublicKey?.toBase58?.();
+    if (!pk) return;
+    setDevWalletPubkey((prev) => prev ?? pk);
+    setCreatorPubkey((prev) => (prev.trim().length ? prev : pk));
+  }, [adapterPublicKey]);
 
   useEffect(() => {
     if (statementTouched) return;
@@ -1712,7 +1753,7 @@ export default function Home() {
                           <div className="brandLockup">
                             <Image
                               src="/branding/white-logo.png"
-                              alt="Commit To Ship"
+                              alt="Ship & Commit"
                               width={64}
                               height={64}
                               priority
@@ -1723,11 +1764,11 @@ export default function Home() {
 
                         <div className="heroMark">
                           <span className="landingHeroMarkWrap">
-                            <img src="/branding/svg-logo.svg" alt="Commit To Ship" className="heroMarkImage heroMarkImageSvg" />
+                            <img src="/branding/svg-logo.svg" alt="Ship & Commit" className="heroMarkImage heroMarkImageSvg" />
                           </span>
                         </div>
 
-                        <h1 className="landingMobileTitle">COMMIT TO SHIP</h1>
+                        <h1 className="landingMobileTitle">SHIP &amp; COMMIT</h1>
 
                         <p className="heroLead">
                           Lock your{" "}
@@ -1766,8 +1807,6 @@ export default function Home() {
             ) : tab === "commit" ? (
               <div className="createPage" ref={commitmentRef}>
                 <div className="createWrap">
-                  <ClosedBetaNotice />
-
                   {/* Launch Mode Toggle */}
                   <div className="createModeToggle">
                     <button
@@ -1799,7 +1838,15 @@ export default function Home() {
 
                   {/* Image Upload Section */}
                   <div className="createSection">
-                    <label className={`createUploadZone ${draftImageUrl ? "createUploadZoneActive" : ""}`}>
+                    <label
+                      className={`createUploadZone ${draftImageUrl ? "createUploadZoneActive" : ""}`}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const f = e.dataTransfer?.files?.[0];
+                        if (f) void handleIconFile(f);
+                      }}
+                    >
                       {draftImageUrl ? (
                         <img src={draftImageUrl} alt="Token icon" className="createPreviewImg" />
                       ) : (
@@ -1817,22 +1864,10 @@ export default function Home() {
                         accept="image/png,image/jpeg,image/webp,image/gif"
                         style={{ display: "none" }}
                         disabled={busy != null}
-                        onChange={async (e) => {
+                        onChange={(e) => {
                           const f = e.currentTarget.files?.[0];
                           e.currentTarget.value = "";
-                          if (!f) return;
-                          setError(null);
-                          setBusy("upload:icon");
-                          try {
-                            await validatePumpfunAsset(f, "icon");
-                            const uploadFn = commitPath === "automated" ? uploadLaunchAsset : uploadProjectAsset;
-                            const { publicUrl } = await uploadFn({ kind: "icon", file: f });
-                            setDraftImageUrl(publicUrl);
-                          } catch (err) {
-                            setError((err as Error).message);
-                          } finally {
-                            setBusy(null);
-                          }
+                          if (f) void handleIconFile(f);
                         }}
                       />
                     </label>
@@ -1875,6 +1910,7 @@ export default function Home() {
                           value={draftName}
                           onChange={(e) => setDraftName(e.target.value)}
                           placeholder="Name your coin"
+                          maxLength={32}
                         />
                       </div>
                       <div className="createField">
@@ -1890,6 +1926,7 @@ export default function Home() {
                               setDraftSymbol(next);
                             }}
                             placeholder="e.g. DOGE"
+                            maxLength={11}
                             inputMode="text"
                             autoCapitalize="characters"
                           />
@@ -1904,6 +1941,7 @@ export default function Home() {
                         value={draftDescription}
                         onChange={(e) => setDraftDescription(e.target.value)}
                         placeholder="Write a short description"
+                        maxLength={520}
                       />
                     </div>
 
@@ -2115,63 +2153,29 @@ export default function Home() {
                     <>
                       <div className="createDivider" />
                       <div className="createSection">
-                        <h2 className="createSectionTitle">Creator Sign-In</h2>
-                        <p className="createSectionSub">Sign in with your wallet to launch.</p>
+                        <h2 className="createSectionTitle">Wallet &amp; payouts</h2>
+                        <p className="createSectionSub">Connect the wallet that launches your token. Milestone payouts are sent to your payout wallet.</p>
 
-                        {adminWalletPubkey ? (
-                          <div className="createInfoBox" style={{ marginBottom: 0 }}>
-                            <div className="createInfoText">Signed in as {adminWalletPubkey}</div>
-                          </div>
-                        ) : null}
+                        <button
+                          className="createUploadBtn"
+                          style={{ background: devWalletPubkey ? "rgba(134, 239, 172, 0.2)" : undefined, color: devWalletPubkey ? "rgba(134, 239, 172, 0.9)" : undefined }}
+                          onClick={connectDevWallet}
+                          disabled={busy != null || devVerifyBusy != null}
+                        >
+                          {devVerifyBusy === "connect" ? "Connecting..." : devWalletPubkey ? `Connected · ${shortWallet(devWalletPubkey)}` : "Connect Wallet"}
+                        </button>
 
-                        {adminAuthError ? <div className="createError">{adminAuthError}</div> : null}
-
-                        <div style={{ display: "flex", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
-                          {!adminWalletPubkey ? (
-                            <button
-                              className="createUploadBtn"
-                              onClick={adminSignIn}
-                              disabled={busy != null || adminAuthBusy != null}
-                            >
-                              {adminAuthBusy === "signin" ? "Signing in..." : "Sign In"}
-                            </button>
-                          ) : (
-                            <button
-                              className="createUploadBtn"
-                              style={{ background: "rgba(134, 239, 172, 0.2)", color: "rgba(134, 239, 172, 0.9)" }}
-                              disabled
-                            >
-                              Signed In
-                            </button>
-                          )}
-
-                          {adminWalletPubkey ? (
-                            <button
-                              className="createUploadBtn"
-                              style={{ background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)" }}
-                              onClick={adminSignOut}
-                              disabled={busy != null || adminAuthBusy != null}
-                            >
-                              {adminAuthBusy === "signout" ? "Signing out..." : "Sign out"}
-                            </button>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      <div className="createDivider" />
-                      <div className="createSection">
-                        <h2 className="createSectionTitle">Connect Wallet</h2>
-                        <p className="createSectionSub">Connect your wallet to receive milestone payouts.</p>
-
-                        <div className="createField">
-                          <label className="createLabel">Your Wallet</label>
+                        <div className="createField" style={{ marginTop: 16 }}>
+                          <label className="createLabel">Payout wallet</label>
                           <input
                             className="createInput"
                             value={creatorPubkey}
-                            onChange={(e) => setCreatorPubkey(e.target.value)}
-                            placeholder="Your wallet address"
-                            readOnly={Boolean(devWalletPubkey)}
+                            onChange={(e) => setCreatorPubkey(e.target.value.trim())}
+                            placeholder="Defaults to your connected wallet"
+                            spellCheck={false}
+                            autoComplete="off"
                           />
+                          <div className="createFieldHint">Released milestone funds are sent here. Double-check the address before launching.</div>
                         </div>
 
                         <div className="createField">
@@ -2203,14 +2207,13 @@ export default function Home() {
                           ) : null}
                         </div>
 
-                        <button
-                          className="createUploadBtn"
-                          style={{ marginTop: 12, background: devWalletPubkey ? "rgba(134, 239, 172, 0.2)" : undefined, color: devWalletPubkey ? "rgba(134, 239, 172, 0.9)" : undefined }}
-                          onClick={connectDevWallet}
-                          disabled={busy != null || devVerifyBusy != null}
-                        >
-                          {devVerifyBusy === "connect" ? "Connecting..." : devWalletPubkey ? "Connected" : "Connect Wallet"}
-                        </button>
+                        <div className="createInfoBox" style={{ marginTop: 16, marginBottom: 0 }}>
+                          <div className="createInfoTitle">What it costs</div>
+                          <div className="createInfoText">
+                            About 0.011 SOL (pump.fun account rent + network fees) is sent to a dedicated launch wallet we create for you.
+                            Each wallet can run one Auto-Lock launch. Use Manual Lock for tokens you&apos;ve already launched.
+                          </div>
+                        </div>
                       </div>
                     </>
                   ) : null}
@@ -2385,8 +2388,8 @@ export default function Home() {
                                           onError={(ev) => {
                                             const img = ev.currentTarget as HTMLImageElement;
                                             const sym = String(c.projectSymbol ?? "").trim().toUpperCase();
-                                            const fallback = "/branding/COMMITTOSHIP-BANNER.png";
-                                            if (sym === "SHIP" && !img.src.includes("COMMITTOSHIP-BANNER.png")) {
+                                            const fallback = "/branding/SHIP-AND-COMMIT-BANNER.png";
+                                            if (sym === "SHIP" && !img.src.includes("SHIP-AND-COMMIT-BANNER.png")) {
                                               img.src = fallback;
                                               return;
                                             }

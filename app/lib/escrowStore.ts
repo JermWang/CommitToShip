@@ -42,6 +42,8 @@ export type RewardMilestone = {
   requireNoMintAuthority?: boolean;
   autoConfirmedAtUnix?: number;
   autoEvidence?: unknown;
+  /** When market-cap tracking began; only price snapshots after this can satisfy the milestone. */
+  autoTrackingStartedAtUnix?: number;
 };
 
 export function getEffectiveRewardMilestoneUnlockLamports(input: { milestone: RewardMilestone; totalFundedLamports: number }): number {
@@ -2047,6 +2049,43 @@ export async function tryAcquireMilestoneFailureDistributionCreate(input: {
   );
  }
 
+
+/** Releases a failure-distribution claim that was reserved but never paid (no tx signature yet), so the voter can retry. */
+export async function releaseMilestoneFailureDistributionClaim(input: { distributionId: string; walletPubkey: string }): Promise<void> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  if (!hasDatabase()) {
+    const byWallet = mem.milestoneFailureClaimsByDistributionId.get(input.distributionId);
+    const existing = byWallet?.get(input.walletPubkey);
+    if (existing && !existing.txSig) byWallet?.delete(input.walletPubkey);
+    return;
+  }
+
+  await getPool().query(
+    "delete from milestone_failure_distribution_claims where distribution_id=$1 and wallet_pubkey=$2 and (tx_sig is null or tx_sig='')",
+    [input.distributionId, input.walletPubkey]
+  );
+}
+
+/** Same as above for commitment-level failure distributions. */
+export async function releaseFailureDistributionClaim(input: { distributionId: string; walletPubkey: string }): Promise<void> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  if (!hasDatabase()) {
+    const byWallet = (mem as any).failureClaimsByDistributionId?.get(input.distributionId) as Map<string, any> | undefined;
+    const existing = byWallet?.get(input.walletPubkey);
+    if (existing && !existing.txSig) byWallet?.delete(input.walletPubkey);
+    return;
+  }
+
+  await getPool().query(
+    "delete from failure_distribution_claims where distribution_id=$1 and wallet_pubkey=$2 and (tx_sig is null or tx_sig='')",
+    [input.distributionId, input.walletPubkey]
+  );
+}
+
  export async function getMilestoneFailureReservedLamports(commitmentId: string): Promise<number> {
   await ensureSchema();
   ensureMockSeeded();
@@ -2371,19 +2410,33 @@ export function normalizeRewardMilestonesClaimable(input: {
   return { milestones: next, changed };
 }
 
+// Statuses that only an explicit admin/resolution action may change - background normalization must never revive them.
+const TERMINAL_COMMITMENT_STATUSES = new Set<CommitmentStatus>(["failed", "resolving", "resolved_success", "resolved_failure", "archived"]);
+
+/**
+ * Persists derived reward totals / milestone states.
+ * - Terminal statuses (failed, resolving, resolved_*, archived) are never overwritten here.
+ * - Pass `expectedMilestones` (the list you normalized from) to make the write conditional: if someone else changed
+ *   the milestones in the meantime the write is skipped and the current record is returned, so a stale read can
+ *   never clobber a concurrent completion / release / vote.
+ */
 export async function updateRewardTotalsAndMilestones(input: {
   id: string;
   totalFundedLamports?: number;
   unlockedLamports?: number;
   milestones?: RewardMilestone[];
   status?: CommitmentStatus;
+  expectedMilestones?: RewardMilestone[];
 }): Promise<CommitmentRecord> {
   await ensureSchema();
 
   if (!hasDatabase()) {
     const current = mem.commitments.get(input.id);
     if (!current) throw new Error("Not found");
-    const nextStatus = current.status === "archived" && input.status != null && input.status !== "archived" ? current.status : (input.status ?? current.status);
+    const nextStatus =
+      TERMINAL_COMMITMENT_STATUSES.has(current.status) && input.status != null && input.status !== current.status
+        ? current.status
+        : (input.status ?? current.status);
     const updated: CommitmentRecord = {
       ...current,
       totalFundedLamports: input.totalFundedLamports ?? current.totalFundedLamports,
@@ -2400,7 +2453,7 @@ export async function updateRewardTotalsAndMilestones(input: {
   const current = await getCommitment(input.id);
   if (!current) throw new Error("Not found");
   const desiredStatus =
-    current.status === "archived" && input.status != null && input.status !== "archived" ? undefined : input.status;
+    TERMINAL_COMMITMENT_STATUSES.has(current.status) && input.status != null && input.status !== current.status ? undefined : input.status;
 
   const fields: string[] = [];
   const values: any[] = [input.id];
@@ -2429,9 +2482,21 @@ export async function updateRewardTotalsAndMilestones(input: {
     return current;
   }
 
-  const res = await pool.query(`update commitments set ${fields.join(", ")} where id=$1 returning *`, values);
+  let where = "id=$1";
+  if (input.expectedMilestones && input.milestones != null) {
+    // Compare-and-swap on the milestones document (jsonb equality ignores key order / whitespace).
+    where += ` and coalesce(milestones_json, '[]')::jsonb = $${idx++}::jsonb`;
+    values.push(JSON.stringify(input.expectedMilestones));
+  }
+
+  const res = await pool.query(`update commitments set ${fields.join(", ")} where ${where} returning *`, values);
   const row = res.rows[0];
-  if (!row) throw new Error("Not found");
+  if (!row) {
+    // Either the record is gone, or (CAS) somebody changed it first - in which case theirs wins.
+    const latest = await getCommitment(input.id);
+    if (!latest) throw new Error("Not found");
+    return latest;
+  }
   return rowToRecord(row);
 }
 
@@ -2711,6 +2776,31 @@ export async function listCommitments(): Promise<CommitmentRecord[]> {
   const pool = getPool();
   const res = await pool.query("select * from commitments order by created_at_unix desc");
   return res.rows.map(rowToRecord);
+}
+
+/** The live managed creator-reward commitment (if any) whose creator wallet is `authority`. */
+export async function findManagedCommitmentByAuthority(authority: string): Promise<CommitmentRecord | null> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  const key = String(authority ?? "").trim();
+  if (!key) return null;
+
+  if (!hasDatabase()) {
+    return (
+      Array.from(mem.commitments.values()).find(
+        (c) => c.kind === "creator_reward" && c.creatorFeeMode === "managed" && c.status !== "archived" && c.authority === key
+      ) ?? null
+    );
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    "select * from commitments where kind='creator_reward' and creator_fee_mode='managed' and status <> 'archived' and authority=$1 limit 1",
+    [key]
+  );
+  const row = res.rows[0];
+  return row ? rowToRecord(row) : null;
 }
 
 export async function getCommitment(id: string): Promise<CommitmentRecord | null> {

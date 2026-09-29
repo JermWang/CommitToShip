@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import { X_URL } from "../lib/siteConfig";
 
 type ActiveTab = "landing" | "discover" | "commit" | "creator" | "docs";
 
@@ -89,7 +90,7 @@ export default function GlobalNavLinks() {
         </Link>
         <a
           className="globalNavIconBtn"
-          href="https://x.com/CommitToShip"
+          href={X_URL}
           target="_blank"
           rel="noreferrer noopener"
           aria-label="Twitter"
@@ -122,7 +123,7 @@ export default function GlobalNavLinks() {
         </button>
         <a
           className="globalNavIconBtn"
-          href="https://x.com/CommitToShip"
+          href={X_URL}
           target="_blank"
           rel="noreferrer noopener"
           aria-label="Twitter"
@@ -180,7 +181,7 @@ export default function GlobalNavLinks() {
         </Link>
         <a
           className="globalNavMenuItem"
-          href="https://x.com/CommitToShip"
+          href={X_URL}
           target="_blank"
           rel="noreferrer noopener"
           onClick={() => setMobileOpen(false)}

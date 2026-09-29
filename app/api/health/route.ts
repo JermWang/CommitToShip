@@ -5,6 +5,7 @@ import { getConnection } from "../../lib/solana";
 import { getSafeErrorMessage } from "../../lib/safeError";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 type HealthStatus = "ok" | "degraded" | "error";
 

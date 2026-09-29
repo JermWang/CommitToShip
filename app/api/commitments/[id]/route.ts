@@ -64,7 +64,7 @@ export async function GET(_req: Request, ctx: { params: { id: string } }) {
       const totalFundedLamports = Math.max(0, balanceLamports + releasedLamports);
 
       const allReleased = normalized.milestones.length > 0 && normalized.milestones.every((m) => m.status === "released");
-      const nextStatus = allReleased ? "completed" : (record.status === "completed" ? "completed" : "active");
+      const nextStatus = allReleased ? "completed" : (record.status === "completed" || record.status === "failed" || record.status === "resolving" ? record.status : "active");
 
       const shouldPersist =
         normalized.changed ||
@@ -79,6 +79,7 @@ export async function GET(_req: Request, ctx: { params: { id: string } }) {
             unlockedLamports,
             totalFundedLamports,
             status: nextStatus,
+            expectedMilestones: record.milestones as RewardMilestone[],
           })
         : record;
 

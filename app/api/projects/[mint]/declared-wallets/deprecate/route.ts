@@ -20,7 +20,7 @@ function isPublicLaunchEnabled(): boolean {
 }
 
 function expectedDevVerifyMessage(input: { tokenMint: string; walletPubkey: string; timestampUnix: number }): string {
-  return `Commit To Ship\nDev Verification\nMint: ${input.tokenMint}\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}`;
+  return `Ship & Commit\nDev Verification\nMint: ${input.tokenMint}\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}`;
 }
 
 async function requireProjectAuthority(req: Request, mint: string, body: any): Promise<{ ok: true } | { ok: false; res: NextResponse }> {

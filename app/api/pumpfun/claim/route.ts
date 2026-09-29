@@ -12,7 +12,7 @@ import { getSafeErrorMessage } from "../../../lib/safeError";
 export const runtime = "nodejs";
 
 function expectedClaimMessage(input: { creatorPubkey: string; timestampUnix: number }): string {
-  return `Commit To Ship\nPump.fun Claim\nCreator: ${input.creatorPubkey}\nTimestamp: ${input.timestampUnix}`;
+  return `Ship & Commit\nPump.fun Claim\nCreator: ${input.creatorPubkey}\nTimestamp: ${input.timestampUnix}`;
 }
 
 export async function POST(req: Request) {

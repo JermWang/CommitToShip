@@ -53,6 +53,11 @@ export function getPumpEventAuthorityPda(): PublicKey {
   return pda;
 }
 
+export function getBondingCurveV2Pda(mint: PublicKey): PublicKey {
+  const [pda] = PublicKey.findProgramAddressSync([Buffer.from("bonding-curve-v2"), mint.toBuffer()], PUMP_PROGRAM_ID);
+  return pda;
+}
+
 export function getPumpGlobalPda(): PublicKey {
   const [pda] = PublicKey.findProgramAddressSync([GLOBAL_SEED], PUMP_PROGRAM_ID);
   return pda;
@@ -245,14 +250,64 @@ export function buildCreateAssociatedTokenAccountIdempotentInstruction(input: {
   return { ix, ata };
 }
 
-async function getGlobalFeeRecipient(input: { connection: Connection }): Promise<PublicKey> {
+// Byte offsets inside the pump.fun `Global` account (8-byte Anchor discriminator first). See pump.fun's public IDL.
+const GLOBAL_FEE_RECIPIENT_OFFSET = 8 + 1 + 32;
+const GLOBAL_BUYBACK_FEE_RECIPIENTS_OFFSET = 741; // after is_cashback_enabled
+const GLOBAL_BUYBACK_FEE_RECIPIENTS_COUNT = 8;
+
+/**
+ * Reads what a buy needs from pump.fun's Global state:
+ *  - the protocol fee recipient
+ *  - a buyback fee recipient. pump.fun's program now REQUIRES one (error BuybackFeeRecipientMissing / 6062 otherwise)
+ *    as an extra writable account on buy instructions; any non-default entry of `buyback_fee_recipients` is valid.
+ */
+async function getGlobalPumpConfig(input: { connection: Connection }): Promise<{ feeRecipient: PublicKey; buybackFeeRecipient: PublicKey | null }> {
   const global = getPumpGlobalPda();
   const acct = await input.connection.getAccountInfo(global, "confirmed");
-  if (!acct?.data || acct.data.length < 8 + 1 + 32 + 32) {
+  if (!acct?.data || acct.data.length < GLOBAL_FEE_RECIPIENT_OFFSET + 32) {
     throw new Error("Failed to read pump.fun global state");
   }
-  const feeRecipientBytes = acct.data.subarray(8 + 1 + 32, 8 + 1 + 32 + 32);
-  return new PublicKey(feeRecipientBytes);
+  const feeRecipient = new PublicKey(acct.data.subarray(GLOBAL_FEE_RECIPIENT_OFFSET, GLOBAL_FEE_RECIPIENT_OFFSET + 32));
+
+  let buybackFeeRecipient: PublicKey | null = null;
+  const end = GLOBAL_BUYBACK_FEE_RECIPIENTS_OFFSET + GLOBAL_BUYBACK_FEE_RECIPIENTS_COUNT * 32;
+  if (acct.data.length >= end) {
+    const candidates: PublicKey[] = [];
+    for (let i = 0; i < GLOBAL_BUYBACK_FEE_RECIPIENTS_COUNT; i++) {
+      const start = GLOBAL_BUYBACK_FEE_RECIPIENTS_OFFSET + i * 32;
+      const pk = new PublicKey(acct.data.subarray(start, start + 32));
+      if (!pk.equals(SystemProgram.programId)) candidates.push(pk);
+    }
+    if (candidates.length) buybackFeeRecipient = candidates[Math.floor(Math.random() * candidates.length)];
+  }
+
+  return { feeRecipient, buybackFeeRecipient };
+}
+
+/**
+ * Conservative minimum tokens out for a buy of `spendableSol` lamports against the given virtual reserves
+ * (constant-product curve, ~2% fees assumed, `slippageBps` tolerance). Protects the buyer from a bad fill.
+ */
+export function estimateMinTokensOut(input: { spendableSolInLamports: bigint; virtualTokenReserves: bigint; virtualSolReserves: bigint; slippageBps?: number }): bigint {
+  const spend = BigInt(input.spendableSolInLamports);
+  const vt = BigInt(input.virtualTokenReserves);
+  const vs = BigInt(input.virtualSolReserves);
+  if (spend <= 0n || vt <= 0n || vs <= 0n) return 1n;
+  const net = (spend * 98n) / 100n;
+  const expected = (net * vt) / (vs + net);
+  const slippage = BigInt(Math.max(0, Math.min(9_000, Math.floor(input.slippageBps ?? 1_000))));
+  const min = (expected * (10_000n - slippage)) / 10_000n;
+  return min > 0n ? min : 1n;
+}
+
+async function readCurveReserves(connection: Connection, mint: PublicKey): Promise<{ vt: bigint; vs: bigint } | null> {
+  try {
+    const acct = await connection.getAccountInfo(getBondingCurvePda(mint), "confirmed");
+    if (!acct?.data || acct.data.length < 24) return null;
+    return { vt: acct.data.readBigUInt64LE(8), vs: acct.data.readBigUInt64LE(16) };
+  } catch {
+    return null;
+  }
 }
 
 export function buildBuyExactSolInInstruction(input: {
@@ -262,6 +317,7 @@ export function buildBuyExactSolInInstruction(input: {
   associatedBondingCurve: PublicKey;
   associatedUser: PublicKey;
   feeRecipient: PublicKey;
+  buybackFeeRecipient?: PublicKey | null;
   creator: PublicKey;
   spendableSolInLamports: bigint;
   minTokensOut: bigint;
@@ -278,8 +334,10 @@ export function buildBuyExactSolInInstruction(input: {
     [
       BUY_EXACT_SOL_IN_DISCRIMINATOR,
       u64le(BigInt(input.spendableSolInLamports)),
-      u64le(BigInt(input.minTokensOut)),
-      borshOptionBool(input.trackVolume === false ? false : true),
+      // pump.fun rejects a zero minimum (BuyZeroAmount); 1 is the smallest valid "no protection" value.
+      u64le(BigInt(input.minTokensOut) > 0n ? BigInt(input.minTokensOut) : 1n),
+      // OptionBool is a single-byte struct in pump's IDL.
+      Buffer.from([input.trackVolume === false ? 0 : 1]),
     ].map(toU8)
   );
 
@@ -302,6 +360,10 @@ export function buildBuyExactSolInInstruction(input: {
       { pubkey: userVolumeAccumulator, isSigner: false, isWritable: true },
       { pubkey: feeConfig, isSigner: false, isWritable: false },
       { pubkey: FEE_PROGRAM_ID, isSigner: false, isWritable: false },
+      // pump.fun's current program expects two trailing accounts on buys: the mint's bonding-curve-v2 PDA, then a
+      // buyback fee recipient (verified against live mainnet buy transactions).
+      { pubkey: getBondingCurveV2Pda(input.mint), isSigner: false, isWritable: true },
+      ...(input.buybackFeeRecipient ? [{ pubkey: input.buybackFeeRecipient, isSigner: false, isWritable: true }] : []),
     ],
     data,
   });
@@ -321,7 +383,7 @@ export async function buildUnsignedPumpfunCreateV2Tx(input: {
   computeUnitLimit?: number;
   computeUnitPriceMicroLamports?: number;
 }): Promise<{ tx: Transaction; bondingCurve: PublicKey; associatedBondingCurve: PublicKey; associatedUser: PublicKey; feeRecipient: PublicKey }> {
-  const feeRecipient = await getGlobalFeeRecipient({ connection: input.connection });
+  const { feeRecipient, buybackFeeRecipient } = await getGlobalPumpConfig({ connection: input.connection });
 
   const { ix: createIx, bondingCurve, associatedBondingCurve } = buildCreateV2Instruction({
     mint: input.mint,
@@ -352,6 +414,7 @@ export async function buildUnsignedPumpfunCreateV2Tx(input: {
           associatedBondingCurve,
           associatedUser,
           feeRecipient,
+          buybackFeeRecipient,
           creator: input.creator,
           spendableSolInLamports: spendable,
           minTokensOut: BigInt(input.minTokensOut ?? 0n),
@@ -389,7 +452,7 @@ export async function buildUnsignedPumpfunBuyTx(input: {
   computeUnitLimit?: number;
   computeUnitPriceMicroLamports?: number;
 }): Promise<{ tx: Transaction; bondingCurve: PublicKey; associatedBondingCurve: PublicKey; associatedUser: PublicKey; feeRecipient: PublicKey }> {
-  const feeRecipient = await getGlobalFeeRecipient({ connection: input.connection });
+  const { feeRecipient, buybackFeeRecipient } = await getGlobalPumpConfig({ connection: input.connection });
   const bondingCurve = getBondingCurvePda(input.mint);
   const associatedBondingCurve = getAssociatedTokenAddress({ owner: bondingCurve, mint: input.mint, tokenProgram: TOKEN_2022_PROGRAM_ID });
   const associatedUser = getAssociatedTokenAddress({ owner: input.user, mint: input.mint, tokenProgram: TOKEN_2022_PROGRAM_ID });
@@ -401,6 +464,14 @@ export async function buildUnsignedPumpfunBuyTx(input: {
     tokenProgram: TOKEN_2022_PROGRAM_ID,
   });
 
+  let minTokensOut = BigInt(input.minTokensOut ?? 0n);
+  if (minTokensOut <= 0n) {
+    const reserves = await readCurveReserves(input.connection, input.mint);
+    minTokensOut = reserves
+      ? estimateMinTokensOut({ spendableSolInLamports: BigInt(input.spendableSolInLamports), virtualTokenReserves: reserves.vt, virtualSolReserves: reserves.vs })
+      : 1n;
+  }
+
   const buyIx = buildBuyExactSolInInstruction({
     user: input.user,
     mint: input.mint,
@@ -408,9 +479,10 @@ export async function buildUnsignedPumpfunBuyTx(input: {
     associatedBondingCurve,
     associatedUser,
     feeRecipient,
+    buybackFeeRecipient,
     creator: input.creator,
     spendableSolInLamports: BigInt(input.spendableSolInLamports),
-    minTokensOut: BigInt(input.minTokensOut ?? 0n),
+    minTokensOut,
     trackVolume: true,
   });
 

@@ -9,14 +9,6 @@ import { getCommitment, publicView, updateCommitmentAdminFields } from "../../..
 
 export const runtime = "nodejs";
 
-function isCronAuthorized(req: Request): boolean {
-  const secret = String(process.env.CRON_SECRET ?? "").trim();
-  if (!secret) return false;
-  const header = String(req.headers.get("x-cron-secret") ?? "").trim();
-  if (!header) return false;
-  return header === secret;
-}
-
 export async function POST(req: Request) {
   try {
     const rl = await checkRateLimit(req, { keyPrefix: "admin:commitments:update", limit: 30, windowSeconds: 60 });
@@ -26,7 +18,7 @@ export async function POST(req: Request) {
       return res;
     }
 
-    const cronOk = isCronAuthorized(req);
+    const cronOk = false;
     if (!cronOk) {
       verifyAdminOrigin(req);
       if (!(await isAdminRequestAsync(req))) {

@@ -38,7 +38,7 @@ function getDeliveryGraceSeconds(): number {
 }
 
 function milestoneCompleteMessage(input: { commitmentId: string; milestoneId: string }): string {
-  return `Commit To Ship\nMilestone Completion\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}`;
+  return `Ship & Commit\nMilestone Completion\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}`;
 }
 
 function milestoneCompleteMessageV2(input: { commitmentId: string; milestoneId: string; review?: "early" }): string {
@@ -133,6 +133,13 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
       return NextResponse.json({ error: "Milestone is failed", commitment: publicView(record) }, { status: 409 });
     }
 
+    if ((m as any).autoKind === "market_cap") {
+      return NextResponse.json(
+        { error: "Market cap milestones complete automatically when the target is reached.", code: "auto_milestone" },
+        { status: 400 }
+      );
+    }
+
     if (m.completedAtUnix != null) {
       if (matchesEarly) {
         const completedAtUnix = Number(m.completedAtUnix);
@@ -203,6 +210,19 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
 
     if (!Number.isFinite(unlockLamports) || unlockLamports < 0) {
       return NextResponse.json({ error: "Invalid milestone unlock configuration" }, { status: 400 });
+    }
+
+    // A percent milestone completed against an empty escrow would freeze at 0 SOL forever (it could never be
+    // claimed, re-completed or edited). Make the creator wait until fees have actually accumulated.
+    if (unlockLamports <= 0) {
+      return NextResponse.json(
+        {
+          error: "The escrow is empty, so this milestone would unlock 0 SOL.",
+          hint: "Wait until creator fees have accumulated in escrow, then mark the milestone complete.",
+          code: "escrow_empty",
+        },
+        { status: 409 }
+      );
     }
 
     milestones[idx] = {

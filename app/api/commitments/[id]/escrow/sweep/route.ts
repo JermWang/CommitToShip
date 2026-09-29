@@ -19,7 +19,7 @@ function isPublicLaunchEnabled(): boolean {
 }
 
 function expectedSweepMessage(input: { commitmentId: string; timestampUnix: number }): string {
-  return `Commit To Ship\nEscrow Sweep\nCommitment: ${input.commitmentId}\nTimestamp: ${input.timestampUnix}`;
+  return `Ship & Commit\nEscrow Sweep\nCommitment: ${input.commitmentId}\nTimestamp: ${input.timestampUnix}`;
 }
 
 export async function POST(req: Request, ctx: { params: { id: string } }) {

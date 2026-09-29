@@ -28,8 +28,15 @@ export function getServerCommitment(): Commitment {
   return raw || "confirmed";
 }
 
+let warnedPublicRpc = false;
+
 export function getConnection(): Connection {
-  const url = process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
+  const configured = String(process.env.SOLANA_RPC_URL ?? "").trim();
+  if (!configured && process.env.NODE_ENV === "production" && !warnedPublicRpc) {
+    warnedPublicRpc = true;
+    console.warn("[rpc] SOLANA_RPC_URL is not set - falling back to the public mainnet RPC, which is heavily rate-limited. Set a dedicated RPC (Helius/Triton/QuickNode).");
+  }
+  const url = configured || "https://api.mainnet-beta.solana.com";
   return new Connection(url, getServerCommitment());
 }
 

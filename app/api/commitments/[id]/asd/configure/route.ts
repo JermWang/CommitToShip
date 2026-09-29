@@ -28,7 +28,7 @@ function configureMessage(input: {
   maxDailyAmountRaw: string | null;
   minIntervalSeconds: number;
 }): string {
-  return `Commit To Ship\nASD Configure\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}\nDestination: ${input.destinationPubkey}\nDailyPercentBps: ${input.dailyPercentBps}\nSlippageBps: ${input.slippageBps}\nMaxDailyAmountRaw: ${input.maxDailyAmountRaw ?? ""}\nMinIntervalSeconds: ${input.minIntervalSeconds}`;
+  return `Ship & Commit\nASD Configure\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}\nDestination: ${input.destinationPubkey}\nDailyPercentBps: ${input.dailyPercentBps}\nSlippageBps: ${input.slippageBps}\nMaxDailyAmountRaw: ${input.maxDailyAmountRaw ?? ""}\nMinIntervalSeconds: ${input.minIntervalSeconds}`;
 }
 
 function defaultDestinationPubkey(): string {

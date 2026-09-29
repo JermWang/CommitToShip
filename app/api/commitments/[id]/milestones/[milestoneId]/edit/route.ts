@@ -17,7 +17,7 @@ function milestoneEditMessage(input: {
   unlockPercent: number;
   dueAtUnix: number;
 }): string {
-  return `Commit To Ship\nEdit Milestone\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}\nRequest: ${input.requestId}\nTitle: ${input.title}\nUnlockPercent: ${input.unlockPercent}\nDueAtUnix: ${input.dueAtUnix}`;
+  return `Ship & Commit\nEdit Milestone\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}\nRequest: ${input.requestId}\nTitle: ${input.title}\nUnlockPercent: ${input.unlockPercent}\nDueAtUnix: ${input.dueAtUnix}`;
 }
 
 function allocatedPercentFromMilestones(input: { milestones: RewardMilestone[]; totalFundedLamports: number }): number {
@@ -96,6 +96,9 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
     if (idx < 0) return NextResponse.json({ error: "Milestone not found" }, { status: 404 });
 
     const existing = milestones[idx];
+    if ((existing as any).autoKind === "market_cap") {
+      return NextResponse.json({ error: "Market cap milestones can't be edited.", code: "auto_milestone" }, { status: 400 });
+    }
     if (existing.completedAtUnix != null) {
       return NextResponse.json({ error: "Cannot edit after completion" }, { status: 409 });
     }

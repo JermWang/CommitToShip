@@ -1,10 +1,12 @@
-# Commit To Ship — Operations Runbook
+# Ship & Commit — Operations Runbook
 
 ## Production Deployment Checklist
 
 - Configure environment variables (see `.env.example`).
-- Run Supabase migrations (including `0006_rate_limits.sql`, `0007_weighted_approvals.sql`, `0008_audit_logs.sql`).
-- Ensure `DATABASE_URL` is set (required in production).
+- Tables are created automatically at runtime (no manual migrations are needed on a fresh Postgres).
+- Ensure `DATABASE_URL` is set (required in production; on Railway reference the Postgres service).
+- Ensure `CRON_SECRET` is set (required for the built-in background scheduler).
+- Set `CTS_PUBLIC_LAUNCHES=true` to allow anyone to launch; `CTS_LAUNCHES_PAUSED=1` is the emergency stop.
 - Ensure `CTS_MOCK_MODE` is unset/false (forbidden in production).
 - Ensure `ESCROW_DB_SECRET` is set (required in production to encrypt escrow secrets).
 - Ensure `ADMIN_WALLET_PUBKEYS` is set (required in production).
@@ -28,12 +30,10 @@
   - Update secret in hosting provider.
   - Validate pump.fun launch flow and any Privy wallet signing paths.
 
-### `SUPABASE_SERVICE_ROLE_KEY`
+### `ASSET_SIGNING_SECRET` (falls back to `ESCROW_DB_SECRET`)
 
-- Purpose: server-side avatar upload signing.
-- Rotation:
-  - Update in hosting provider.
-  - Validate avatar upload-url endpoint.
+- Purpose: signs short-lived image upload URLs (token icons, banners, avatars).
+- Rotation: update in Railway; in-flight uploads (max 2h validity) will need a retry.
 
 ### `ESCROW_FEE_PAYER_SECRET_KEY` (optional)
 
@@ -72,9 +72,10 @@ Symptoms:
 Actions:
 
 - Confirm `DATABASE_URL` validity.
-- Confirm Supabase status / pooler status.
-- If using Supabase pooler, ensure pooler URL and port are correct.
+- Confirm the Railway Postgres service is healthy (Railway dashboard → Postgres → Metrics).
+- Ensure `DATABASE_URL` references the Postgres service (`${{Postgres.DATABASE_URL}}`).
 - Consider temporarily increasing `PG_POOL_CONNECTION_TIMEOUT_MS`.
+- Liveness for the platform healthcheck is `/api/healthz` (no dependencies); `/api/health` runs the deep DB + RPC checks.
 
 ### 2) Solana RPC outage / degraded RPC
 
@@ -131,7 +132,17 @@ For each event with a `signature`, confirm the tx on explorer.
 
 ## Scheduled Tasks
 
-### Reward milestone normalization
+### Built-in scheduler
 
-- Use the admin-only normalization endpoint to keep reward milestone claimable status aligned with time + approvals.
-- This endpoint is designed to be called by a cron/scheduler.
+The web service runs its own scheduler (see `app/lib/boot.ts`); each job calls its admin endpoint over loopback with `CRON_SECRET` and takes a Postgres advisory lock, so several replicas never double-run a job:
+
+| Job | Endpoint | Cadence |
+|-----|----------|---------|
+| Market-cap milestone resolution | `/api/admin/resolve-marketcap-milestones` | 1 min (if `CTS_ENABLE_MARKETCAP_MILESTONES`) |
+| Reward milestone normalization | `/api/admin/normalize-rewards` | 10 min |
+| ASD execution | `/api/admin/asd-execute` | 15 min (if `CTS_ASD_ENABLE_SWAPS`) |
+| Bundler snapshots | `/api/admin/transparent-bundler-snapshot` | daily |
+| Housekeeping (rate limits, staging uploads, nonces, old logs) | internal | 30 min |
+
+Set `DISABLE_SCHEDULER=1` to turn it off (for example if you run a separate cron service).
+Manual trigger: `POST` the endpoint with header `x-cron-secret: $CRON_SECRET`.

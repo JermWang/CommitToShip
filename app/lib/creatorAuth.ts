@@ -2,11 +2,76 @@ import { PublicKey } from "@solana/web3.js";
 import bs58 from "bs58";
 import nacl from "tweetnacl";
 
+import { auditLog } from "./auditLog";
+import { getAdminSessionWallet, getAllowedAdminWallets } from "./adminSession";
+
 export type CreatorAuthPayload = {
   walletPubkey: string;
   timestampUnix: number;
   signatureB58: string;
 };
+
+/** Public launches are on by default. Set CTS_PUBLIC_LAUNCHES=false to restrict launches to the allowlist. */
+export function isPublicLaunchEnabled(): boolean {
+  const raw = String(process.env.CTS_PUBLIC_LAUNCHES ?? "true").trim().toLowerCase();
+  return raw !== "0" && raw !== "false" && raw !== "no" && raw !== "off";
+}
+
+/** Emergency kill switch: set CTS_LAUNCHES_PAUSED=1 to reject all new launches immediately. */
+export function isLaunchPaused(): boolean {
+  const raw = String(process.env.CTS_LAUNCHES_PAUSED ?? "").trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
+
+export type LaunchAccessDenied = { status: number; error: string; hint?: string };
+
+/**
+ * Gate for every launch-related endpoint. The payer wallet must always prove control of its key
+ * (signed creatorAuth), so nobody can act on behalf of somebody else's launch treasury.
+ * Admins with a valid session may bypass the signature. In closed mode the allowlist is enforced too.
+ * Returns null when access is granted.
+ */
+export async function authorizeLaunchAccess(
+  req: Request,
+  input: { body: any; payerWallet: string; auditEvent: string }
+): Promise<LaunchAccessDenied | null> {
+  if (isLaunchPaused()) {
+    return { status: 503, error: "Launches are temporarily paused. Please check back soon." };
+  }
+
+  const payer = new PublicKey(input.payerWallet).toBase58();
+
+  try {
+    const adminWallet = await getAdminSessionWallet(req);
+    if (adminWallet && getAllowedAdminWallets().has(String(adminWallet))) return null;
+  } catch {
+    // no admin session - fall through to wallet signature
+  }
+
+  try {
+    verifyCreatorAuthOrThrow({
+      payload: input.body?.creatorAuth,
+      action: "launch_access",
+      expectedWalletPubkey: payer,
+      maxSkewSeconds: 5 * 60,
+    });
+  } catch (e) {
+    const msg = (e as Error)?.message ?? String(e);
+    await auditLog(input.auditEvent, { payerWallet: payer, error: msg }).catch(() => null);
+    return { status: 401, error: msg, hint: "Approve the wallet signature request and try again." };
+  }
+
+  if (!isPublicLaunchEnabled() && !getAllowedCreatorWallets().has(payer)) {
+    await auditLog(input.auditEvent, { payerWallet: payer, error: "wallet not on allowlist" }).catch(() => null);
+    return {
+      status: 403,
+      error: "Wallet is not approved for launching yet",
+      hint: "Launches are currently limited to approved wallets.",
+    };
+  }
+
+  return null;
+}
 
 export function getAllowedCreatorWallets(): Set<string> {
   const raw = String(process.env.CTS_CREATOR_WALLET_PUBKEYS ?? "").trim();
@@ -29,7 +94,7 @@ export function expectedCreatorAuthMessage(input: {
   walletPubkey: string;
   timestampUnix: number;
 }): string {
-  return `Commit To Ship\nCreator Auth\nAction: ${input.action}\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}`;
+  return `Ship & Commit\nCreator Auth\nAction: ${input.action}\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}`;
 }
 
 export function verifyCreatorAuthOrThrow(input: {
@@ -55,8 +120,6 @@ export function verifyCreatorAuthOrThrow(input: {
   if (walletPubkey !== expectedWallet) {
     throw new Error("creatorAuth wallet mismatch");
   }
-
-  // Closed beta restriction removed - public launch enabled
 
   const nowUnix = Math.floor(Date.now() / 1000);
   if (Math.abs(nowUnix - Math.floor(timestampUnix)) > Math.max(30, input.maxSkewSeconds)) {

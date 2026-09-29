@@ -14,16 +14,9 @@ import {
   listActiveDeclaredWallets,
   listTokenMintsWithActiveDeclaredWallets,
 } from "../../../lib/transparentBundlerStore";
+import { isCronAuthorized } from "../../../lib/cronAuth";
 
 export const runtime = "nodejs";
-
-function isCronAuthorized(req: Request): boolean {
-  const secret = String(process.env.CRON_SECRET ?? "").trim();
-  if (!secret) return false;
-  const header = String(req.headers.get("x-cron-secret") ?? "").trim();
-  if (!header) return false;
-  return header === secret;
-}
 
 export async function POST(req: Request) {
   try {

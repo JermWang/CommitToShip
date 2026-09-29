@@ -9,3 +9,5 @@ app/.env.local
 !supabase/migrations/*.sql
 
 *.tsbuildinfo
+
+.claude/

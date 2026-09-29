@@ -1,4 +1,4 @@
--- Commit To Ship - Supabase/Postgres schema
+-- Ship & Commit - Postgres schema
 --
 -- Run this in the Supabase SQL editor (or apply via your migration tool).
 -- This schema matches the tables used by the Next.js API routes.

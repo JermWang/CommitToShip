@@ -4,25 +4,29 @@ import { Buffer } from "buffer";
 import crypto from "crypto";
 
 import { checkRateLimit } from "../../../lib/rateLimit";
-import { getSafeErrorMessage } from "../../../lib/safeError";
-import { confirmTransactionSignature, getConnection } from "../../../lib/solana";
-import { privyRefundWalletToDestination, privySignSolanaTransaction } from "../../../lib/privy";
+import { apiError } from "../../../lib/apiError";
+import { confirmTransactionSignature, getConnection, waitForSignatureConfirmed } from "../../../lib/solana";
+import { privySignSolanaTransaction } from "../../../lib/privy";
 import { buildUnsignedPumpfunCreateV2Tx } from "../../../lib/pumpfun";
-import { createRewardCommitmentRecord, insertCommitment, listCommitments } from "../../../lib/escrowStore";
+import { createRewardCommitmentRecord, findManagedCommitmentByAuthority, insertCommitment } from "../../../lib/escrowStore";
 import { upsertProjectProfile } from "../../../lib/projectProfilesStore";
 import { auditLog } from "../../../lib/auditLog";
-import { getAdminCookieName, getAdminSessionWallet, getAllowedAdminWallets, verifyAdminOrigin } from "../../../lib/adminSession";
-import { verifyCreatorAuthOrThrow } from "../../../lib/creatorAuth";
+import { verifyAdminOrigin } from "../../../lib/adminSession";
+import { authorizeLaunchAccess } from "../../../lib/creatorAuth";
+import { getLaunchTreasuryWallet } from "../../../lib/launchTreasuryStore";
+import { claimLaunchAttempt, updateLaunchAttempt } from "../../../lib/launchAttemptStore";
+import { LAUNCH_DESCRIPTION_MAX, LaunchInputError, loadLaunchImage, validateLaunchInput } from "../../../lib/launchValidation";
+import { extFromContentType } from "../../../lib/assetStorage";
+import { withRetry } from "../../../lib/rpc";
 
 export const runtime = "nodejs";
+export const maxDuration = 120;
 
-const SOLANA_CAIP2 = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"; // mainnet
 const IS_PROD = process.env.NODE_ENV === "production";
 
-function isPublicLaunchEnabled(): boolean {
-  // Public launches enabled by default (closed beta ended)
-  const raw = String(process.env.CTS_PUBLIC_LAUNCHES ?? "true").trim().toLowerCase();
-  return raw !== "0" && raw !== "false" && raw !== "no" && raw !== "off";
+function launchAttribution(): string {
+  const custom = String(process.env.LAUNCH_ATTRIBUTION ?? "").trim();
+  return custom || "Launched with Ship & Commit";
 }
 
 export async function GET() {
@@ -32,7 +36,6 @@ export async function GET() {
 }
 
 export async function OPTIONS(req: Request) {
-  const expected = String(process.env.APP_ORIGIN ?? "").trim();
   const origin = req.headers.get("origin") ?? "";
 
   try {
@@ -45,7 +48,7 @@ export async function OPTIONS(req: Request) {
 
   const res = new NextResponse(null, { status: 204 });
   res.headers.set("allow", "POST, OPTIONS");
-  res.headers.set("access-control-allow-origin", origin || expected);
+  res.headers.set("access-control-allow-origin", origin);
   res.headers.set("access-control-allow-methods", "POST, OPTIONS");
   res.headers.set("access-control-allow-headers", "content-type");
   res.headers.set("access-control-allow-credentials", "true");
@@ -53,14 +56,36 @@ export async function OPTIONS(req: Request) {
   return res;
 }
 
+/** Pump.fun's metadata endpoint occasionally hiccups; bound it and retry once. */
+async function uploadMetadataToPump(form: () => FormData): Promise<string> {
+  let lastErr = "";
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch("https://pump.fun/api/ipfs", { method: "POST", body: form(), signal: AbortSignal.timeout(30_000) });
+      if (res.ok) {
+        const json = (await res.json().catch(() => null)) as any;
+        const uri = String(json?.metadataUri ?? "").trim();
+        if (uri) return uri;
+        lastErr = "pump.fun returned no metadata URI";
+      } else {
+        lastErr = `pump.fun metadata upload failed (${res.status})`;
+      }
+    } catch (e) {
+      lastErr = e instanceof Error ? e.message : String(e);
+    }
+    if (attempt === 0) await new Promise((r) => setTimeout(r, 800));
+  }
+  throw Object.assign(new Error("Could not reach pump.fun to publish your token metadata. Nothing was charged beyond your launch wallet top-up. Please try again in a minute."), {
+    status: 502,
+    detail: lastErr,
+  });
+}
+
 export async function POST(req: Request) {
   let stage = "init";
-  let walletId = "";
-  let treasuryWallet = "";
-  let treasuryPubkey: PublicKey | null = null;
-  let launchWalletId = "";
-  let creatorWallet = "";
   let payerWallet = "";
+  let treasuryWallet = "";
+  let launchWalletId = "";
   let commitmentId = "";
   let launchTxSig = "";
   let tokenMintB58 = "";
@@ -68,14 +93,12 @@ export async function POST(req: Request) {
   let bondingCurveB58 = "";
   let escrowPubkey = "";
   let onchainOk = false;
-  let creatorPubkey: PublicKey | null = null;
-  let payerPubkey: PublicKey | null = null;
-  let funded = false;
-  let fundedLamports = 0;
-  let fundSignature = "";
+  let attemptClaimed = false;
+  let sendBlockhash = "";
+  let sendLastValid = 0;
 
   try {
-    const rl = await checkRateLimit(req, { keyPrefix: "launch:execute", limit: 10, windowSeconds: 60 });
+    const rl = await checkRateLimit(req, { keyPrefix: "launch:execute", limit: 12, windowSeconds: 60 });
     if (!rl.allowed) {
       const res = NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
       res.headers.set("retry-after", String(rl.retryAfterSeconds));
@@ -85,97 +108,64 @@ export async function POST(req: Request) {
     verifyAdminOrigin(req);
 
     stage = "read_body";
-    const body = (await req.json()) as any;
+    const body = (await req.json().catch(() => null)) as any;
+    if (!body || typeof body !== "object") return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
 
-    payerWallet = typeof body?.payerWallet === "string" ? body.payerWallet.trim() : "";
+    payerWallet = typeof body.payerWallet === "string" ? body.payerWallet.trim() : "";
     if (!payerWallet) return NextResponse.json({ error: "payerWallet is required" }, { status: 400 });
+    let payerPubkey: PublicKey;
     try {
       payerPubkey = new PublicKey(payerWallet);
     } catch {
       return NextResponse.json({ error: "Invalid payer wallet address" }, { status: 400 });
     }
+    payerWallet = payerPubkey.toBase58();
 
-    if (!isPublicLaunchEnabled()) {
-      const cookieHeader = String(req.headers.get("cookie") ?? "");
-      const hasAdminCookie = cookieHeader.includes(`${getAdminCookieName()}=`);
-      const allowed = getAllowedAdminWallets();
-      const adminWallet = await getAdminSessionWallet(req);
+    stage = "authorize";
+    const denied = await authorizeLaunchAccess(req, { body, payerWallet, auditEvent: "launch_execute_denied" });
+    if (denied) return NextResponse.json({ error: denied.error, hint: denied.hint }, { status: denied.status });
 
-      const adminOk = Boolean(adminWallet) && allowed.has(String(adminWallet));
-      if (!adminOk) {
-        try {
-          verifyCreatorAuthOrThrow({
-            payload: body?.creatorAuth,
-            action: "launch_access",
-            expectedWalletPubkey: payerPubkey.toBase58(),
-            maxSkewSeconds: 5 * 60,
-          });
-        } catch (e) {
-          const msg = (e as Error)?.message ?? String(e);
-          await auditLog("launch_execute_denied", { hasAdminCookie, adminWallet: adminWallet ?? null, payerWallet, error: msg });
-          const status = msg.toLowerCase().includes("not approved") ? 403 : 401;
-          return NextResponse.json(
-            {
-              error: msg,
-              hint: "If you're part of the closed beta, ask to be added to CTS_CREATOR_WALLET_PUBKEYS.",
-            },
-            { status }
-          );
-        }
-      }
-    }
+    stage = "validate";
+    const input = validateLaunchInput(body);
 
-    walletId = typeof body.walletId === "string" ? body.walletId.trim() : "";
-    treasuryWallet = typeof body.treasuryWallet === "string" ? body.treasuryWallet.trim() : "";
-    creatorWallet = typeof body.creatorWallet === "string" ? body.creatorWallet.trim() : "";
-
-    if (!treasuryWallet) treasuryWallet = creatorWallet;
-
-    const name = typeof body.name === "string" ? body.name.trim() : "";
-    const symbol = typeof body.symbol === "string" ? body.symbol.trim() : "";
-    const description = typeof body.description === "string" ? body.description.trim() : "";
-    const imageUrl = typeof body.imageUrl === "string" ? body.imageUrl.trim() : "";
-    const statement = typeof body.statement === "string" ? body.statement.trim() : "";
-    const payoutWallet = typeof body.payoutWallet === "string" ? body.payoutWallet.trim() : "";
-
-    const websiteUrl = typeof body.websiteUrl === "string" ? body.websiteUrl.trim() : "";
-    const xUrl = typeof body.xUrl === "string" ? body.xUrl.trim() : "";
-    const telegramUrl = typeof body.telegramUrl === "string" ? body.telegramUrl.trim() : "";
-    const discordUrl = typeof body.discordUrl === "string" ? body.discordUrl.trim() : "";
-    const bannerUrl = typeof body.bannerUrl === "string" ? body.bannerUrl.trim() : "";
-
-    const devBuySolRaw = body.devBuySol;
-    const devBuySolParsed = Number(devBuySolRaw ?? 0);
-    const devBuySol = Number.isFinite(devBuySolParsed) && devBuySolParsed >= 0 ? devBuySolParsed : 0;
+    const devBuySolParsed = Number(body.devBuySol ?? 0);
+    const devBuySol = Number.isFinite(devBuySolParsed) && devBuySolParsed >= 0 ? Math.min(devBuySolParsed, 100) : 0;
     const devBuyLamports = Math.floor(devBuySol * 1_000_000_000);
     const requiredLamports = devBuyLamports + 10_000_000;
 
-    if (!walletId) return NextResponse.json({ error: "walletId is required" }, { status: 400 });
-    if (!treasuryWallet) return NextResponse.json({ error: "treasuryWallet is required" }, { status: 400 });
-    if (!payerWallet) return NextResponse.json({ error: "payerWallet is required" }, { status: 400 });
-
-    if (!name) return NextResponse.json({ error: "Token name is required" }, { status: 400 });
-    if (!symbol) return NextResponse.json({ error: "Token symbol is required" }, { status: 400 });
-    if (!imageUrl) return NextResponse.json({ error: "Token image is required" }, { status: 400 });
-    if (!payoutWallet) return NextResponse.json({ error: "Payout wallet is required" }, { status: 400 });
-
-    let payoutPubkey: PublicKey;
-    try {
-      payoutPubkey = new PublicKey(payoutWallet);
-    } catch {
-      return NextResponse.json({ error: "Invalid payout wallet address" }, { status: 400 });
+    // The launch wallet ALWAYS comes from our own records for this (authenticated) payer - never from the request.
+    stage = "load_treasury";
+    const treasury = await getLaunchTreasuryWallet(payerWallet);
+    if (!treasury) {
+      return NextResponse.json({ error: "Your launch wallet isn't ready yet. Please press Create again.", code: "TREASURY_NOT_PREPARED" }, { status: 409 });
     }
+    launchWalletId = treasury.walletId;
+    treasuryWallet = treasury.treasuryWallet;
+    const treasuryPubkey = new PublicKey(treasuryWallet);
 
-    // payerPubkey is validated earlier for closed beta auth
-
-    try {
-      treasuryPubkey = new PublicKey(treasuryWallet);
-    } catch {
-      return NextResponse.json({ error: "Invalid treasury wallet address" }, { status: 400 });
+    stage = "check_existing";
+    const existingManaged = await findManagedCommitmentByAuthority(treasuryPubkey.toBase58());
+    if (existingManaged) {
+      await auditLog("launch_denied_shared_creator_wallet", { creatorWallet: treasuryWallet, existingCommitmentId: existingManaged.id });
+      return NextResponse.json(
+        {
+          error: "This wallet has already launched a token with Auto-Lock.",
+          code: "ALREADY_LAUNCHED",
+          existingCommitmentId: existingManaged.id,
+          hint: "Connect a different wallet to launch another token, or use Manual Lock for an existing token.",
+        },
+        { status: 409 }
+      );
     }
 
     stage = "verify_treasury_balance";
     const connection = getConnection();
+
+    // If the client just sent the top-up, give it a moment to land before deciding the wallet is under-funded
+    // (otherwise the user would be asked to pay twice).
+    const fundingSig = typeof body.fundingSig === "string" ? body.fundingSig.trim() : "";
+    if (fundingSig) await waitForSignatureConfirmed({ connection, signature: fundingSig, timeoutMs: 25_000 });
+
     const treasuryBalance = await connection.getBalance(treasuryPubkey, "confirmed");
     const balanceBufferLamports = 50_000;
     const rentExemptMinRaw = await connection.getMinimumBalanceForRentExemption(0);
@@ -188,30 +178,23 @@ export async function POST(req: Request) {
       tx.feePayer = payerPubkey;
       tx.recentBlockhash = latest.blockhash;
       tx.lastValidBlockHeight = latest.lastValidBlockHeight;
-      tx.add(
-        SystemProgram.transfer({
-          fromPubkey: payerPubkey,
-          toPubkey: treasuryPubkey,
-          lamports: missingLamports,
-        })
-      );
+      tx.add(SystemProgram.transfer({ fromPubkey: payerPubkey, toPubkey: treasuryPubkey, lamports: missingLamports }));
 
       const txBytes = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
       const txBase64 = Buffer.from(Uint8Array.from(txBytes)).toString("base64");
 
       await auditLog("launch_execute_needs_funding", {
-        walletId,
         treasuryWallet,
         payerWallet,
         requiredLamports,
         currentLamports: treasuryBalance,
         missingLamports,
+        waitedForFundingSig: Boolean(fundingSig),
       });
 
       return NextResponse.json({
         ok: true,
         needsFunding: true,
-        walletId,
         treasuryWallet,
         payerWallet,
         requiredLamports,
@@ -223,95 +206,72 @@ export async function POST(req: Request) {
         blockhash: latest.blockhash,
         lastValidBlockHeight: latest.lastValidBlockHeight,
         stage: "needs_funding",
+        // Lets the client tell "still confirming" apart from "genuinely short".
+        pendingFundingSig: fundingSig || null,
       });
     }
 
-    stage = "use_treasury_wallet";
-    launchWalletId = walletId;
-    creatorWallet = treasuryWallet;
-    creatorPubkey = treasuryPubkey;
-
-    if (!creatorPubkey) {
-      throw Object.assign(new Error("Invalid creator wallet"), { status: 400 });
-    }
-
-    const creatorWalletPubkey = creatorPubkey.toBase58();
-    const existingManaged = (await listCommitments()).find(
-      (c) => c.kind === "creator_reward" && c.creatorFeeMode === "managed" && c.status !== "archived" && c.authority === creatorWalletPubkey
-    );
-    if (existingManaged) {
-      await auditLog("launch_denied_shared_creator_wallet", {
-        creatorWallet: creatorWalletPubkey,
-        existingCommitmentId: existingManaged.id,
-      });
+    // From here on money can move: only one launch per payer at a time.
+    stage = "claim_attempt";
+    const claim = await claimLaunchAttempt(payerWallet);
+    if (!claim.ok) {
+      const msg =
+        claim.reason === "already_launched"
+          ? "This wallet has already launched a token with Auto-Lock."
+          : claim.reason === "pending_chain"
+            ? "Your previous launch is still confirming on-chain. Please wait a few minutes and check your dashboard - do not launch again."
+            : "A launch for this wallet is already in progress. Please wait for it to finish.";
       return NextResponse.json(
-        {
-          error: "Creator wallet already has a managed creator reward commitment",
-          creatorWallet: creatorWalletPubkey,
-          existingCommitmentId: existingManaged.id,
-          hint: "Managed launches require a unique creator wallet. Use a different payer wallet or use manual mode (assisted).",
-        },
+        { error: msg, code: claim.reason === "already_launched" ? "ALREADY_LAUNCHED" : "LAUNCH_IN_PROGRESS", tokenMint: claim.attempt.tokenMint, launchTxSig: claim.attempt.txSig },
         { status: 409 }
       );
     }
+    attemptClaimed = true;
+
+    stage = "load_image";
+    const image = await loadLaunchImage(input.imageUrl);
 
     stage = "upload_metadata";
-    const PUMP_DESCRIPTION_MAX = 600;
-    const ATTRIBUTION = "Launched with CommitToShip.xyz";
-
+    const attribution = launchAttribution();
     const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
     const withAttribution = (raw: string): string => {
-      const trimmed = String(raw ?? "").trim();
-      const cleaned = trimmed.replace(new RegExp(`\\s*${escapeRegExp(ATTRIBUTION)}\\s*`, "gi"), "").trim();
+      const cleaned = String(raw ?? "")
+        .trim()
+        .replace(new RegExp(`\\s*${escapeRegExp(attribution)}\\s*`, "gi"), "")
+        .trim();
       const delim = cleaned.length ? "\n\n" : "";
-      const reserved = ATTRIBUTION.length + delim.length;
-      const baseMax = Math.max(0, PUMP_DESCRIPTION_MAX - reserved);
+      const baseMax = Math.max(0, LAUNCH_DESCRIPTION_MAX - attribution.length - delim.length);
       const base = cleaned.slice(0, baseMax).trimEnd();
-      const out = (base ? base + delim : "") + ATTRIBUTION;
-      return out.length <= PUMP_DESCRIPTION_MAX ? out : ATTRIBUTION;
+      const out = (base ? base + delim : "") + attribution;
+      return out.length <= LAUNCH_DESCRIPTION_MAX ? out : attribution;
     };
 
-    const pumpDescription = withAttribution(description);
-    const metadataFormData = new FormData();
-    metadataFormData.append("name", name);
-    metadataFormData.append("symbol", symbol);
-    metadataFormData.append("description", pumpDescription);
-    metadataFormData.append("showName", "true");
-    if (websiteUrl) metadataFormData.append("website", websiteUrl);
-    if (xUrl) metadataFormData.append("twitter", xUrl);
-    if (telegramUrl) metadataFormData.append("telegram", telegramUrl);
-
-    stage = "fetch_image";
-    const imageResponse = await fetch(imageUrl);
-    if (!imageResponse.ok) {
-      throw Object.assign(new Error("Failed to fetch token image"), { status: 400 });
-    }
-    const imageBlob = await imageResponse.blob();
-    metadataFormData.append("file", imageBlob, "token.png");
-
-    stage = "pump_ipfs";
-    const ipfsResponse = await fetch("https://pump.fun/api/ipfs", { method: "POST", body: metadataFormData });
-    if (!ipfsResponse.ok) {
-      const ipfsError = await ipfsResponse.text().catch(() => "Unknown error");
-      throw Object.assign(new Error(`Failed to upload metadata: ${ipfsError}`), { status: 500 });
-    }
-
-    const ipfsJson = await ipfsResponse.json();
-    metadataUri = ipfsJson?.metadataUri;
-    if (!metadataUri) {
-      throw Object.assign(new Error("Failed to get metadata URI from Pump.fun"), { status: 500 });
-    }
+    const pumpDescription = withAttribution(input.description);
+    const imageExt = extFromContentType(image.contentType);
+    const buildForm = () => {
+      const f = new FormData();
+      f.append("name", input.name);
+      f.append("symbol", input.symbol);
+      f.append("description", pumpDescription);
+      f.append("showName", "true");
+      if (input.websiteUrl) f.append("website", input.websiteUrl);
+      if (input.xUrl) f.append("twitter", input.xUrl);
+      if (input.telegramUrl) f.append("telegram", input.telegramUrl);
+      f.append("file", new Blob([new Uint8Array(image.data)], { type: image.contentType }), `token.${imageExt}`);
+      return f;
+    };
+    metadataUri = await uploadMetadataToPump(buildForm);
 
     stage = "build_tx";
+    const creatorPubkey = treasuryPubkey;
     const mintKeypair = Keypair.generate();
 
     const { tx, bondingCurve } = await buildUnsignedPumpfunCreateV2Tx({
       connection,
       user: creatorPubkey,
       mint: mintKeypair.publicKey,
-      name,
-      symbol,
+      name: input.name,
+      symbol: input.symbol,
       uri: metadataUri,
       creator: creatorPubkey,
       isMayhemMode: false,
@@ -320,11 +280,6 @@ export async function POST(req: Request) {
       computeUnitLimit: 300_000,
       computeUnitPriceMicroLamports: 100_000,
     });
-
-    const latestForSend = await connection.getLatestBlockhash("confirmed");
-    tx.recentBlockhash = latestForSend.blockhash;
-    (tx as any).lastValidBlockHeight = latestForSend.lastValidBlockHeight;
-    tx.partialSign(mintKeypair);
 
     commitmentId = crypto.randomBytes(16).toString("hex");
     tokenMintB58 = mintKeypair.publicKey.toBase58();
@@ -335,147 +290,111 @@ export async function POST(req: Request) {
       commitmentId,
       tokenMint: tokenMintB58,
       payerWallet,
-      payoutWallet: payoutPubkey.toBase58(),
-      name,
-      symbol,
+      payoutWallet: input.payoutWallet,
+      name: input.name,
+      symbol: input.symbol,
       treasuryWallet,
-      treasuryWalletId: walletId,
-      launchCreatorWallet: creatorWallet,
-      launchWalletId,
       requiredLamports,
-      fundSignature,
+      fundingSig,
     });
 
     stage = "send_tx";
-    const { withRetry } = await import("../../../lib/rpc");
-    let sendBlockhash = "";
-    let sendLastValidBlockHeight = 0;
     for (let attempt = 0; attempt < 4; attempt++) {
       const latest = await withRetry(() => connection.getLatestBlockhash("processed"));
       sendBlockhash = latest.blockhash;
-      sendLastValidBlockHeight = latest.lastValidBlockHeight;
+      sendLastValid = latest.lastValidBlockHeight;
 
       tx.recentBlockhash = sendBlockhash;
-      (tx as any).lastValidBlockHeight = sendLastValidBlockHeight;
+      (tx as any).lastValidBlockHeight = sendLastValid;
       tx.partialSign(mintKeypair);
 
       try {
-        const serializeForPrivy = () => tx.serialize({ requireAllSignatures: false }).toString("base64");
-        const signed = await privySignSolanaTransaction({ walletId: launchWalletId, transactionBase64: serializeForPrivy() });
+        const signed = await privySignSolanaTransaction({
+          walletId: launchWalletId,
+          transactionBase64: tx.serialize({ requireAllSignatures: false }).toString("base64"),
+        });
         const raw = Buffer.from(signed.signedTransactionBase64, "base64");
-        launchTxSig = await withRetry(() =>
-          connection.sendRawTransaction(raw, { skipPreflight: false, preflightCommitment: "processed", maxRetries: 3 })
-        );
+        launchTxSig = await withRetry(() => connection.sendRawTransaction(raw, { skipPreflight: false, preflightCommitment: "processed", maxRetries: 3 }));
         break;
       } catch (sendErr) {
-        const msg = getSafeErrorMessage(sendErr);
-        const isBlockhashNotFound = msg.toLowerCase().includes("blockhash not found");
-        if (!isBlockhashNotFound || attempt === 3) throw sendErr;
+        const msg = (sendErr instanceof Error ? sendErr.message : String(sendErr)).toLowerCase();
+        if (!msg.includes("blockhash not found") || attempt === 3) throw sendErr;
       }
     }
 
+    // The tx is out. Persist mint + signature immediately so a crash/timeout can never lose track of it.
     stage = "confirm_tx";
+    await updateLaunchAttempt(payerWallet, { status: "submitted", tokenMint: tokenMintB58, txSig: launchTxSig }).catch(() => null);
+
     await confirmTransactionSignature({
       connection,
       signature: launchTxSig,
-      blockhash: sendBlockhash || String(tx.recentBlockhash ?? ""),
-      lastValidBlockHeight: sendLastValidBlockHeight || Number((tx as any).lastValidBlockHeight ?? 0),
+      blockhash: sendBlockhash,
+      lastValidBlockHeight: sendLastValid,
     });
 
-    await auditLog("launch_onchain_success", {
-      commitmentId,
-      tokenMint: tokenMintB58,
-      launchTxSig,
-      treasuryWallet,
-      treasuryWalletId: walletId,
-      launchCreatorWallet: creatorWallet,
-      launchWalletId,
-    });
+    await auditLog("launch_onchain_success", { commitmentId, tokenMint: tokenMintB58, launchTxSig, treasuryWallet });
 
     onchainOk = true;
     escrowPubkey = creatorPubkey.toBase58();
+    await updateLaunchAttempt(payerWallet, { status: "confirmed", tokenMint: tokenMintB58, txSig: launchTxSig }).catch(() => null);
 
     let postLaunchError: string | null = null;
     try {
       const baseRecord = createRewardCommitmentRecord({
         id: commitmentId,
-        statement: statement || `Lock creator fees for ${name}. Ship milestones, release on-chain.`,
-        creatorPubkey: payoutPubkey.toBase58(),
+        statement: input.statement || `Lock creator fees for ${input.name}. Ship milestones, release on-chain.`,
+        creatorPubkey: input.payoutWallet,
         escrowPubkey,
         escrowSecretKeyB58: `privy:${launchWalletId}`,
         milestones: [],
-        tokenMint: mintKeypair.publicKey.toBase58(),
+        tokenMint: tokenMintB58,
         creatorFeeMode: "managed",
       });
 
-      const record = {
-        ...baseRecord,
-        authority: creatorPubkey.toBase58(),
-        destinationOnFail: escrowPubkey,
-      };
-
       stage = "insert_commitment";
-      await insertCommitment(record);
+      await insertCommitment({ ...baseRecord, authority: creatorPubkey.toBase58(), destinationOnFail: escrowPubkey });
 
       stage = "save_profile";
       try {
         await upsertProjectProfile({
-          tokenMint: mintKeypair.publicKey.toBase58(),
-          name: name || null,
-          symbol: symbol || null,
-          description: description || null,
-          websiteUrl: websiteUrl || null,
-          xUrl: xUrl || null,
-          telegramUrl: telegramUrl || null,
-          discordUrl: discordUrl || null,
-          imageUrl: imageUrl || null,
-          bannerUrl: bannerUrl || null,
+          tokenMint: tokenMintB58,
+          name: input.name,
+          symbol: input.symbol,
+          description: input.description || null,
+          websiteUrl: input.websiteUrl || null,
+          xUrl: input.xUrl || null,
+          telegramUrl: input.telegramUrl || null,
+          discordUrl: input.discordUrl || null,
+          imageUrl: input.imageUrl,
+          bannerUrl: input.bannerUrl || null,
           metadataUri: metadataUri || null,
-          createdByWallet: payoutPubkey.toBase58(),
+          createdByWallet: input.payoutWallet,
         });
       } catch (profileErr) {
-        await auditLog("launch_profile_save_error", { commitmentId, tokenMint: mintKeypair.publicKey.toBase58(), error: getSafeErrorMessage(profileErr) });
+        console.error("[launch/execute] profile save failed", profileErr);
+        await auditLog("launch_profile_save_error", { commitmentId, tokenMint: tokenMintB58, error: profileErr });
       }
 
-      await auditLog("launch_success", {
-        commitmentId,
-        tokenMint: mintKeypair.publicKey.toBase58(),
-        payerWallet,
-        payoutWallet: payoutPubkey.toBase58(),
-        treasuryWallet,
-        treasuryWalletId: walletId,
-        launchCreatorWallet: creatorWallet,
-        launchWalletId,
-        requiredLamports,
-        fundSignature,
-        launchTxSig,
-      });
+      await auditLog("launch_success", { commitmentId, tokenMint: tokenMintB58, payerWallet, payoutWallet: input.payoutWallet, treasuryWallet, requiredLamports, fundingSig, launchTxSig });
     } catch (postErr) {
-      const internal = getSafeErrorMessage(postErr);
+      console.error("[launch/execute] post-chain step failed", stage, postErr);
+      await updateLaunchAttempt(payerWallet, { status: "onchain_unrecorded", tokenMint: tokenMintB58, txSig: launchTxSig }).catch(() => null);
       postLaunchError = IS_PROD
-        ? "Your token launched successfully. We’re finishing a few setup steps in the background."
-        : internal;
-      try {
-        await auditLog("launch_postchain_error", {
-          stage,
-          commitmentId,
-          tokenMint: tokenMintB58,
-          launchTxSig,
-          error: internal,
-        });
-      } catch {
-        // ignore
-      }
+        ? "Your token launched successfully. We're finishing a few setup steps in the background."
+        : postErr instanceof Error
+          ? postErr.message
+          : String(postErr);
+      await auditLog("launch_postchain_error", { stage, commitmentId, tokenMint: tokenMintB58, launchTxSig, error: postErr });
     }
 
     return NextResponse.json({
       ok: true,
       commitmentId,
-      tokenMint: mintKeypair.publicKey.toBase58(),
-      creatorWallet,
+      tokenMint: tokenMintB58,
+      creatorWallet: treasuryWallet,
       payerWallet,
       treasuryWallet,
-      launchWalletId,
       bondingCurve: bondingCurveB58,
       launchTxSig,
       metadataUri,
@@ -483,74 +402,60 @@ export async function POST(req: Request) {
       postLaunchError,
     });
   } catch (e) {
-    const msg = getSafeErrorMessage(e);
-    const status = Number((e as any)?.status ?? 500);
+    const code = String((e as any)?.code ?? "");
+    const rawMsg = e instanceof Error ? e.message : String(e);
 
+    // The token is live on-chain: whatever failed afterwards, the user must see success.
     if (onchainOk && commitmentId && tokenMintB58 && launchTxSig) {
-      await auditLog("launch_postchain_error", { stage, commitmentId, tokenMint: tokenMintB58, launchTxSig, error: msg });
-      return NextResponse.json(
-        {
-          ok: true,
-          commitmentId,
-          tokenMint: tokenMintB58,
-          creatorWallet,
-          payerWallet,
-          treasuryWallet,
-          launchWalletId,
-          bondingCurve: bondingCurveB58,
-          launchTxSig,
-          metadataUri,
-          escrowPubkey,
-          postLaunchError: IS_PROD
-            ? "Your token launched successfully. We’re finishing a few setup steps in the background."
-            : msg,
-        },
-        { status: 200 }
-      );
+      await auditLog("launch_postchain_error", { stage, commitmentId, tokenMint: tokenMintB58, launchTxSig, error: e });
+      return NextResponse.json({
+        ok: true,
+        commitmentId,
+        tokenMint: tokenMintB58,
+        creatorWallet: treasuryWallet,
+        payerWallet,
+        treasuryWallet,
+        bondingCurve: bondingCurveB58,
+        launchTxSig,
+        metadataUri,
+        escrowPubkey,
+        postLaunchError: IS_PROD ? "Your token launched successfully. We're finishing a few setup steps in the background." : rawMsg,
+      });
     }
 
-    if (funded && launchWalletId && launchWalletId !== walletId && creatorPubkey && treasuryPubkey && !launchTxSig) {
-      try {
-        const refund = await privyRefundWalletToDestination({
-          walletId: launchWalletId,
-          fromPubkey: creatorPubkey,
-          toPubkey: treasuryPubkey,
-          caip2: SOLANA_CAIP2,
-          keepLamports: 10_000,
-        });
-        await auditLog("launch_refund_attempt", {
-          commitmentId,
-          treasuryWalletId: walletId,
-          launchWalletId,
-          treasuryWallet,
-          launchCreatorWallet: creatorWallet,
-          fundedLamports,
-          payerWallet,
-          ok: refund.ok,
-          refundSignature: refund.ok ? refund.signature : undefined,
-          refundedLamports: refund.ok ? refund.refundedLamports : undefined,
-          refundError: refund.ok ? undefined : refund.error,
-        });
-      } catch (refundErr) {
-        await auditLog("launch_refund_attempt", {
-          commitmentId,
-          treasuryWalletId: walletId,
-          launchWalletId,
-          treasuryWallet,
-          launchCreatorWallet: creatorWallet,
-          fundedLamports,
-          payerWallet,
-          ok: false,
-          refundError: getSafeErrorMessage(refundErr),
-        });
+    console.error(`[launch/execute] failed at stage "${stage}"`, e);
+
+    // Release the per-payer lock unless the transaction might still land.
+    if (attemptClaimed) {
+      if (launchTxSig && code === "TX_UNCERTAIN") {
+        await auditLog("launch_error", { stage, commitmentId, tokenMint: tokenMintB58, payerWallet, launchTxSig, error: e });
+        return NextResponse.json(
+          {
+            error: "Your launch was submitted but hasn't confirmed yet. Do NOT launch again - check your dashboard in a few minutes.",
+            code: "LAUNCH_PENDING",
+            tokenMint: tokenMintB58,
+            launchTxSig,
+          },
+          { status: 202 }
+        );
       }
+      await updateLaunchAttempt(payerWallet, { status: "failed" }).catch(() => null);
     }
 
-    await auditLog("launch_error", { stage, commitmentId, walletId, creatorWallet, payerWallet, launchTxSig, error: msg });
-    if (IS_PROD) {
-      const publicMsg = status >= 500 ? "Launch failed due to a server error. Please try again." : msg;
-      return NextResponse.json({ error: publicMsg }, { status: status });
+    await auditLog("launch_error", { stage, commitmentId, payerWallet, launchTxSig, code, error: e });
+
+    if (e instanceof LaunchInputError || Number.isFinite(Number((e as any)?.status))) {
+      // Deliberate, user-actionable failures (validation, pump.fun unreachable, conflicts).
+      return apiError(e, "launch/execute", IS_PROD ? undefined : { stage });
     }
-    return NextResponse.json({ error: msg, stage, commitmentId, walletId, creatorWallet, payerWallet, launchTxSig }, { status: status });
+
+    const lower = rawMsg.toLowerCase();
+    let friendly = "Launch failed. Your funds are safe in your launch wallet - please try again.";
+    if (lower.includes("insufficient") || lower.includes("0x1")) friendly = "Your launch wallet doesn't have enough SOL to cover the launch. Please press Create again to top it up.";
+    else if (code === "TX_EXPIRED" || lower.includes("blockhash")) friendly = "The network was congested and the launch didn't land. You weren't charged - please press Create again.";
+    else if (lower.includes("simulation failed")) friendly = "The network rejected the launch transaction. Please try again in a moment.";
+    else if (lower.includes("privy")) friendly = "Our wallet service had a hiccup. Your funds are safe - please try again.";
+
+    return NextResponse.json({ error: friendly, code: code || "LAUNCH_FAILED", ...(IS_PROD ? {} : { stage, detail: rawMsg }) }, { status: 502 });
   }
 }

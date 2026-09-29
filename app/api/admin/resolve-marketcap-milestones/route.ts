@@ -13,7 +13,8 @@ import {
   updateRewardTotalsAndMilestones,
 } from "../../../lib/escrowStore";
 import { fetchDexScreenerPairsByTokenMint, pickBestDexScreenerPair } from "../../../lib/dexScreener";
-import { findFirstTokenMarketSnapshotAbovePrice, getCanonicalPair, insertTokenMarketSnapshot, upsertCanonicalPair } from "../../../lib/tokenMarketStore";
+import { getCanonicalPair, insertTokenMarketSnapshot, listTokenMarketSnapshots, upsertCanonicalPair, type TokenMarketSnapshot } from "../../../lib/tokenMarketStore";
+import { apiError } from "../../../lib/apiError";
 import {
   getBalanceLamports,
   getChainUnixTime,
@@ -23,16 +24,9 @@ import {
 } from "../../../lib/solana";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 import { tryAcquireMarketCapMilestoneConfirmation } from "../../../lib/marketCapMilestonesStore";
+import { isCronAuthorized } from "../../../lib/cronAuth";
 
 export const runtime = "nodejs";
-
-function isCronAuthorized(req: Request): boolean {
-  const secret = String(process.env.CRON_SECRET ?? "").trim();
-  if (!secret) return false;
-  const header = String(req.headers.get("x-cron-secret") ?? "").trim();
-  if (!header) return false;
-  return header === secret;
-}
 
 function computeUnlockedLamports(milestones: RewardMilestone[]): number {
   return milestones.reduce((acc, m) => {
@@ -168,6 +162,36 @@ async function ingestLatestSnapshot(input: { tokenMint: string; chainId: string;
   return { ok: true as const, tokenMint, pairAddress, dexId };
 }
 
+/**
+ * First snapshot of a *sustained* run: at least `minSamples` consecutive snapshots at/above the target price
+ * (and liquidity/volume floors), no gap larger than `maxGapSeconds`, spanning at least `minSeconds`.
+ * A single spiky sample can never satisfy a market-cap milestone.
+ */
+function findSustainedHit(
+  snaps: TokenMarketSnapshot[],
+  o: { minPriceUsd: number; minLiquidityUsd: number; minVolumeH1Usd: number; maxGapSeconds: number; minSamples: number; minSeconds: number }
+): TokenMarketSnapshot | null {
+  const sorted = snaps.slice().sort((a, b) => Number(a.fetchedAtUnix) - Number(b.fetchedAtUnix));
+  let streak: TokenMarketSnapshot[] = [];
+
+  for (const s of sorted) {
+    const ok =
+      Number(s.priceUsd) >= o.minPriceUsd && Number(s.liquidityUsd ?? 0) >= o.minLiquidityUsd && Number(s.volumeH1Usd ?? 0) >= o.minVolumeH1Usd;
+    if (!ok) {
+      streak = [];
+      continue;
+    }
+
+    const prev = streak[streak.length - 1];
+    if (prev && Number(s.fetchedAtUnix) - Number(prev.fetchedAtUnix) > o.maxGapSeconds) streak = [];
+    streak.push(s);
+
+    const span = Number(s.fetchedAtUnix) - Number(streak[0].fetchedAtUnix);
+    if (streak.length >= o.minSamples && span >= o.minSeconds) return streak[0];
+  }
+  return null;
+}
+
 function isMarketCapMilestone(m: RewardMilestone): boolean {
   return String((m as any).autoKind ?? "") === "market_cap";
 }
@@ -210,9 +234,9 @@ export async function POST(req: Request) {
 
     const minLiquidityUsd = getMinLiquidityUsd();
     const minVolumeH1Usd = getMinVolumeH1Usd();
-    void getMinMinutesAbove;
-    void getMinSamples;
-    void getMaxGapSeconds;
+    const maxGapSeconds = getMaxGapSeconds();
+    const minSamples = getMinSamples();
+    const minSeconds = getMinMinutesAbove() * 60;
     const claimDelaySeconds = getClaimDelaySeconds();
     const lookbackSeconds = getLookbackSeconds();
 
@@ -231,6 +255,7 @@ export async function POST(req: Request) {
     let confirmedCount = 0;
 
     for (const c of capped) {
+      try {
       const tokenMint = String(c.tokenMint ?? "").trim();
       if (!tokenMint) continue;
 
@@ -290,18 +315,20 @@ export async function POST(req: Request) {
         }
 
         const minPriceUsd = thresholdUsd / supplyUi;
-        const hit = await findFirstTokenMarketSnapshotAbovePrice({
+
+        // Only prices observed AFTER the milestone was set can count (no retroactive wins).
+        const trackingStart = Math.max(0, Math.floor(Number((m as any).autoTrackingStartedAtUnix ?? c.createdAtUnix ?? 0)) || 0);
+        const milestoneSinceUnix = Math.max(sinceUnix, trackingStart, 1);
+        const snapshots = await listTokenMarketSnapshots({
           tokenMint,
           chainId,
           pairAddress: canonical.pairAddress,
-          sinceUnix,
-          minPriceUsd,
-          minLiquidityUsd,
-          minVolumeH1Usd,
+          sinceUnix: milestoneSinceUnix,
         });
+        const hit = findSustainedHit(snapshots, { minPriceUsd, minLiquidityUsd, minVolumeH1Usd, maxGapSeconds, minSamples, minSeconds });
 
         if (!hit) {
-          results.push({ id: c.id, milestoneId: m.id, ok: true, step: "evaluate", confirmed: false, reason: "threshold_not_hit", sinceUnix });
+          results.push({ id: c.id, milestoneId: m.id, ok: true, step: "evaluate", confirmed: false, reason: "threshold_not_sustained", sinceUnix: milestoneSinceUnix });
           continue;
         }
 
@@ -380,7 +407,29 @@ export async function POST(req: Request) {
             continue;
           }
 
-          results.push({ id: c.id, milestoneId: m.id, ok: true, step: "confirm", confirmed: true, idempotent: true });
+          // A previous run recorded the confirmation but may have died before saving the milestone: repair it now.
+          let exEvidence: any = null;
+          try {
+            exEvidence = JSON.parse(ex.evidenceJson);
+          } catch {
+            exEvidence = null;
+          }
+          const exCompletedAt = Math.min(nowUnix, Math.floor(Number(exEvidence?.hitAtUnix ?? ex.confirmedAtUnix)) || nowUnix);
+          const exClaimableAt = exCompletedAt + claimDelaySeconds;
+          const exStatus = nowUnix >= exClaimableAt ? ("claimable" as const) : ("approved" as const);
+          milestones[i] = {
+            ...m,
+            unlockLamports: Number(ex.unlockLamports),
+            completedAtUnix: exCompletedAt,
+            approvedAtUnix: exCompletedAt,
+            claimableAtUnix: exClaimableAt,
+            becameClaimableAtUnix: exStatus === "claimable" ? (m.becameClaimableAtUnix ?? nowUnix) : m.becameClaimableAtUnix,
+            status: exStatus,
+            autoConfirmedAtUnix: ex.confirmedAtUnix,
+            autoEvidence: exEvidence ?? m.autoEvidence,
+          };
+          anyChanged = true;
+          results.push({ id: c.id, milestoneId: m.id, ok: true, step: "confirm", confirmed: true, idempotent: true, repaired: true });
           continue;
         }
 
@@ -440,6 +489,11 @@ export async function POST(req: Request) {
       }
 
       results.push({ id: c.id, ok: true, commitment: publicView(c) });
+      } catch (perCommitmentErr) {
+        // One bad token / RPC hiccup must not stop the rest of the batch.
+        console.error("[resolve-marketcap] commitment failed", c.id, perCommitmentErr);
+        results.push({ id: c.id, ok: false, step: "exception", error: getSafeErrorMessage(perCommitmentErr) });
+      }
     }
 
     await auditLog("admin_resolve_marketcap_completed", {
@@ -452,7 +506,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, nowUnix, targetCount: capped.length, confirmedCount, results });
   } catch (e) {
-    await auditLog("admin_resolve_marketcap_error", { error: getSafeErrorMessage(e) });
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    await auditLog("admin_resolve_marketcap_error", { error: e });
+    return apiError(e, "admin/resolve-marketcap");
   }
 }

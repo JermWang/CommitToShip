@@ -1,12 +1,12 @@
-# Commit To Ship
+# Ship & Commit
 
 ## Protocol Overview
 
-Commit To Ship is a launch accountability layer for the Solana ecosystem.
+Ship & Commit is a launch accountability layer for the Solana ecosystem.
 
 We provide the infrastructure for developers to formalize execution commitments, lock capital against delivery milestones, and establish verifiable credibility with market participants before, during, and after token distribution.
 
-Commit To Ship is accountability infrastructure for post-launch execution. It formalizes commitments, milestone escrow, and verifiable delivery records.
+Ship & Commit is accountability infrastructure for post-launch execution. It formalizes commitments, milestone escrow, and verifiable delivery records.
 
 ---
 
@@ -14,7 +14,7 @@ Commit To Ship is accountability infrastructure for post-launch execution. It fo
 
 The accessibility of permissionless token creation has produced an environment where launch is trivial but execution is rare. The result is a market saturated with projects that lack durable intent, transparent timelines, or enforceable accountability.
 
-Commit To Ship exists to address this structural gap.
+Ship & Commit exists to address this structural gap.
 
 We provide a neutral commitment registry that enables builders to:
 
@@ -28,18 +28,18 @@ The goal is to make developer intent legible and developer accountability enforc
 
 ## Position in the Ecosystem
 
-Commit To Ship operates downstream of Pump.fun and other token creation venues.
+Ship & Commit operates downstream of Pump.fun and other token creation venues.
 
 | Layer | Function |
 |-------|----------|
 | **Pump.fun** | Token creation, bonding curve distribution, market discovery |
-| **Commit To Ship** | Commitment formalization, milestone escrow, execution verification |
+| **Ship & Commit** | Commitment formalization, milestone escrow, execution verification |
 
-Commit To Ship extends launch infrastructure with accountability primitives that did not previously exist.
+Ship & Commit extends launch infrastructure with accountability primitives that did not previously exist.
 
 **Pump.fun answers:** Can this token launch and trade?
 
-**Commit To Ship answers:** Is this builder bound to a real execution plan, and what mechanisms exist to enforce it?
+**Ship & Commit answers:** Is this builder bound to a real execution plan, and what mechanisms exist to enforce it?
 
 ---
 
@@ -47,7 +47,7 @@ Commit To Ship extends launch infrastructure with accountability primitives that
 
 ### Accountability Infrastructure
 
-Commit To Ship provides protocol-level primitives for commitment and enforcement:
+Ship & Commit provides protocol-level primitives for commitment and enforcement:
 
 - **Commitment Objects:** Immutable records of who is responsible, what is promised, and when delivery is expected
 - **Milestone Schedules:** Defined unlock conditions tied to verifiable completion events
@@ -71,7 +71,7 @@ The system records execution and makes it visible through public, auditable stat
 
 | Boundary | Clarification |
 |----------|---------------|
-| **Launch and distribution mechanics** | Token creation and distribution remains with venues like Pump.fun; Commit To Ship focuses on post-launch commitments and verification |
+| **Launch and distribution mechanics** | Token creation and distribution remains with venues like Pump.fun; Ship & Commit focuses on post-launch commitments and verification |
 | **Listings and discovery** | Discovery remains external; the platform exposes execution records rather than rankings |
 | **Investment recommendations** | Commitments and signals are procedural records; users interpret independently |
 | **Custody** | Users retain full control of their wallets; participation uses signed messages |
@@ -139,7 +139,7 @@ If no voters participated, the entire escrow balance routes to the buyback treas
 
 ## For Builders
 
-Commit To Ship provides a mechanism to communicate seriousness through structure rather than narrative.
+Ship & Commit provides a mechanism to communicate seriousness through structure rather than narrative.
 
 - **Formalized Intent:** Milestones and timelines are defined at commitment creation
 - **Verifiable Progress:** Completion events are public, timestamped, and cryptographically signed
@@ -152,7 +152,7 @@ This is infrastructure for developers who intend to ship and want that intent to
 
 ## For Participants
 
-Commit To Ship provides structured transparency for evaluating projects beyond price action.
+Ship & Commit provides structured transparency for evaluating projects beyond price action.
 
 - **Accountability Clarity:** Explicit record of who is responsible and what they have committed to deliver
 - **Observable Execution:** Milestone state transitions with precise timestamps
@@ -185,7 +185,7 @@ Commit To Ship provides structured transparency for evaluating projects beyond p
 
 ## Credibility Over Curation
 
-Commit To Ship curates execution signals. Token curation remains outside scope.
+Ship & Commit curates execution signals. Token curation remains outside scope.
 
 The platform surfaces:
 
@@ -199,7 +199,7 @@ The output is a credibility surface, a mechanism for differentiating builders by
 
 ## Frequently Asked Questions
 
-**Does Commit To Ship replace Pump.fun?**
+**Does Ship & Commit replace Pump.fun?**
 
 No. We complement Pump.fun by providing accountability infrastructure for post-launch execution. Pump.fun handles creation and distribution. We handle commitment and verification.
 
@@ -220,8 +220,8 @@ Participants who want structured transparency and enforceable accountability.
 
 ## Summary
 
-Commit To Ship is accountability infrastructure for the permissionless token economy.
+Ship & Commit is accountability infrastructure for the permissionless token economy.
 
 We exist to surface and support developers who commit to execution, transparency, and follow-through. We formalize commitment, make developer intent legible, and create long-term trust between builders and participants.
 
-Commit To Ship operates as the accountability layer for post-launch execution.
+Ship & Commit operates as the accountability layer for post-launch execution.

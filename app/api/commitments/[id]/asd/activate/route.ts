@@ -21,7 +21,7 @@ function isPublicLaunchEnabled(): boolean {
 }
 
 function activateMessage(input: { commitmentId: string; requestId: string; configHash: string }): string {
-  return `Commit To Ship\nASD Activate\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}\nConfigHash: ${input.configHash}`;
+  return `Ship & Commit\nASD Activate\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}\nConfigHash: ${input.configHash}`;
 }
 
 export async function POST(req: Request, ctx: { params: { id: string } }) {

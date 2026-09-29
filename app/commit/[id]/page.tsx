@@ -267,7 +267,7 @@ export default async function CommitDashboardPage({ params }: { params: { id: st
                 </div>
 
                 <p className={styles.guidance}>
-                  This is a demo project showcasing how CommitToShip works. Real projects have on-chain escrow and verifiable milestones.
+                  This is a demo project showcasing how Ship &amp; Commit works. Real projects have on-chain escrow and verifiable milestones.
                 </p>
               </div>
             </div>
@@ -346,7 +346,7 @@ export default async function CommitDashboardPage({ params }: { params: { id: st
     const totalFundedLamports = Math.max(0, balanceLamports + releasedLamports);
 
     const allReleased = normalized.milestones.length > 0 && normalized.milestones.every((m) => m.status === "released");
-    const nextStatus = allReleased ? "completed" : (record.status === "completed" ? "completed" : "active");
+    const nextStatus = allReleased ? "completed" : (record.status === "completed" || record.status === "failed" || record.status === "resolving" ? record.status : "active");
 
     const shouldPersist =
       normalized.changed ||
@@ -361,6 +361,7 @@ export default async function CommitDashboardPage({ params }: { params: { id: st
           unlockedLamports,
           totalFundedLamports,
           status: nextStatus,
+          expectedMilestones: record.milestones as any,
         })
       : record;
 
@@ -388,7 +389,7 @@ export default async function CommitDashboardPage({ params }: { params: { id: st
         <div className={styles.wrap}>
           <div className={styles.headerRow}>
             <div className={styles.brand}>
-              <img className={styles.brandMark} src="/branding/white-logo.png" alt="Commit To Ship" />
+              <img className={styles.brandMark} src="/branding/white-logo.png" alt="Ship & Commit" />
               <div className={styles.brandTitle}>Commit Dashboard</div>
             </div>
 
@@ -520,7 +521,7 @@ export default async function CommitDashboardPage({ params }: { params: { id: st
           <div className={styles.wrap}>
             <div className={styles.headerRow}>
               <div className={styles.brand}>
-                <img className={styles.brandMark} src="/branding/white-logo.png" alt="Commit To Ship" />
+                <img className={styles.brandMark} src="/branding/white-logo.png" alt="Ship & Commit" />
                 <div className={styles.brandTitle}>Commit Dashboard</div>
               </div>
 

@@ -1,0 +1,11 @@
+# Local-only / not needed to build or run the app on Railway
+.claude/
+scripts/
+.next/
+node_modules/
+.env.local
+.env*.local
+*.tsbuildinfo
+*.log
+supabase/
+app/public/

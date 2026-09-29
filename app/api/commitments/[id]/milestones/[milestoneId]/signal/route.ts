@@ -27,6 +27,8 @@ import {
   verifyTokenExistsOnChain,
 } from "../../../../../../lib/solana";
 import { getCachedJupiterPriceUsd, getCachedJupiterPriceUsdAllowStale, setCachedJupiterPriceUsd } from "../../../../../../lib/priceCache";
+import { jupiterUsdPrice } from "../../../../../../lib/jupiter";
+import { fetchDexScreenerPairsByTokenMint, pickBestDexScreenerPair } from "../../../../../../lib/dexScreener";
 import { checkRateLimit } from "../../../../../../lib/rateLimit";
 import { getSafeErrorMessage, redactSensitive } from "../../../../../../lib/safeError";
 
@@ -40,11 +42,11 @@ function isCanaryRewardVoting(): boolean {
 function milestoneSignalMessage(input: { commitmentId: string; milestoneId: string; vote: "approve" | "reject" }): string {
   const vote = input.vote === "reject" ? "reject" : "approve";
   const title = vote === "reject" ? "Milestone Reject Signal" : "Milestone Approval Signal";
-  return `Commit To Ship\n${title}\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}\nVote: ${vote}`;
+  return `Ship & Commit\n${title}\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}\nVote: ${vote}`;
 }
 
 function legacyApproveSignalMessage(input: { commitmentId: string; milestoneId: string }): string {
-  return `Commit To Ship\nMilestone Approval Signal\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}`;
+  return `Ship & Commit\nMilestone Approval Signal\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}`;
 }
 
 function getVoteCutoffSeconds(): number {
@@ -107,15 +109,16 @@ function getVoteRewardPerVoteUiAmount(): number {
   return Math.floor(n);
 }
 
+/** Jupiter first; DexScreener as a second opinion (covers fresh pump.fun tokens Jupiter doesn't price yet). */
 async function getJupiterUsdPriceForMint(mint: string): Promise<number | null> {
-  const url = `https://price.jup.ag/v4/price?ids=${encodeURIComponent(mint)}`;
+  const fromJupiter = await jupiterUsdPrice(mint);
+  if (fromJupiter != null) return fromJupiter;
+
   try {
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) return null;
-    const json = (await res.json().catch(() => null)) as any;
-    const price = json?.data?.[mint]?.price;
-    if (typeof price === "number" && Number.isFinite(price) && price > 0) return price;
-    return null;
+    const { pairs } = await fetchDexScreenerPairsByTokenMint({ tokenMint: mint, timeoutMs: 4000 });
+    const best = pickBestDexScreenerPair({ pairs, chainId: "solana", minLiquidityUsd: 1000 });
+    const price = Number(best?.priceUsd);
+    return Number.isFinite(price) && price > 0 ? price : null;
   } catch {
     return null;
   }

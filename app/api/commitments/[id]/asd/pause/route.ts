@@ -20,7 +20,7 @@ function isPublicLaunchEnabled(): boolean {
 }
 
 function pauseMessage(input: { commitmentId: string; requestId: string }): string {
-  return `Commit To Ship\nASD Pause\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}`;
+  return `Ship & Commit\nASD Pause\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}`;
 }
 
 export async function POST(req: Request, ctx: { params: { id: string } }) {

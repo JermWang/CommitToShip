@@ -3,20 +3,17 @@ import { PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import { Buffer } from "buffer";
 
 import { checkRateLimit } from "../../../lib/rateLimit";
-import { getSafeErrorMessage } from "../../../lib/safeError";
+import { apiError } from "../../../lib/apiError";
 import { getConnection } from "../../../lib/solana";
 import { getOrCreateLaunchTreasuryWallet } from "../../../lib/launchTreasuryStore";
 import { auditLog } from "../../../lib/auditLog";
-import { getAdminCookieName, getAdminSessionWallet, getAllowedAdminWallets, verifyAdminOrigin } from "../../../lib/adminSession";
-import { verifyCreatorAuthOrThrow } from "../../../lib/creatorAuth";
+import { verifyAdminOrigin } from "../../../lib/adminSession";
+import { authorizeLaunchAccess } from "../../../lib/creatorAuth";
+import { validateLaunchInput } from "../../../lib/launchValidation";
+import { getLaunchAttempt } from "../../../lib/launchAttemptStore";
+import { findManagedCommitmentByAuthority } from "../../../lib/escrowStore";
 
 export const runtime = "nodejs";
-
-function isPublicLaunchEnabled(): boolean {
-  // Public launches enabled by default (closed beta ended)
-  const raw = String(process.env.CTS_PUBLIC_LAUNCHES ?? "true").trim().toLowerCase();
-  return raw !== "0" && raw !== "false" && raw !== "no" && raw !== "off";
-}
 
 export async function GET() {
   const res = NextResponse.json({ error: "Method Not Allowed. Use POST /api/launch/prepare." }, { status: 405 });
@@ -25,7 +22,6 @@ export async function GET() {
 }
 
 export async function OPTIONS(req: Request) {
-  const expected = String(process.env.APP_ORIGIN ?? "").trim();
   const origin = req.headers.get("origin") ?? "";
 
   try {
@@ -38,7 +34,7 @@ export async function OPTIONS(req: Request) {
 
   const res = new NextResponse(null, { status: 204 });
   res.headers.set("allow", "POST, OPTIONS");
-  res.headers.set("access-control-allow-origin", origin || expected);
+  res.headers.set("access-control-allow-origin", origin);
   res.headers.set("access-control-allow-methods", "POST, OPTIONS");
   res.headers.set("access-control-allow-headers", "content-type");
   res.headers.set("access-control-allow-credentials", "true");
@@ -46,9 +42,16 @@ export async function OPTIONS(req: Request) {
   return res;
 }
 
+/**
+ * POST /api/launch/prepare
+ *
+ * Step 1 of the automated launch. Validates the launch form and returns an unsigned SOL transfer that funds
+ * the payer's launch wallet. Everything that could make the launch fail (bad input, wallet already used,
+ * a launch already running) is rejected HERE, before the user is asked to send any SOL.
+ */
 export async function POST(req: Request) {
   try {
-    const rl = await checkRateLimit(req, { keyPrefix: "launch:prepare", limit: 10, windowSeconds: 60 });
+    const rl = await checkRateLimit(req, { keyPrefix: "launch:prepare", limit: 20, windowSeconds: 60 });
     if (!rl.allowed) {
       const res = NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
       res.headers.set("retry-after", String(rl.retryAfterSeconds));
@@ -58,10 +61,11 @@ export async function POST(req: Request) {
     verifyAdminOrigin(req);
 
     const body = (await req.json().catch(() => null)) as any;
+    if (!body || typeof body !== "object") return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
 
-    const payerWallet = typeof body?.payerWallet === "string" ? body.payerWallet.trim() : "";
-    const devBuySolParsed = Number(body?.devBuySol ?? 0);
-    const devBuySol = Number.isFinite(devBuySolParsed) && devBuySolParsed >= 0 ? devBuySolParsed : 0;
+    const payerWallet = typeof body.payerWallet === "string" ? body.payerWallet.trim() : "";
+    const devBuySolParsed = Number(body.devBuySol ?? 0);
+    const devBuySol = Number.isFinite(devBuySolParsed) && devBuySolParsed >= 0 ? Math.min(devBuySolParsed, 100) : 0;
 
     if (!payerWallet) return NextResponse.json({ error: "payerWallet is required" }, { status: 400 });
 
@@ -72,39 +76,42 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid payer wallet address" }, { status: 400 });
     }
 
-    if (!isPublicLaunchEnabled()) {
-      const cookieHeader = String(req.headers.get("cookie") ?? "");
-      const hasAdminCookie = cookieHeader.includes(`${getAdminCookieName()}=`);
-      const allowed = getAllowedAdminWallets();
-      const adminWallet = await getAdminSessionWallet(req);
+    const denied = await authorizeLaunchAccess(req, { body, payerWallet: payerPubkey.toBase58(), auditEvent: "launch_prepare_denied" });
+    if (denied) return NextResponse.json({ error: denied.error, hint: denied.hint }, { status: denied.status });
 
-      const adminOk = Boolean(adminWallet) && allowed.has(String(adminWallet));
-      if (!adminOk) {
-        try {
-          verifyCreatorAuthOrThrow({
-            payload: body?.creatorAuth,
-            action: "launch_access",
-            expectedWalletPubkey: payerPubkey.toBase58(),
-            maxSkewSeconds: 5 * 60,
-          });
-        } catch (e) {
-          const msg = (e as Error)?.message ?? String(e);
-          await auditLog("launch_prepare_denied", { hasAdminCookie, adminWallet: adminWallet ?? null, error: msg });
-          const status = msg.toLowerCase().includes("not approved") ? 403 : 401;
-          return NextResponse.json(
-            {
-              error: msg,
-              hint: "If you're part of the closed beta, ask to be added to CTS_CREATOR_WALLET_PUBKEYS.",
-            },
-            { status }
-          );
-        }
-      }
-    }
+    // Reject bad input before any SOL moves.
+    if (body.launch && typeof body.launch === "object") validateLaunchInput(body.launch);
+
     const { record: treasury, created } = await getOrCreateLaunchTreasuryWallet({ payerWallet: payerPubkey.toBase58() });
-    const walletId = treasury.walletId;
     const treasuryWallet = treasury.treasuryWallet;
     const treasuryPubkey = new PublicKey(treasuryWallet);
+
+    // One managed launch per wallet: tell the user now, not after they have paid.
+    const existing = await findManagedCommitmentByAuthority(treasuryPubkey.toBase58());
+    if (existing) {
+      return NextResponse.json(
+        {
+          error: "This wallet has already launched a token with Auto-Lock.",
+          code: "ALREADY_LAUNCHED",
+          existingCommitmentId: existing.id,
+          hint: "Connect a different wallet to launch another token, or use Manual Lock for an existing token.",
+        },
+        { status: 409 }
+      );
+    }
+
+    const attempt = await getLaunchAttempt(payerPubkey.toBase58());
+    if (attempt && (attempt.status === "confirmed" || attempt.status === "onchain_unrecorded")) {
+      return NextResponse.json(
+        {
+          error: "This wallet has already launched a token with Auto-Lock.",
+          code: "ALREADY_LAUNCHED",
+          tokenMint: attempt.tokenMint,
+          hint: "Connect a different wallet to launch another token.",
+        },
+        { status: 409 }
+      );
+    }
 
     const devBuyLamports = Math.floor(devBuySol * 1_000_000_000);
     const requiredLamports = devBuyLamports + 10_000_000;
@@ -143,7 +150,6 @@ export async function POST(req: Request) {
     }
 
     await auditLog("launch_prepare", {
-      walletId,
       treasuryWallet,
       payerWallet: payerPubkey.toBase58(),
       requiredLamports,
@@ -154,9 +160,9 @@ export async function POST(req: Request) {
       devBuySol,
     });
 
+    // The Privy wallet id stays server-side; only the public treasury address is returned.
     return NextResponse.json({
       ok: true,
-      walletId,
       treasuryWallet,
       payerWallet: payerPubkey.toBase58(),
       requiredLamports,
@@ -170,7 +176,7 @@ export async function POST(req: Request) {
       lastValidBlockHeight: lastValidBlockHeight || null,
     });
   } catch (e) {
-    await auditLog("launch_prepare_error", { error: getSafeErrorMessage(e) });
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    await auditLog("launch_prepare_error", { error: e instanceof Error ? e.message : String(e) });
+    return apiError(e, "launch/prepare");
   }
 }

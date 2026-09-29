@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import bs58 from "bs58";
 
+import { useSolanaProvider } from "../../lib/useSolanaProvider";
+
 type Profile = {
   walletPubkey: string;
   displayName?: string | null;
@@ -54,14 +56,15 @@ function shortWallet(pk: string): string {
 }
 
 function expectedProfileUpdateMessage(input: { walletPubkey: string; timestampUnix: number; payloadJson: string }): string {
-  return `Commit To Ship\nProfile Update\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}\nPayload: ${input.payloadJson}`;
+  return `Ship & Commit\nProfile Update\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}\nPayload: ${input.payloadJson}`;
 }
 
 function expectedAvatarUploadMessage(input: { walletPubkey: string; timestampUnix: number; contentType: string }): string {
-  return `Commit To Ship\nAvatar Upload\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}\nContentType: ${input.contentType}`;
+  return `Ship & Commit\nAvatar Upload\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}\nContentType: ${input.contentType}`;
 }
 
 export default function ProfileClient({ wallet }: { wallet: string }) {
+  const solanaProvider = useSolanaProvider();
   const walletParam = String(wallet ?? "").trim();
 
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -77,7 +80,7 @@ export default function ProfileClient({ wallet }: { wallet: string }) {
   const [bio, setBio] = useState("");
 
   function getSolanaProvider(): any {
-    return (window as any)?.solana;
+    return solanaProvider;
   }
 
   async function load() {
@@ -235,7 +238,7 @@ export default function ProfileClient({ wallet }: { wallet: string }) {
                 {profile?.displayName?.trim() || shortWallet(profile?.walletPubkey || walletParam)}
               </h1>
               <p className="utilityLead">
-                Manage your public profile and wallet identity on Commit To Ship.
+                Manage your public profile and wallet identity on Ship &amp; Commit.
               </p>
             </div>
             <div className="utilityHeaderRight">

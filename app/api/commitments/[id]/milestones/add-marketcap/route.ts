@@ -7,6 +7,7 @@ import bs58 from "bs58";
 import { RewardMilestone, getCommitment, publicView, updateRewardTotalsAndMilestones } from "../../../../../lib/escrowStore";
 import { checkRateLimit } from "../../../../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../../../../lib/safeError";
+import { fetchDexScreenerPairsByTokenMint, pickBestDexScreenerPair } from "../../../../../lib/dexScreener";
 
 export const runtime = "nodejs";
 
@@ -17,7 +18,7 @@ function milestoneAddMarketCapMessage(input: {
   unlockPercent: number;
   thresholdUsd: number;
 }): string {
-  return `Commit To Ship\nAdd Market Cap Milestone\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}\nTitle: ${input.title}\nUnlockPercent: ${input.unlockPercent}\nThresholdUsd: ${input.thresholdUsd}`;
+  return `Ship & Commit\nAdd Market Cap Milestone\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}\nTitle: ${input.title}\nUnlockPercent: ${input.unlockPercent}\nThresholdUsd: ${input.thresholdUsd}`;
 }
 
 function milestoneIdFromRequest(input: { commitmentId: string; requestId: string }): string {
@@ -108,6 +109,25 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
     const ok = nacl.sign.detached.verify(new TextEncoder().encode(expectedMessage), signature, creatorPk.toBytes());
     if (!ok) return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
 
+    // A market-cap goal has to be a real goal: reject thresholds the token has already reached.
+    // (Best effort - if the price feed is unreachable we don't block the creator.)
+    try {
+      const { pairs } = await fetchDexScreenerPairsByTokenMint({ tokenMint: record.tokenMint, timeoutMs: 4000 });
+      const best = pickBestDexScreenerPair({ pairs, chainId: "solana", minLiquidityUsd: 1000 });
+      const currentMarketCap = Number(best?.marketCap ?? best?.fdv ?? 0);
+      if (Number.isFinite(currentMarketCap) && currentMarketCap > 0 && thresholdUsd <= currentMarketCap) {
+        return NextResponse.json(
+          {
+            error: `Market cap goal must be above the current market cap (~$${Math.round(currentMarketCap).toLocaleString("en-US")})`,
+            currentMarketCapUsd: Math.round(currentMarketCap),
+          },
+          { status: 400 }
+        );
+      }
+    } catch {
+      // price feed unavailable - allow
+    }
+
     const milestones: RewardMilestone[] = Array.isArray(record.milestones) ? (record.milestones.slice() as RewardMilestone[]) : [];
     if (milestones.length >= 50) {
       return NextResponse.json({ error: "Maximum 50 milestones allowed" }, { status: 400 });
@@ -129,6 +149,7 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
       marketCapThresholdUsd: thresholdUsd,
       marketCapChainId: "solana",
       requireNoMintAuthority: true,
+      autoTrackingStartedAtUnix: Math.floor(Date.now() / 1000),
     };
 
     const nextMilestones = milestones.concat([nextMilestone]);

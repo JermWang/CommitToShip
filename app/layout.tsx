@@ -1,5 +1,6 @@
 import "./globals.css";
 import "@solana/wallet-adapter-react-ui/styles.css";
+import type { Metadata } from "next";
 import { Suspense } from "react";
 import Link from "next/link";
 import TokenContractBar from "./components/TokenContractBar";
@@ -8,34 +9,34 @@ import AsciiWaves from "./components/AsciiWaves";
 import AsciiParticles from "./components/AsciiParticles";
 import SolanaWalletProvider from "./components/SolanaWalletProvider";
 import { ToastProvider } from "./components/ToastProvider";
+import { SITE_DESCRIPTION, SITE_NAME, getSiteOrigin } from "./lib/siteConfig";
 
-export const metadata = {
-  title: "Commit To Ship",
-  description:
-    "Lock your pump.fun creator fees in on-chain escrow. Set milestones; holders vote to approve releases. Miss a deadline? Fees get redistributed to voters and fuel $SHIP buybacks.",
+export const metadata: Metadata = {
+  metadataBase: new URL(getSiteOrigin()),
+  title: { default: SITE_NAME, template: `%s · ${SITE_NAME}` },
+  description: SITE_DESCRIPTION,
   icons: {
     icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
   },
   openGraph: {
-    title: "Commit To Ship",
-    description:
-      "Lock your pump.fun creator fees in on-chain escrow. Set milestones; holders vote to approve releases. Miss a deadline? Fees get redistributed to voters and fuel $SHIP buybacks.",
+    title: SITE_NAME,
+    siteName: SITE_NAME,
+    description: SITE_DESCRIPTION,
     images: [
       {
-        url: "/branding/COMMIT-TO-SHIP-PROMO-1.png",
+        url: "/branding/SHIP-AND-COMMIT-PROMO-1.png",
         width: 1024,
         height: 576,
-        alt: "Commit To Ship — Accountability infrastructure & milestone escrow",
+        alt: "Ship & Commit — Accountability infrastructure & milestone escrow",
       },
     ],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Commit To Ship",
-    description:
-      "Lock your pump.fun creator fees in on-chain escrow. Set milestones; holders vote to approve releases. Miss a deadline? Fees get redistributed to voters and fuel $SHIP buybacks.",
-    images: ["/branding/COMMIT-TO-SHIP-PROMO-1.png"],
+    title: SITE_NAME,
+    description: SITE_DESCRIPTION,
+    images: ["/branding/SHIP-AND-COMMIT-PROMO-1.png"],
   },
 };
 
@@ -58,9 +59,9 @@ export default function RootLayout({
                 <div className="globalNavLeft">
                   <Link className="globalNavBrand" href="/">
                     <span className="globalNavBrandMarkWrap">
-                      <img className="globalNavBrandMark" src="/branding/white-logo.png" alt="Commit To Ship" />
+                      <img className="globalNavBrandMark" src="/branding/white-logo.png" alt="Ship & Commit" />
                     </span>
-                    <span className="globalNavBrandText">Commit To Ship</span>
+                    <span className="globalNavBrandText">Ship &amp; Commit</span>
                   </Link>
 
                   <TokenContractBar />

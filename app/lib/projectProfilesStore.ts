@@ -1,4 +1,5 @@
 import { hasDatabase, getPool } from "./db";
+import { relativizeOwnAssetUrl } from "./assetStorage";
 
 export type ProjectProfileRecord = {
   tokenMint: string;
@@ -72,8 +73,8 @@ function rowToProject(row: any): ProjectProfileRecord {
     xUrl: row.x_url ?? null,
     telegramUrl: row.telegram_url ?? null,
     discordUrl: row.discord_url ?? null,
-    imageUrl: row.image_url ?? null,
-    bannerUrl: row.banner_url ?? null,
+    imageUrl: relativizeOwnAssetUrl(row.image_url ?? null),
+    bannerUrl: relativizeOwnAssetUrl(row.banner_url ?? null),
     metadataUri: row.metadata_uri ?? null,
     createdByWallet: row.created_by_wallet ?? null,
     createdAtUnix: Number(row.created_at_unix),

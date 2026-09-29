@@ -12,16 +12,9 @@ import { getCommitment } from "../../../lib/escrowStore";
 import { getAsdConfig, insertAsdExecution, listActiveAsdConfigs, updateAsdAfterExecution } from "../../../lib/asdStore";
 import { jupiterQuote, jupiterSwapTx } from "../../../lib/jupiter";
 import { privySignSolanaTransaction } from "../../../lib/privy";
+import { isCronAuthorized } from "../../../lib/cronAuth";
 
 export const runtime = "nodejs";
-
-function isCronAuthorized(req: Request): boolean {
-  const secret = String(process.env.CRON_SECRET ?? "").trim();
-  if (!secret) return false;
-  const header = String(req.headers.get("x-cron-secret") ?? "").trim();
-  if (!header) return false;
-  return header === secret;
-}
 
 function swapsEnabled(): boolean {
   const raw = String(process.env.CTS_ASD_ENABLE_SWAPS ?? process.env.CTS_ASD_ENABLE_TRANSFERS ?? "").trim().toLowerCase();

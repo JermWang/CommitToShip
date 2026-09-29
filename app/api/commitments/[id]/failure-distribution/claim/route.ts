@@ -9,11 +9,13 @@ import {
   getFailureAllocation,
   getFailureDistributionByCommitmentId,
   setFailureDistributionClaimTxSig,
+  releaseFailureDistributionClaim,
   tryAcquireFailureDistributionClaim,
 } from "../../../../../lib/escrowStore";
 import { checkRateLimit } from "../../../../../lib/rateLimit";
 import {
   getChainUnixTime,
+  findRecentSystemTransferSignature,
   getConnection,
   keypairFromBase58Secret,
   transferLamports,
@@ -29,7 +31,7 @@ function isFailureDistributionPayoutsEnabled(): boolean {
 }
 
 function expectedClaimMessage(input: { commitmentId: string; walletPubkey: string; timestampUnix: number }): string {
-  return `Commit To Ship\nFailure Voter Claim\nCommitment: ${input.commitmentId}\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}`;
+  return `Ship & Commit\nFailure Voter Claim\nCommitment: ${input.commitmentId}\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}`;
 }
 
 function isFreshEnough(nowUnix: number, timestampUnix: number): boolean {
@@ -141,10 +143,28 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
       return NextResponse.json({ error: "Already claimed" }, { status: 409 });
     }
 
-    const { signature } =
-      escrowRef.kind === "privy"
-        ? await transferLamportsFromPrivyWallet({ connection, walletId: escrowRef.walletId, fromPubkey, to: pk, lamports: amountLamports })
-        : await transferLamports({ connection, from: keypairFromBase58Secret(escrowRef.escrowSecretKeyB58), to: pk, lamports: amountLamports });
+    let signature: string;
+    try {
+      ({ signature } =
+        escrowRef.kind === "privy"
+          ? await transferLamportsFromPrivyWallet({ connection, walletId: escrowRef.walletId, fromPubkey, to: pk, lamports: amountLamports })
+          : await transferLamports({ connection, from: keypairFromBase58Secret(escrowRef.escrowSecretKeyB58), to: pk, lamports: amountLamports }));
+    } catch (transferErr) {
+      // The claim row was reserved before sending. If the payout clearly did not land, release it so the voter can
+      // retry; if it did land (e.g. confirmation timed out), record the signature instead of paying twice.
+      let landedSig: string | null = null;
+      try {
+        landedSig = await findRecentSystemTransferSignature({ connection, fromPubkey, toPubkey: pk, lamports: amountLamports, limit: 10 });
+      } catch {
+        landedSig = null;
+      }
+      if (landedSig) {
+        await setFailureDistributionClaimTxSig({ distributionId: distribution.id, walletPubkey, txSig: landedSig });
+        return NextResponse.json({ ok: true, recovered: true, nowUnix, signature: landedSig, amountLamports, distributionId: distribution.id });
+      }
+      await releaseFailureDistributionClaim({ distributionId: distribution.id, walletPubkey }).catch(() => null);
+      throw transferErr;
+    }
 
     await setFailureDistributionClaimTxSig({ distributionId: distribution.id, walletPubkey, txSig: signature });
 

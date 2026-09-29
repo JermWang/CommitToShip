@@ -1,4 +1,5 @@
 import { hasDatabase, getPool } from "./db";
+import { relativizeOwnAssetUrl } from "./assetStorage";
 
 export type ProfileRecord = {
   walletPubkey: string;
@@ -52,7 +53,7 @@ function rowToProfile(row: any): ProfileRecord {
     displayName: row.display_name ?? null,
     bio: row.bio ?? null,
     avatarPath: row.avatar_path ?? null,
-    avatarUrl: row.avatar_url ?? null,
+    avatarUrl: relativizeOwnAssetUrl(row.avatar_url ?? null),
     createdAtUnix: Number(row.created_at_unix),
     updatedAtUnix: Number(row.updated_at_unix),
   };

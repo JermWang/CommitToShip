@@ -10,7 +10,7 @@ import { getSafeErrorMessage } from "../../lib/safeError";
 export const runtime = "nodejs";
 
 function expectedDevVerifyMessage(input: { tokenMint: string; walletPubkey: string; timestampUnix: number }): string {
-  return `Commit To Ship\nDev Verification\nMint: ${input.tokenMint}\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}`;
+  return `Ship & Commit\nDev Verification\nMint: ${input.tokenMint}\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}`;
 }
 
 export async function POST(req: Request) {

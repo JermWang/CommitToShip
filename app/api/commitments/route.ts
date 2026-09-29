@@ -121,7 +121,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Verification timestamp expired" }, { status: 400 });
       }
 
-      const message = `Commit To Ship\nDev Verification\nMint: ${tokenMint}\nWallet: ${devWallet.toBase58()}\nTimestamp: ${timestampUnix}`;
+      const message = `Ship & Commit\nDev Verification\nMint: ${tokenMint}\nWallet: ${devWallet.toBase58()}\nTimestamp: ${timestampUnix}`;
       const signature = bs58.decode(signatureB58);
       const okSig = nacl.sign.detached.verify(new TextEncoder().encode(message), signature, devWallet.toBytes());
       if (!okSig) {

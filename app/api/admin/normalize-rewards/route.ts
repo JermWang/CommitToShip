@@ -16,18 +16,9 @@ import {
 } from "../../../lib/escrowStore";
 import { getBalanceLamports, getChainUnixTime, getConnection } from "../../../lib/solana";
 import { getSafeErrorMessage } from "../../../lib/safeError";
+import { isCronAuthorized } from "../../../lib/cronAuth";
 
 export const runtime = "nodejs";
-
-function isCronAuthorized(req: Request): boolean {
-  const secret = String(process.env.CRON_SECRET ?? "").trim();
-  if (!secret) return false;
-
-  const header = String(req.headers.get("x-cron-secret") ?? "").trim();
-  if (!header) return false;
-
-  return header === secret;
-}
 
 function computeUnlockedLamports(milestones: RewardMilestone[]): number {
   return milestones.reduce((acc, m) => {
@@ -97,7 +88,7 @@ export async function POST(req: Request) {
         const totalFundedLamports = Math.max(0, balanceLamports + releasedLamports);
 
         const allReleased = normalized.milestones.length > 0 && normalized.milestones.every((m) => m.status === "released");
-        const nextStatus = allReleased ? "completed" : (c.status === "completed" ? "completed" : "active");
+        const nextStatus = allReleased ? "completed" : (c.status === "completed" || c.status === "failed" || c.status === "resolving" ? c.status : "active");
 
         await updateRewardTotalsAndMilestones({
           id: c.id,

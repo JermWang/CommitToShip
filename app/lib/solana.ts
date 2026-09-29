@@ -179,11 +179,25 @@ export async function getBalanceLamports(connection: Connection, pubkey: PublicK
   return await withRetry(() => connection.getBalance(pubkey, c));
 }
 
+/**
+ * Current unix time according to the chain, falling back to the server clock.
+ * getBlockTime on the very latest slot often fails ("Block not available"); that must never take a page or API
+ * route down, and a few seconds of skew is irrelevant for the day-scale windows this is used for.
+ */
 export async function getChainUnixTime(connection: Connection): Promise<number> {
-  const c = getServerCommitment();
-  const slot = await withRetry(() => connection.getSlot(c));
-  const t = await withRetry(() => connection.getBlockTime(slot));
-  if (typeof t === "number") return t;
+  try {
+    const c = getServerCommitment();
+    const slot = await connection.getSlot(c);
+    // Ask for a slightly older slot: it is far more likely to have a block time available.
+    const t = await connection.getBlockTime(Math.max(0, slot - 8));
+    if (typeof t === "number" && Number.isFinite(t) && t > 0) {
+      // Prefer the chain time, but never let it drift far from the server clock.
+      const server = Math.floor(Date.now() / 1000);
+      return Math.abs(t - server) <= 120 ? t : server;
+    }
+  } catch {
+    // fall through to the server clock
+  }
   return Math.floor(Date.now() / 1000);
 }
 
@@ -650,6 +664,11 @@ export function getSolanaCaip2(): string {
   return "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
 }
 
+/**
+ * Waits for a transaction to reach the configured commitment.
+ * Throws code "TX_EXPIRED" once the blockhash is provably expired without the tx landing (safe to retry),
+ * or code "TX_UNCERTAIN" if we simply ran out of patience (the tx may still land - do NOT blindly resend).
+ */
 export async function confirmTransactionSignature(input: {
   connection: Connection;
   signature: string;
@@ -659,8 +678,56 @@ export async function confirmTransactionSignature(input: {
   const sig = String(input.signature ?? "").trim();
   if (!sig) throw new Error("Missing signature");
 
-  const c = getServerCommitment();
-  await confirmSignatureViaRpc(input.connection, sig, c);
+  const desired = getServerCommitment();
+  const satisfied = (status: string | null | undefined) => {
+    const c = String(status ?? "");
+    if (desired === "processed") return c === "processed" || c === "confirmed" || c === "finalized";
+    if (desired === "finalized") return c === "finalized";
+    return c === "confirmed" || c === "finalized";
+  };
+
+  const check = async (): Promise<boolean> => {
+    const st = await withRetry(() => input.connection.getSignatureStatuses([sig], { searchTransactionHistory: true }));
+    const s = st?.value?.[0] as any;
+    if (s?.err) throw new Error(`Transaction failed: ${JSON.stringify(s.err)}`);
+    return Boolean(s?.confirmationStatus) && satisfied(s.confirmationStatus);
+  };
+
+  const start = Date.now();
+  const timeoutMs = 90_000;
+  const lastValid = Number(input.lastValidBlockHeight ?? 0);
+
+  while (Date.now() - start < timeoutMs) {
+    if (await check()) return;
+
+    if (lastValid > 0) {
+      const height = await withRetry(() => input.connection.getBlockHeight("confirmed"));
+      if (height > lastValid) {
+        if (await check()) return;
+        throw Object.assign(new Error("Transaction expired before it was confirmed"), { code: "TX_EXPIRED" });
+      }
+    }
+
+    await new Promise((r) => setTimeout(r, 1200));
+  }
+
+  throw Object.assign(new Error("Transaction confirmation timeout"), { code: "TX_UNCERTAIN" });
+}
+
+/** Waits (bounded) for a signature to be confirmed. Returns false if it never showed up in time. */
+export async function waitForSignatureConfirmed(input: { connection: Connection; signature: string; timeoutMs?: number }): Promise<boolean> {
+  const sig = String(input.signature ?? "").trim();
+  if (!sig) return false;
+  const timeoutMs = Math.max(1000, input.timeoutMs ?? 25_000);
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const st = await withRetry(() => input.connection.getSignatureStatuses([sig], { searchTransactionHistory: true }));
+    const s = st?.value?.[0] as any;
+    if (s?.err) return false;
+    if (s?.confirmationStatus === "confirmed" || s?.confirmationStatus === "finalized") return true;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  return false;
 }
 
 export async function transferLamportsFromPrivyWallet(opts: {

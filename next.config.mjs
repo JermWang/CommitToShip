@@ -1,6 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   poweredByHeader: false,
+  reactStrictMode: true,
+  experimental: {
+    // Enables instrumentation.ts (background scheduler + schema warm-up on the long-running Railway server).
+    instrumentationHook: true,
+    // Keep the Postgres driver out of the webpack bundle (avoids the optional pg-native warning, faster builds).
+    serverComponentsExternalPackages: ["pg"],
+  },
   async headers() {
     const isDev = process.env.NODE_ENV !== 'production';
     const csp = [

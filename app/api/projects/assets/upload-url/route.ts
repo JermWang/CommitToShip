@@ -6,59 +6,12 @@ import nacl from "tweetnacl";
 import bs58 from "bs58";
 
 import { checkRateLimit } from "../../../../lib/rateLimit";
-import { getSafeErrorMessage } from "../../../../lib/safeError";
+import { apiError } from "../../../../lib/apiError";
 import { getConnection, getMintAuthorityBase58, getTokenMetadataUpdateAuthorityBase58 } from "../../../../lib/solana";
-import { getAllowedCreatorWallets } from "../../../../lib/creatorAuth";
+import { getAllowedCreatorWallets, isPublicLaunchEnabled } from "../../../../lib/creatorAuth";
+import { ASSET_MAX_BYTES, createUploadTicket, extFromContentType } from "../../../../lib/assetStorage";
 
 export const runtime = "nodejs";
-
-function isPublicLaunchEnabled(): boolean {
-  // Public launches enabled by default (closed beta ended)
-  const raw = String(process.env.CTS_PUBLIC_LAUNCHES ?? "true").trim().toLowerCase();
-  return raw !== "0" && raw !== "false" && raw !== "no" && raw !== "off";
-}
-
-function requiredEnv(name: string): string {
-  const v = String(process.env[name] ?? "").trim();
-  if (!v) throw new Error(`${name} is required`);
-  return v;
-}
-
-function requiredEnvAny(names: string[]): string {
-  for (const n of names) {
-    const v = String(process.env[n] ?? "").trim();
-    if (v) return v;
-  }
-  throw new Error(`${names[0]} is required`);
-}
-
-function baseSupabaseUrl(raw: string): string {
-  return raw.replace(/\/+$/, "");
-}
-
-function supabaseStorageBaseUrl(): string {
-  const supabaseUrl = baseSupabaseUrl(requiredEnvAny(["SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL"]));
-  return `${supabaseUrl}/storage/v1`;
-}
-
-function absolutizeStorageUrl(rawUrl: string, input: { supabaseUrl: string; storageBase: string }): string {
-  const raw = String(rawUrl ?? "").trim();
-  if (!raw) return "";
-  if (/^https?:\/\//i.test(raw)) return raw;
-
-  const p = raw.replace(/^\/+/, "");
-  if (p.startsWith("storage/v1/")) return `${input.supabaseUrl}/${p}`;
-  return `${input.storageBase}/${p}`;
-}
-
-function extFromContentType(contentType: string): string {
-  const ct = contentType.toLowerCase();
-  if (ct.includes("image/png")) return "png";
-  if (ct.includes("image/jpeg") || ct.includes("image/jpg")) return "jpg";
-  if (ct.includes("image/gif")) return "gif";
-  if (ct.includes("image/webp")) return "webp";
-  return "png";
-}
 
 export async function POST(req: Request) {
   try {
@@ -110,7 +63,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Verification timestamp expired" }, { status: 400 });
     }
 
-    const message = `Commit To Ship\nDev Verification\nMint: ${tokenMint}\nWallet: ${devWallet.toBase58()}\nTimestamp: ${timestampUnix}`;
+    const message = `Ship & Commit\nDev Verification\nMint: ${tokenMint}\nWallet: ${devWallet.toBase58()}\nTimestamp: ${timestampUnix}`;
     const signature = bs58.decode(signatureB58);
     const okSig = nacl.sign.detached.verify(new TextEncoder().encode(message), signature, devWallet.toBytes());
     if (!okSig) {
@@ -133,49 +86,15 @@ export async function POST(req: Request) {
     const id = crypto.randomBytes(12).toString("hex");
     const path = `${tokenMint}/${kind}/${id}.${ext}`;
 
-    const supabaseUrl = baseSupabaseUrl(requiredEnvAny(["SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL"]));
-    const storageBase = supabaseStorageBaseUrl();
-    const serviceRoleKey = requiredEnv("SUPABASE_SERVICE_ROLE_KEY");
-
-    const createUrl = `${storageBase}/object/upload/sign/${encodeURIComponent(bucket)}/${path}`;
-
-    const expiresInSeconds = 2 * 60 * 60;
-
-    const res = await fetch(createUrl, {
-      method: "POST",
-      headers: {
-        apikey: serviceRoleKey,
-        authorization: `Bearer ${serviceRoleKey}`,
-        "content-type": "application/json",
-        "x-upsert": "true",
-      },
-      body: JSON.stringify({ expiresIn: expiresInSeconds }),
-    });
-
-    const json = (await res.json().catch(() => ({}))) as any;
-    if (!res.ok) {
-      return NextResponse.json({ error: json?.message ?? json?.error ?? `Storage request failed (${res.status})` }, { status: 500 });
-    }
-
-    const signedUrl = absolutizeStorageUrl(String(json?.url ?? ""), { supabaseUrl, storageBase });
-    const url = new URL(signedUrl);
-    const token = url.searchParams.get("token") || "";
-    if (!token) {
-      return NextResponse.json({ error: "Storage did not return token" }, { status: 500 });
-    }
-
-    const publicUrl = `${storageBase}/object/public/${encodeURIComponent(bucket)}/${path}`;
-
-    return NextResponse.json({
-      ok: true,
+    const ticket = await createUploadTicket(req, {
       bucket,
       path,
-      token,
-      signedUrl,
-      publicUrl,
-      expiresInSeconds,
+      contentType,
+      maxBytes: kind === "banner" ? ASSET_MAX_BYTES.banner : ASSET_MAX_BYTES.icon,
     });
+
+    return NextResponse.json(ticket);
   } catch (e) {
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    return apiError(e, "project-assets/upload-url");
   }
 }

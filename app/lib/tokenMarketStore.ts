@@ -270,7 +270,7 @@ export async function listTokenMarketSnapshots(input: {
      from token_market_snapshots
      where token_mint=$1 and chain_id=$2 and pair_address=$3 and fetched_at_unix >= $4
      order by fetched_at_unix asc
-     limit 2000`,
+     limit 50000`,
     [tokenMint, chainId, pairAddress, String(sinceUnix)]
   );
 

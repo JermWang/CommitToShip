@@ -16,9 +16,16 @@ export type JupiterSwapResponse = {
   lastValidBlockHeight?: number;
 };
 
+// The legacy quote-api.jup.ag / price.jup.ag hosts have been retired. lite-api.jup.ag is the free, keyless tier
+// (set JUPITER_API_BASE_URL=https://api.jup.ag and JUPITER_API_KEY for a dedicated key/rate limit).
 function apiBase(): string {
-  const raw = String(process.env.JUPITER_API_BASE_URL ?? "").trim();
-  return raw || "https://quote-api.jup.ag";
+  const raw = String(process.env.JUPITER_API_BASE_URL ?? "").trim().replace(/\/+$/, "");
+  return raw || "https://lite-api.jup.ag";
+}
+
+function apiHeaders(extra?: Record<string, string>): Record<string, string> {
+  const key = String(process.env.JUPITER_API_KEY ?? "").trim();
+  return { ...(key ? { "x-api-key": key } : {}), ...(extra ?? {}) };
 }
 
 function timeoutMs(): number {
@@ -47,13 +54,13 @@ export async function jupiterQuote(input: {
   const t = setTimeout(() => controller.abort(), timeoutMs());
 
   try {
-    const url = new URL(`${apiBase()}/v6/quote`);
+    const url = new URL(`${apiBase()}/swap/v1/quote`);
     url.searchParams.set("inputMint", inputMint);
     url.searchParams.set("outputMint", outputMint);
     url.searchParams.set("amount", amount);
     url.searchParams.set("slippageBps", String(slippageBps));
 
-    const res = await fetch(url.toString(), { method: "GET", cache: "no-store", signal: controller.signal });
+    const res = await fetch(url.toString(), { method: "GET", headers: apiHeaders(), cache: "no-store", signal: controller.signal });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       const details = text.trim() ? `: ${text.slice(0, 240)}` : "";
@@ -98,7 +105,7 @@ export async function jupiterSwapTx(input: {
   const t = setTimeout(() => controller.abort(), timeoutMs());
 
   try {
-    const url = `${apiBase()}/v6/swap`;
+    const url = `${apiBase()}/swap/v1/swap`;
     const quoteResponse = (input.quoteResponse as any)?.raw ?? input.quoteResponse;
     const body = {
       quoteResponse,
@@ -108,7 +115,7 @@ export async function jupiterSwapTx(input: {
 
     const res = await fetch(url, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: apiHeaders({ "content-type": "application/json" }),
       body: JSON.stringify(body),
       cache: "no-store",
       signal: controller.signal,
@@ -129,5 +136,25 @@ export async function jupiterSwapTx(input: {
     return { swapTransaction, lastValidBlockHeight };
   } finally {
     clearTimeout(t);
+  }
+}
+
+/** USD price for a mint from Jupiter's price API (v3). Returns null when Jupiter has no price for the token. */
+export async function jupiterUsdPrice(mint: string): Promise<number | null> {
+  const id = String(mint ?? "").trim();
+  if (!id) return null;
+
+  try {
+    const res = await fetch(`${apiBase()}/price/v3?ids=${encodeURIComponent(id)}`, {
+      headers: apiHeaders(),
+      cache: "no-store",
+      signal: AbortSignal.timeout(timeoutMs()),
+    });
+    if (!res.ok) return null;
+    const json = (await res.json().catch(() => null)) as any;
+    const price = Number(json?.[id]?.usdPrice);
+    return Number.isFinite(price) && price > 0 ? price : null;
+  } catch {
+    return null;
   }
 }

@@ -47,7 +47,7 @@ function computeUnlockedLamports(milestones: RewardMilestone[]): number {
 }
 
 function milestoneClaimMessage(input: { commitmentId: string; milestoneId: string }): string {
-  return `Commit To Ship\nMilestone Claim\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}`;
+  return `Ship & Commit\nMilestone Claim\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}`;
 }
 
 export async function POST(req: Request, ctx: { params: { id: string; milestoneId: string } }) {

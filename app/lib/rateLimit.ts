@@ -47,8 +47,18 @@ function getHeader(req: Request, name: string): string {
 }
 
 export function getClientIp(req: Request): string {
+  // Behind a trusted proxy (Railway) the *rightmost* X-Forwarded-For entries are the ones the proxy appended;
+  // anything to the left can be forged by the client. TRUSTED_PROXY_HOPS = number of proxies in front of us.
   const xff = getHeader(req, "x-forwarded-for");
-  if (xff) return xff.split(",")[0]?.trim() || xff.trim();
+  if (xff) {
+    const parts = xff
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const hops = Math.max(1, Math.floor(Number(process.env.TRUSTED_PROXY_HOPS ?? "1")) || 1);
+    const ip = parts[Math.max(0, parts.length - hops)];
+    if (ip) return ip;
+  }
 
   const realIp = getHeader(req, "x-real-ip");
   if (realIp) return realIp;
@@ -61,6 +71,15 @@ export function getClientIp(req: Request): string {
 
   const ua = getHeader(req, "user-agent");
   return ua ? `unknown:${ua.slice(0, 80)}` : "unknown";
+}
+
+/** Housekeeping: rate-limit windows are only useful while they are current. */
+export async function pruneRateLimits(): Promise<number> {
+  if (!hasDatabase()) return 0;
+  await ensureSchema();
+  const cutoff = nowUnix() - 3600;
+  const res = await getPool().query("delete from public.rate_limits where reset_at_unix < $1", [String(cutoff)]);
+  return res.rowCount ?? 0;
 }
 
 function getStore(): Map<string, RateLimitEntry> {

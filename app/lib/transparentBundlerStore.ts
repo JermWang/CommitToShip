@@ -159,7 +159,7 @@ export function buildDeclaredWalletMessage(input: {
   nonce: string;
   issuedAtUnix: number;
 }): string {
-  return `Commit To Ship\nDeclare Team Wallet\n\nTokenMint: ${input.tokenMint}\nWallet: ${input.walletPubkey}\nScope: declared_team_control\nNonce: ${input.nonce}\nIssuedAtUnix: ${input.issuedAtUnix}`;
+  return `Ship & Commit\nDeclare Team Wallet\n\nTokenMint: ${input.tokenMint}\nWallet: ${input.walletPubkey}\nScope: declared_team_control\nNonce: ${input.nonce}\nIssuedAtUnix: ${input.issuedAtUnix}`;
 }
 
 export function hashInputs(fields: Record<string, unknown>): string {

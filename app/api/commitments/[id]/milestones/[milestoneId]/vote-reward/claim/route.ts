@@ -392,6 +392,12 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
         lastValidBlockHeight: latest.lastValidBlockHeight,
       });
     } finally {
+      // Never hand a connection with an open transaction (or a held advisory lock) back to the pool.
+      try {
+        await client.query("rollback");
+      } catch {
+        // connection already unusable
+      }
       client.release();
     }
   } catch (e) {

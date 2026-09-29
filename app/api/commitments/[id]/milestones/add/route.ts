@@ -11,7 +11,7 @@ import { getSafeErrorMessage } from "../../../../../lib/safeError";
 export const runtime = "nodejs";
 
 function milestoneAddMessage(input: { commitmentId: string; requestId: string; title: string; unlockPercent: number; dueAtUnix: number }): string {
-  return `Commit To Ship\nAdd Milestone\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}\nTitle: ${input.title}\nUnlockPercent: ${input.unlockPercent}\nDueAtUnix: ${input.dueAtUnix}`;
+  return `Ship & Commit\nAdd Milestone\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}\nTitle: ${input.title}\nUnlockPercent: ${input.unlockPercent}\nDueAtUnix: ${input.dueAtUnix}`;
 }
 
 function milestoneIdFromRequest(input: { commitmentId: string; requestId: string }): string {

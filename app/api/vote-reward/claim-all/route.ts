@@ -175,9 +175,6 @@ export async function POST(req: Request) {
     const nowUnix = await getChainUnixTime(connection);
     const pk = new PublicKey(walletPubkey);
 
-    const pool = getPool();
-    const client = await pool.connect();
-
     let insertedDistributionIds: string[] = [];
     let insertedAmountsRaw: string[] = [];
     let totalAmountRaw = 0n;
@@ -204,6 +201,9 @@ export async function POST(req: Request) {
 
       const claimedAtUnix = nowUnix;
       const txSig = bs58.encode(userSigBytes);
+
+      const pool = getPool();
+      const client = await pool.connect();
 
       try {
         await client.query("begin");
@@ -558,6 +558,9 @@ export async function POST(req: Request) {
         client.release();
       }
     }
+
+    const pool = getPool();
+    const client = await pool.connect();
 
     try {
       await client.query("begin");

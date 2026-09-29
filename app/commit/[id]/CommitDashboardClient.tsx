@@ -1,6 +1,6 @@
 "use client";
 
-import { Connection, PublicKey, SystemProgram, Transaction, clusterApiUrl } from "@solana/web3.js";
+import { Connection, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import bs58 from "bs58";
@@ -9,6 +9,8 @@ import styles from "./CommitDashboard.module.css";
 import { useToast } from "../../components/ToastProvider";
 import { fmtNumber2, fmtSolFromLamports2 } from "../../lib/formatUi";
 import PriceChart from "@/app/components/PriceChart";
+import { useSolanaProvider } from "../../lib/useSolanaProvider";
+import { confirmSignaturePolling, getClientRpcEndpoint } from "../../lib/clientRpc";
  
 type AdminModal =
   | {
@@ -198,7 +200,7 @@ function milestoneFailureClaimMessage(input: {
   walletPubkey: string;
   timestampUnix: number;
 }): string {
-  return `Commit To Ship\nMilestone Failure Voter Claim\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}`;
+  return `Ship & Commit\nMilestone Failure Voter Claim\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}\nWallet: ${input.walletPubkey}\nTimestamp: ${input.timestampUnix}`;
 }
 
 function unixToLocal(unix: number): string {
@@ -222,21 +224,21 @@ function toDatetimeLocalValue(d: Date): string {
 }
 
 function completionMessage(commitmentId: string, milestoneId: string): string {
-  return `Commit To Ship\nMilestone Completion\nCommitment: ${commitmentId}\nMilestone: ${milestoneId}`;
+  return `Ship & Commit\nMilestone Completion\nCommitment: ${commitmentId}\nMilestone: ${milestoneId}`;
 }
 
 function signalMessage(commitmentId: string, milestoneId: string, vote: "approve" | "reject"): string {
   const v = vote === "reject" ? "reject" : "approve";
   const title = v === "reject" ? "Milestone Reject Signal" : "Milestone Approval Signal";
-  return `Commit To Ship\n${title}\nCommitment: ${commitmentId}\nMilestone: ${milestoneId}\nVote: ${v}`;
+  return `Ship & Commit\n${title}\nCommitment: ${commitmentId}\nMilestone: ${milestoneId}\nVote: ${v}`;
 }
 
 function addMilestoneMessage(input: { commitmentId: string; requestId: string; title: string; unlockPercent: number; dueAtUnix: number }): string {
-  return `Commit To Ship\nAdd Milestone\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}\nTitle: ${input.title}\nUnlockPercent: ${input.unlockPercent}\nDueAtUnix: ${input.dueAtUnix}`;
+  return `Ship & Commit\nAdd Milestone\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}\nTitle: ${input.title}\nUnlockPercent: ${input.unlockPercent}\nDueAtUnix: ${input.dueAtUnix}`;
 }
 
 function claimMessage(commitmentId: string, milestoneId: string): string {
-  return `Commit To Ship\nMilestone Claim\nCommitment: ${commitmentId}\nMilestone: ${milestoneId}`;
+  return `Ship & Commit\nMilestone Claim\nCommitment: ${commitmentId}\nMilestone: ${milestoneId}`;
 }
 
 function makeRequestId(): string {
@@ -251,6 +253,7 @@ function solToLamports(sol: string): number {
 }
 
 export default function CommitDashboardClient(props: Props) {
+  const solanaProvider = useSolanaProvider();
   const { escrowPubkey, explorerUrl, id, canMarkFailure, canMarkSuccess, kind, projectProfile: projectProfileProp } = props;
 
   const baseClientUnix = useMemo(() => Math.floor(Date.now() / 1000), []);
@@ -374,18 +377,7 @@ export default function CommitDashboardClient(props: Props) {
   }
 
   function getSolanaProvider(): any {
-    return (window as any)?.solana;
-  }
-
-  function getClientRpcEndpoint(): string {
-    const explicit = String(process.env.NEXT_PUBLIC_SOLANA_RPC_URL ?? "").trim();
-    if (explicit) return explicit;
-
-    const cluster = String(process.env.NEXT_PUBLIC_SOLANA_CLUSTER ?? "mainnet-beta").trim();
-    if (cluster === "devnet" || cluster === "testnet" || cluster === "mainnet-beta") {
-      return clusterApiUrl(cluster);
-    }
-    return clusterApiUrl("mainnet-beta");
+    return solanaProvider;
   }
 
   async function connectFundingWallet() {
@@ -457,10 +449,7 @@ export default function CommitDashboardClient(props: Props) {
         throw new Error("Wallet does not support sending transactions");
       }
 
-      await connection.confirmTransaction(
-        { signature, blockhash: latest.blockhash, lastValidBlockHeight: latest.lastValidBlockHeight },
-        "confirmed"
-      );
+      await confirmSignaturePolling({ connection, signature, lastValidBlockHeight: latest.lastValidBlockHeight });
 
       setFundSignature(signature);
       toast({ kind: "success", message: "Funding transaction submitted" });
@@ -571,7 +560,7 @@ export default function CommitDashboardClient(props: Props) {
   }
 
   function expectedPumpClaimMessage(input: { creatorPubkey: string; timestampUnix: number }): string {
-    return `Commit To Ship\nPump.fun Claim\nCreator: ${input.creatorPubkey}\nTimestamp: ${input.timestampUnix}`;
+    return `Ship & Commit\nPump.fun Claim\nCreator: ${input.creatorPubkey}\nTimestamp: ${input.timestampUnix}`;
   }
 
   function base64ToBytes(b64: string): Uint8Array {

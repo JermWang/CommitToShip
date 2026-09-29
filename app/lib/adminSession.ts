@@ -36,7 +36,11 @@ function parseCookies(header: string | null): Record<string, string> {
     const k = p.slice(0, idx).trim();
     const v = p.slice(idx + 1).trim();
     if (!k) continue;
-    out[k] = decodeURIComponent(v);
+    try {
+      out[k] = decodeURIComponent(v);
+    } catch {
+      out[k] = v;
+    }
   }
   return out;
 }
@@ -61,16 +65,54 @@ export function getAllowedAdminWallets(): Set<string> {
   );
 }
 
+function normalizeOrigin(value: string): string {
+  const v = String(value ?? "").trim();
+  if (!v) return "";
+  try {
+    const u = new URL(v);
+    return `${u.protocol}//${u.host}`.toLowerCase();
+  } catch {
+    return v.replace(/\/+$/, "").toLowerCase();
+  }
+}
+
+/**
+ * CSRF / origin gate for state-changing endpoints.
+ * APP_ORIGIN may be a comma-separated list. A request is also accepted when its Origin host matches the
+ * Host it was sent to (same-site), so the Railway domain, www/apex and a later custom domain all keep working.
+ */
 export function verifyAdminOrigin(req: Request): void {
-  const expected = String(process.env.APP_ORIGIN ?? "").trim();
+  const configured = String(process.env.APP_ORIGIN ?? "")
+    .split(",")
+    .map(normalizeOrigin)
+    .filter(Boolean);
   const isProd = process.env.NODE_ENV === "production";
-  if (!expected) {
+  if (!configured.length) {
     if (isProd) throw new Error("APP_ORIGIN is required in production");
     return;
   }
+
   const origin = req.headers.get("origin");
-  if (!origin) throw new Error("Missing Origin");
-  if (origin !== expected) throw new Error("Invalid Origin");
+  if (!origin) {
+    // Browsers don't send Origin on same-origin GET/HEAD; those are read-only and cookie auth is SameSite=Lax.
+    const method = String(req.method ?? "GET").toUpperCase();
+    if (method === "GET" || method === "HEAD") return;
+    throw Object.assign(new Error("Missing Origin"), { status: 403 });
+  }
+  if (configured.includes(normalizeOrigin(origin))) return;
+
+  const host = String(req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "")
+    .split(",")[0]
+    .trim()
+    .toLowerCase();
+  try {
+    if (host && new URL(origin).host.toLowerCase() === host) return;
+  } catch {
+    // fall through
+  }
+
+  console.error("[origin] rejected request", { origin, host, configured });
+  throw Object.assign(new Error("Invalid Origin"), { status: 403 });
 }
 
 let ensuredAdminSchema: Promise<void> | null = null;
@@ -107,7 +149,7 @@ async function ensureAdminSchema(): Promise<void> {
 }
 
 export function expectedAdminLoginMessage(input: { walletPubkey: string; nonce: string }): string {
-  return `Commit To Ship\nAdmin Login\nWallet: ${input.walletPubkey}\nNonce: ${input.nonce}`;
+  return `Ship & Commit\nAdmin Login\nWallet: ${input.walletPubkey}\nNonce: ${input.nonce}`;
 }
 
 export async function createAdminNonce(input: { walletPubkey: string }): Promise<{ nonce: string; createdAtUnix: number }> {
