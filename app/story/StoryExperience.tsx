@@ -220,12 +220,12 @@ const N = CHAPTERS.length;
 const POSES: EmblemPose[] = [
   { x: 0, y: 0.5, size: 0.27, rotY: 0, rotX: 0.04, glow: 1, maxW: 0.3 },
   // middle chapters: the emblem holds the centre column, between the copy and the glass card
-  // each pose also says how the emblem travels into it, so every chapter change feels different
-  { x: 0, y: 0.02, size: 0.3, rotY: -0.32, rotX: 0.05, glow: 0.5, maxW: 0.15, move: "spin" },
-  { x: 0, y: 0.02, size: 0.3, rotY: 0.34, rotX: -0.04, glow: 0.6, maxW: 0.15, move: "dial", land: "ripple" },
-  { x: 0, y: 0.02, size: 0.3, rotY: -0.28, rotX: 0.06, glow: 0.5, maxW: 0.15, move: "flip" },
-  { x: 0, y: 0.02, size: 0.3, rotY: 0.3, rotX: 0.02, glow: 0.5, maxW: 0.15, move: "inspect" },
-  { x: 0, y: 0.02, size: 0.3, rotY: -0.22, rotX: -0.03, glow: 0.6, maxW: 0.15, move: "double", land: "burst" },
+  // each pose also says how the emblem travels into it and which glass icon it becomes (intro/CTA keep the logo)
+  { x: 0, y: 0.02, size: 0.3, rotY: -0.32, rotX: 0.05, glow: 0.5, maxW: 0.15, move: "spin", shape: "rocket" },
+  { x: 0, y: 0.02, size: 0.3, rotY: 0.34, rotX: -0.04, glow: 0.6, maxW: 0.15, move: "dial", land: "ripple", shape: "lock" },
+  { x: 0, y: 0.02, size: 0.3, rotY: -0.28, rotX: 0.06, glow: 0.5, maxW: 0.15, move: "flip", shape: "flag" },
+  { x: 0, y: 0.02, size: 0.3, rotY: 0.3, rotX: 0.02, glow: 0.5, maxW: 0.15, move: "inspect", shape: "shield" },
+  { x: 0, y: 0.02, size: 0.3, rotY: -0.22, rotX: -0.03, glow: 0.6, maxW: 0.15, move: "double", land: "burst", shape: "unlock" },
   { x: 0, y: 0.5, size: 0.27, rotY: Math.PI * 2, rotX: 0.04, glow: 1, maxW: 0.3, move: "spin", land: "burst" },
 ];
 const MOBILE_POSES: EmblemPose[] = POSES.map((p, i) => {

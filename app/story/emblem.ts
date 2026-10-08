@@ -37,6 +37,8 @@ export type EmblemPose = {
   move?: EmblemMove;
   /** what happens when the emblem settles on this pose */
   land?: "burst" | "ripple";
+  /** what the glass object is in this chapter (default: the logo) */
+  shape?: EmblemShape;
 };
 
 /** whole turns each move adds per axis (keeps rotation continuous across chapters) */
@@ -70,6 +72,7 @@ const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const easeInOutCubic = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 const easeOutExpo = (t: number) => (t >= 1 ? 1 : 1 - Math.pow(2, -10 * t));
+const easeOutBack = (t: number) => 1 + 2.4 * Math.pow(t - 1, 3) + 1.4 * Math.pow(t - 1, 2);
 
 /** Pastel "prism" tint for a glint, so sparkles read on a light background. */
 function prism(seed: number): THREE.Color {
@@ -278,17 +281,47 @@ function makeSparkleTexture(): THREE.CanvasTexture {
   return t;
 }
 
-async function buildGlassLogo(material: THREE.Material): Promise<{ holder: THREE.Group; edgePoints: THREE.Vector3[] }> {
-  const svgText = await fetch("/branding/svg-logo.svg").then((r) => r.text());
+/* Chapter icons, drawn on a 100-unit grid in our own line language and extruded exactly like the logo.
+   Holes (window, keyhole, check) use evenodd so the glass is cut through. */
+const svg = (body: string) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">${body}</svg>`;
+const LOCK_BODY =
+  '<path fill-rule="evenodd" d="M30 46 H70 Q78 46 78 54 V84 Q78 92 70 92 H30 Q22 92 22 84 V54 Q22 46 30 46 Z M50 57 A6 6 0 0 1 53.5 67.87 L55 79 L45 79 L46.5 67.87 A6 6 0 0 1 50 57 Z"/>';
+export const EMBLEM_ICONS = {
+  // launch: a rocket with a porthole, fins and flame
+  rocket: svg(
+    '<path fill-rule="evenodd" d="M50 4 C64 14 71 32 70 60 L30 60 C29 32 36 14 50 4 Z M42 31 A8 8 0 1 0 58 31 A8 8 0 1 0 42 31 Z"/>' +
+      '<path d="M25 44 C18 50 13 58 13 70 L13 77 L26 67 Z"/>' +
+      '<path d="M75 44 C82 50 87 58 87 70 L87 77 L74 67 Z"/>' +
+      '<path d="M40 66 L60 66 C60 78 55 88 50 96 C45 88 40 78 40 66 Z"/>'
+  ),
+  // lock: a closed padlock
+  lock: svg('<path d="M30 42 V30 A20 20 0 0 1 70 30 V42 H61 V30 A11 11 0 0 0 39 30 V42 Z"/>' + LOCK_BODY),
+  // commit: a milestone flag
+  flag: svg('<path d="M22 8 H30 V94 H22 Z"/><path d="M34 12 C46 6 58 20 80 13 V52 C58 59 46 45 34 51 Z"/>'),
+  // verify: a shield with the check cut through it
+  shield: svg(
+    '<path fill-rule="evenodd" d="M50 4 L86 17 V45 C86 70 70 87 50 96 C30 87 14 70 14 45 V17 Z M28 52 L36 44 L45 53 L65 33 L73 41 L45 69 Z"/>'
+  ),
+  // release: the same padlock, shackle lifted open
+  unlock: svg('<path d="M30 42 V22 A20 20 0 0 1 70 22 V30 H61 V22 A11 11 0 0 0 39 22 V42 Z"/>' + LOCK_BODY),
+};
+export type EmblemShape = "logo" | keyof typeof EMBLEM_ICONS;
+
+/** k scales the extrusion so icons drawn on a different grid end up exactly as thick and rounded as the logo. */
+function buildGlassShape(
+  svgText: string,
+  material: THREE.Material,
+  k = 1
+): { holder: THREE.Group; edgePoints: THREE.Vector3[]; rawSize: number } {
   const data = new SVGLoader().parse(svgText);
 
   const group = new THREE.Group();
   const extrude: THREE.ExtrudeGeometryOptions = {
-    depth: 18,
+    depth: 18 * k,
     bevelEnabled: true,
-    bevelThickness: 9,
-    bevelSize: 5,
-    bevelOffset: -1.2,
+    bevelThickness: 9 * k,
+    bevelSize: 5 * k,
+    bevelOffset: -1.2 * k,
     bevelSegments: 12,
     curveSegments: 48,
   };
@@ -313,7 +346,8 @@ async function buildGlassLogo(material: THREE.Material): Promise<{ holder: THREE
   group.position.sub(center);
   const holder = new THREE.Group();
   holder.add(group);
-  holder.scale.setScalar(1 / Math.max(size.x, size.y));
+  const rawSize = Math.max(size.x, size.y);
+  holder.scale.setScalar(1 / rawSize);
   holder.updateMatrixWorld(true);
 
   // Glint anchors: points on the rounded front bevel (normals tilted toward the viewer), in holder space.
@@ -335,7 +369,7 @@ async function buildGlassLogo(material: THREE.Material): Promise<{ holder: THREE
       }
     }
   });
-  return { holder, edgePoints };
+  return { holder, edgePoints, rawSize };
 }
 
 /* ---------------------------------------------------------------------------------------------- */
@@ -465,24 +499,41 @@ export function createEmblem(canvas: HTMLCanvasElement, poses: EmblemPose[], mob
   let loaded = false;
   let loadedAt = 0;
   let disposed = false;
-  buildGlassLogo(glass)
-    .then(({ holder, edgePoints }) => {
+  // every shape lives in its own wrap (with its own edge glints) so chapters can swap logo <-> icon
+  const shapes = new Map<EmblemShape, THREE.Group>();
+  const addShape = (key: EmblemShape, built: ReturnType<typeof buildGlassShape>, glintCount: number) => {
+    const wrap = new THREE.Group();
+    wrap.add(built.holder);
+    const pts = built.edgePoints;
+    const picks = Math.min(glintCount, pts.length);
+    for (let k = 0; k < picks; k++) {
+      const p = pts[Math.floor((k / picks) * pts.length + Math.random() * (pts.length / picks))];
+      if (!p) continue;
+      const sprite = makeSprite(prism(Math.random()));
+      sprite.position.copy(p);
+      wrap.add(sprite);
+      glints.push({ sprite, rate: 0.6 + Math.random() * 1.1, phase: Math.random() * TAU, size: 0.08 + Math.random() * 0.1 });
+    }
+    wrap.visible = false;
+    pivot.add(wrap);
+    shapes.set(key, wrap);
+  };
+  const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
+  (async () => {
+    const logoSvg = await fetch("/branding/svg-logo.svg").then((r) => r.text());
+    if (disposed) return;
+    const logo = buildGlassShape(logoSvg, glass);
+    addShape("logo", logo, 14);
+    loaded = true;
+    loadedAt = -1; // stamped on the next frame
+    // icons are drawn on a 100-unit grid: scale their extrusion so they match the logo's thickness and rounding
+    const k = (92 / logo.rawSize) * 1.15;
+    for (const key of Object.keys(EMBLEM_ICONS) as (keyof typeof EMBLEM_ICONS)[]) {
+      await nextFrame(); // spread the geometry work so the intro stays smooth
       if (disposed) return;
-      pivot.add(holder);
-      // ~14 glints spread across the rounded edges
-      const picks = Math.min(14, edgePoints.length);
-      for (let k = 0; k < picks; k++) {
-        const p = edgePoints[Math.floor((k / picks) * edgePoints.length + Math.random() * (edgePoints.length / picks))];
-        if (!p) continue;
-        const sprite = makeSprite(prism(Math.random()));
-        sprite.position.copy(p);
-        pivot.add(sprite);
-        glints.push({ sprite, rate: 0.6 + Math.random() * 1.1, phase: Math.random() * TAU, size: 0.08 + Math.random() * 0.1 });
-      }
-      loaded = true;
-      loadedAt = -1; // stamped on the next frame
-    })
-    .catch((e) => console.error("[story] emblem failed to build", e));
+      addShape(key, buildGlassShape(EMBLEM_ICONS[key], glass, k), 10);
+    }
+  })().catch((e) => console.error("[story] emblem failed to build", e));
 
   let w = 1;
   let h = 1;
@@ -618,6 +669,18 @@ export function createEmblem(canvas: HTMLCanvasElement, poses: EmblemPose[], mob
       const targetRotY = lerp(a.rotY, b.rotY, e) * (1 - faceOn) + (cum.y + mY) * TAU - (1 - intro) * 1.4 + pointer.x * 0.2;
       const targetRotX = lerp(a.rotX, b.rotX, e) + (cum.x + mX) * TAU + rx + pointer.y * 0.12;
       const targetRotZ = (cum.z + mZ) * TAU + rz;
+
+      // logo <-> icon swap: the old shape shrinks away mid-move and the new one pops in, hidden inside the turn
+      const shapeA = a.shape ?? "logo";
+      const shapeB = b.shape ?? "logo";
+      for (const [key, wrap] of shapes) {
+        let vis = 0;
+        if (key === shapeA && key === shapeB) vis = 1;
+        else if (key === shapeA) vis = 1 - smoothstep(0.26, 0.5, e);
+        else if (key === shapeB) vis = easeOutBack(smoothstep(0.5, 0.74, e));
+        wrap.visible = vis > 0.002;
+        wrap.scale.setScalar(Math.max(0.0001, vis));
+      }
 
       // idle "sailing": slow pitch, roll and bob layered on top of the springs
       const bob = Math.sin(time * 0.9) * 0.03 * size;
