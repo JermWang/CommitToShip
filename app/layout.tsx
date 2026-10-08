@@ -5,7 +5,6 @@ import { Suspense } from "react";
 import Link from "next/link";
 import TokenContractBar from "./components/TokenContractBar";
 import GlobalNavLinks from "./components/GlobalNavLinks";
-import AsciiWaves from "./components/AsciiWaves";
 import AsciiParticles from "./components/AsciiParticles";
 import SolanaWalletProvider from "./components/SolanaWalletProvider";
 import { ToastProvider } from "./components/ToastProvider";
@@ -49,9 +48,6 @@ export default function RootLayout({
     <html lang="en">
       <body data-skin="app">
         <AsciiParticles />
-        <Suspense fallback={null}>
-          <AsciiWaves />
-        </Suspense>
         <SolanaWalletProvider>
           <ToastProvider>
             <header className="globalNav">

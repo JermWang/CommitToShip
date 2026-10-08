@@ -1,16 +1,6 @@
-import type { Metadata } from "next";
+import { permanentRedirect } from "next/navigation";
 
-import StoryExperience from "./StoryExperience";
-
-export const metadata: Metadata = {
-  title: "How it works",
-  description: "Scroll through how Ship & Commit locks creator fees behind milestones that holders verify, from launch to payout.",
-};
-
+// The story is the homepage now; keep old /story links working.
 export default function StoryPage() {
-  return (
-    <main className="storyMain">
-      <StoryExperience />
-    </main>
-  );
+  permanentRedirect("/");
 }
