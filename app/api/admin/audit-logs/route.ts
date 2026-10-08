@@ -6,6 +6,31 @@ import { getPool, hasDatabase } from "../../../lib/db";
 import { apiError } from "../../../lib/apiError";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+let ensuredAuditSchema: Promise<void> | null = null;
+
+/** Same DDL as lib/auditLog.ts (idempotent): the table only exists after the first audit write otherwise. */
+function ensureAuditLogsTable(): Promise<void> {
+  if (ensuredAuditSchema) return ensuredAuditSchema;
+  ensuredAuditSchema = getPool()
+    .query(
+      `create table if not exists public.audit_logs (
+        id bigserial primary key,
+        ts_unix bigint not null,
+        event text not null,
+        fields jsonb not null default '{}'::jsonb
+      );
+      create index if not exists audit_logs_ts_idx on public.audit_logs(ts_unix);
+      create index if not exists audit_logs_event_idx on public.audit_logs(event);`
+    )
+    .then(() => undefined)
+    .catch((e) => {
+      ensuredAuditSchema = null;
+      throw e;
+    });
+  return ensuredAuditSchema;
+}
 
 function clampInt(n: number, min: number, max: number): number {
   if (!Number.isFinite(n)) return min;
@@ -49,6 +74,7 @@ export async function GET(req: Request) {
       where.push(`ts_unix < $${params.length}`);
     }
 
+    await ensureAuditLogsTable();
     const pool = getPool();
     const sql = `
       select id, ts_unix, event, fields

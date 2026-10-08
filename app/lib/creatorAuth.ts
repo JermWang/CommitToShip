@@ -26,6 +26,44 @@ export function isLaunchPaused(): boolean {
 export type LaunchAccessDenied = { status: number; error: string; hint?: string };
 
 /**
+ * What the payer's execute signature commits to: where the creator fees go (payout wallet), what token is created and
+ * how much of the launch wallet is spent on the dev buy. A launch_access signature (shared by upload/prepare/dev-buy)
+ * can't be replayed to launch something else or to redirect the payout.
+ */
+export type LaunchExecuteBinding = { payoutWallet: string; name: string; symbol: string; devBuyLamports: number };
+
+function bodyStr(v: unknown): string {
+  return typeof v === "string" ? v.trim() : "";
+}
+
+/** Same normalization as validateLaunchInput / the execute route, without throwing (auth runs before validation). */
+export function launchExecuteBindingFromBody(body: any): LaunchExecuteBinding {
+  const devBuySolParsed = Number(body?.devBuySol ?? 0);
+  const devBuySol = Number.isFinite(devBuySolParsed) && devBuySolParsed >= 0 ? Math.min(devBuySolParsed, 100) : 0;
+  return {
+    payoutWallet: bodyStr(body?.payoutWallet),
+    name: bodyStr(body?.name),
+    symbol: bodyStr(body?.symbol).replace(/^\$+/, "").trim(),
+    devBuyLamports: Math.floor(devBuySol * 1_000_000_000),
+  };
+}
+
+/** The exact text the payer signs for POST /api/launch/execute (the client builds the same string). */
+export function expectedLaunchExecuteMessage(input: LaunchExecuteBinding & { walletPubkey: string; timestampUnix: number }): string {
+  return [
+    "Ship & Commit",
+    "Creator Auth",
+    "Action: launch_execute",
+    `Wallet: ${input.walletPubkey}`,
+    `Payout wallet: ${input.payoutWallet}`,
+    `Token name: ${JSON.stringify(input.name)}`,
+    `Token symbol: ${JSON.stringify(input.symbol)}`,
+    `Dev buy lamports: ${Math.floor(Number(input.devBuyLamports) || 0)}`,
+    `Timestamp: ${input.timestampUnix}`,
+  ].join("\n");
+}
+
+/**
  * Gate for every launch-related endpoint. The payer wallet must always prove control of its key
  * (signed creatorAuth), so nobody can act on behalf of somebody else's launch treasury.
  * Admins with a valid session may bypass the signature. In closed mode the allowlist is enforced too.
@@ -33,7 +71,7 @@ export type LaunchAccessDenied = { status: number; error: string; hint?: string 
  */
 export async function authorizeLaunchAccess(
   req: Request,
-  input: { body: any; payerWallet: string; auditEvent: string }
+  input: { body: any; payerWallet: string; auditEvent: string; executeBinding?: LaunchExecuteBinding }
 ): Promise<LaunchAccessDenied | null> {
   if (isLaunchPaused()) {
     return { status: 503, error: "Launches are temporarily paused. Please check back soon." };
@@ -48,12 +86,15 @@ export async function authorizeLaunchAccess(
     // no admin session - fall through to wallet signature
   }
 
+  // The signature is always verified BEFORE the allowlist is consulted, so unauthenticated callers can't probe which
+  // wallets are approved in closed-launch mode.
   try {
     verifyCreatorAuthOrThrow({
       payload: input.body?.creatorAuth,
-      action: "launch_access",
+      action: input.executeBinding ? "launch_execute" : "launch_access",
       expectedWalletPubkey: payer,
       maxSkewSeconds: 5 * 60,
+      executeBinding: input.executeBinding,
     });
   } catch (e) {
     const msg = (e as Error)?.message ?? String(e);
@@ -102,9 +143,9 @@ export function verifyCreatorAuthOrThrow(input: {
   action: string;
   expectedWalletPubkey: string;
   maxSkewSeconds: number;
+  /** Required for action "launch_execute": the signed message must commit to these values. */
+  executeBinding?: LaunchExecuteBinding;
 }): string {
-  const allowed = getAllowedCreatorWallets();
-
   const payload = input.payload as any;
   const walletRaw = typeof payload?.walletPubkey === "string" ? payload.walletPubkey.trim() : "";
   const signatureB58 = typeof payload?.signatureB58 === "string" ? payload.signatureB58.trim() : "";
@@ -126,11 +167,15 @@ export function verifyCreatorAuthOrThrow(input: {
     throw new Error("creatorAuth timestamp expired");
   }
 
-  const msg = expectedCreatorAuthMessage({
-    action: String(input.action),
-    walletPubkey,
-    timestampUnix: Math.floor(timestampUnix),
-  });
+  if (input.action === "launch_execute" && !input.executeBinding) throw new Error("creatorAuth launch details are missing");
+  const msg =
+    input.action === "launch_execute" && input.executeBinding
+      ? expectedLaunchExecuteMessage({ ...input.executeBinding, walletPubkey, timestampUnix: Math.floor(timestampUnix) })
+      : expectedCreatorAuthMessage({
+          action: String(input.action),
+          walletPubkey,
+          timestampUnix: Math.floor(timestampUnix),
+        });
 
   let signature: Uint8Array;
   try {
@@ -138,6 +183,7 @@ export function verifyCreatorAuthOrThrow(input: {
   } catch {
     throw new Error("Invalid creatorAuth signature encoding");
   }
+  if (signature.length !== 64) throw new Error("Invalid creatorAuth signature");
 
   const ok = nacl.sign.detached.verify(new TextEncoder().encode(msg), signature, new PublicKey(walletPubkey).toBytes());
   if (!ok) {

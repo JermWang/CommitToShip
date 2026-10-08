@@ -94,9 +94,18 @@ export async function jupiterQuote(input: {
   }
 }
 
+/** Default priority fee for Jupiter swaps: "high" level, capped at 0.001 SOL (override with JUPITER_PRIORITY_MAX_LAMPORTS). */
+function defaultPrioritizationFee(): { priorityLevelWithMaxLamports: { priorityLevel: "medium" | "high" | "veryHigh"; maxLamports: number } } {
+  const raw = Number(process.env.JUPITER_PRIORITY_MAX_LAMPORTS ?? "");
+  const maxLamports = Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 1_000_000;
+  return { priorityLevelWithMaxLamports: { priorityLevel: "high", maxLamports } };
+}
+
 export async function jupiterSwapTx(input: {
   quoteResponse: JupiterQuoteResponse;
   userPublicKey: string;
+  /** Optional override of Jupiter's prioritizationFeeLamports (default: high, max 1_000_000 lamports). */
+  prioritizationFeeLamports?: unknown;
 }): Promise<JupiterSwapResponse> {
   const userPublicKey = String(input.userPublicKey ?? "").trim();
   if (!userPublicKey) throw new Error("userPublicKey is required");
@@ -107,10 +116,11 @@ export async function jupiterSwapTx(input: {
   try {
     const url = `${apiBase()}/swap/v1/swap`;
     const quoteResponse = (input.quoteResponse as any)?.raw ?? input.quoteResponse;
-    const body = {
+    const body: Record<string, unknown> = {
       quoteResponse,
       userPublicKey,
       dynamicComputeUnitLimit: true,
+      prioritizationFeeLamports: input.prioritizationFeeLamports ?? defaultPrioritizationFee(),
     };
 
     const res = await fetch(url, {

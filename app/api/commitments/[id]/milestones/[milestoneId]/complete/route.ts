@@ -6,7 +6,7 @@ import bs58 from "bs58";
 import { RewardMilestone, getCommitment, publicView, sumReleasedLamports, updateRewardTotalsAndMilestones } from "../../../../../../lib/escrowStore";
 import { checkRateLimit } from "../../../../../../lib/rateLimit";
 import { getBalanceLamports, getChainUnixTime, getConnection } from "../../../../../../lib/solana";
-import { getSafeErrorMessage } from "../../../../../../lib/safeError";
+import { apiError } from "../../../../../../lib/apiError";
 
 export const runtime = "nodejs";
 
@@ -95,7 +95,15 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
 
     const providedMessage = typeof body?.message === "string" ? body.message : (earlyReviewRequested ? expectedEarly : expectedLegacy);
 
-    const signature = bs58.decode(signatureB58);
+    let signature: Uint8Array;
+    try {
+      signature = bs58.decode(signatureB58);
+    } catch {
+      signature = new Uint8Array(0);
+    }
+    if (signature.length !== nacl.sign.signatureLength) {
+      return NextResponse.json({ error: "Invalid signature encoding" }, { status: 400 });
+    }
     const creatorPk = new PublicKey(record.creatorPubkey);
 
     const matchesLegacy = providedMessage === expectedLegacy;
@@ -165,6 +173,7 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
             unlockedLamports: computeUnlockedLamports(nextMilestones),
             totalFundedLamports,
             status: record.status === "created" ? "active" : record.status,
+            expectedMilestones: record.milestones ?? [],
           });
 
           return NextResponse.json({
@@ -238,7 +247,12 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
       milestones,
       totalFundedLamports,
       status: record.status === "created" ? "active" : record.status,
+      expectedMilestones: record.milestones ?? [],
     });
+    const applied = (updated.milestones ?? []).find((x) => x.id === milestoneId);
+    if (!applied || applied.completedAtUnix !== nowUnix) {
+      return NextResponse.json({ error: "The milestone changed concurrently; reload and try again", commitment: publicView(updated) }, { status: 409 });
+    }
 
     return NextResponse.json({
       ok: true,
@@ -247,6 +261,6 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
       commitment: publicView(updated),
     });
   } catch (e) {
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    return apiError(e, "milestone/complete");
   }
 }

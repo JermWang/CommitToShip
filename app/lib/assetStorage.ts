@@ -230,11 +230,69 @@ export async function readOwnAssetByUrl(rawUrl: string): Promise<{ contentType: 
   return getDatabaseAsset(decodeURIComponent(m[1]), path);
 }
 
-/** Housekeeping: drop launch staging uploads that never made it into a launch. */
+/**
+ * Makes a launch image permanent: an own-store `launch-staging/...` upload is copied to `launch/<tokenMint>/...`
+ * (outside the staging prune) and the permanent relative URL is returned. Any other URL is returned unchanged.
+ * Returns the original URL if the copy can't be made (the prune below also spares referenced staging assets).
+ */
+export async function promoteLaunchAsset(rawUrl: string | null | undefined, tokenMint: string): Promise<string | null> {
+  const url = typeof rawUrl === "string" ? rawUrl.trim() : "";
+  if (!url) return null;
+  if (!hasDatabase()) return url;
+
+  let pathname = "";
+  try {
+    pathname = new URL(url, "http://internal.invalid").pathname;
+  } catch {
+    return url;
+  }
+  const m = pathname.match(/^\/api\/assets\/([a-z0-9-]{1,60})\/(.+)$/i);
+  if (!m) return url;
+  const bucket = decodeURIComponent(m[1]);
+  const path = m[2].split("/").map((s) => decodeURIComponent(s)).join("/");
+  if (!path.startsWith("launch-staging/")) return url;
+
+  const mint = String(tokenMint ?? "").trim();
+  if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint)) return url;
+  const newPath = `launch/${mint}/${path.slice("launch-staging/".length)}`;
+
+  await ensureSchema();
+  const res = await getPool().query(
+    `insert into uploaded_assets (bucket, path, content_type, size_bytes, data, created_at_unix)
+     select bucket, $3, content_type, size_bytes, data, created_at_unix from uploaded_assets where bucket = $1 and path = $2
+     on conflict (bucket, path) do nothing`,
+    [bucket, path, newPath]
+  );
+  if (!res.rowCount) {
+    // Already promoted (retry) or the staging file is gone: only switch URLs if the permanent copy exists.
+    const existing = await getDatabaseAsset(bucket, newPath);
+    if (!existing) return url;
+  }
+  return `/api/assets/${encodeURIComponent(bucket)}/${newPath.split("/").map(encodeURIComponent).join("/")}`;
+}
+
+/**
+ * Housekeeping: drop launch staging uploads that never made it into a launch. Staging files that a project profile
+ * still points at (launches from before images were promoted) are never deleted.
+ */
 export async function pruneStaleStagingAssets(maxAgeSeconds = 7 * 24 * 60 * 60): Promise<number> {
   if (!hasDatabase()) return 0;
   await ensureSchema();
   const cutoff = Math.floor(Date.now() / 1000) - maxAgeSeconds;
-  const res = await getPool().query("delete from uploaded_assets where path like 'launch-staging/%' and created_at_unix < $1", [String(cutoff)]);
+  const pool = getPool();
+  const { rows } = await pool.query("select to_regclass('public.project_profiles') is not null as has_profiles");
+  const hasProfiles = Boolean(rows[0]?.has_profiles);
+  const res = await pool.query(
+    hasProfiles
+      ? `delete from uploaded_assets u
+          where u.path like 'launch-staging/%' and u.created_at_unix < $1
+            and not exists (
+              select 1 from public.project_profiles p
+               where position(u.path in coalesce(p.image_url, '')) > 0
+                  or position(u.path in coalesce(p.banner_url, '')) > 0
+            )`
+      : "delete from uploaded_assets where path like 'launch-staging/%' and created_at_unix < $1",
+    [String(cutoff)]
+  );
   return res.rowCount ?? 0;
 }

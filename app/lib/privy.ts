@@ -60,9 +60,10 @@ function signPrivyRequest(input: {
   body?: any;
   idempotencyKey?: string;
 }): string {
+  // Privy's authorization-signature payload covers ONLY the privy-specific headers (privy-app-id and, when present,
+  // privy-idempotency-key) - exactly what the official SDK signs. Adding content-type makes every signature invalid.
   const payloadHeaders: Record<string, string> = {
     "privy-app-id": input.appId,
-    "content-type": "application/json",
   };
   if (input.idempotencyKey) payloadHeaders["privy-idempotency-key"] = input.idempotencyKey;
 
@@ -104,9 +105,13 @@ function basicAuthHeader(appId: string, appSecret: string): string {
   return `Basic ${Buffer.from(raw, "utf8").toString("base64")}`;
 }
 
-function idempotencyKey(prefix: string): string {
-  const rand = crypto.randomBytes(12).toString("hex");
-  return `${prefix}:${rand}`;
+/**
+ * Idempotency keys are derived from the operation itself (wallet + exact payload), so a retried request - e.g. after a
+ * timeout where Privy did act - is answered with the original result instead of being executed a second time.
+ */
+function idempotencyKey(prefix: string, ...parts: string[]): string {
+  const digest = crypto.createHash("sha256").update(parts.map((p) => String(p ?? "")).join("|")).digest("hex").slice(0, 48);
+  return `${prefix}:${digest}`;
 }
 
 async function privyFetchJson(input: {
@@ -157,12 +162,17 @@ async function privyFetchJson(input: {
   return json;
 }
 
-export async function privyCreateSolanaWallet(): Promise<{ walletId: string; address: string }> {
+/**
+ * Creates a Privy server wallet. Pass `operationKey` (e.g. "launch-treasury:<payer>") so a retry of the same logical
+ * operation returns the wallet Privy already created instead of minting an orphan; without one every call is unique.
+ */
+export async function privyCreateSolanaWallet(input?: { operationKey?: string }): Promise<{ walletId: string; address: string }> {
+  const operationKey = String(input?.operationKey ?? "").trim() || `adhoc:${crypto.randomUUID()}`;
   const json = await privyFetchJson({
     method: "POST",
     path: "/v1/wallets",
     body: { chain_type: "solana" },
-    idempotencyKey: idempotencyKey("cts:createWallet"),
+    idempotencyKey: idempotencyKey("cts:createWallet", operationKey),
   });
 
   const walletId = String(json?.id ?? "").trim();
@@ -238,7 +248,7 @@ export async function privySignAndSendSolanaTransaction(input: {
         encoding: "base64",
       },
     },
-    idempotencyKey: idempotencyKey("cts:signAndSendSolana"),
+    idempotencyKey: idempotencyKey("cts:signAndSendSolana", walletId, caip2, tx),
   });
 
   const signature = String(json?.data?.hash ?? "").trim();
@@ -271,7 +281,7 @@ export async function privySignSolanaTransaction(input: {
         encoding: "base64",
       },
     },
-    idempotencyKey: idempotencyKey("cts:signSolana"),
+    idempotencyKey: idempotencyKey("cts:signSolana", walletId, tx),
   });
 
   const signed =
@@ -286,6 +296,11 @@ export async function privySignSolanaTransaction(input: {
   return { signedTransactionBase64: signed };
 }
 
+/**
+ * Privy-signs a legacy transaction and sends it through the durable path (rpc.ts sendAndConfirmDurable): the same
+ * signed bytes are rebroadcast until they confirm, and a fresh blockhash is only used once the previous transaction
+ * is provably expired - so a timeout can never turn one refund into two.
+ */
 async function privySignAndSendRawViaRpc(input: {
   connection: Connection;
   walletId: string;
@@ -294,75 +309,36 @@ async function privySignAndSendRawViaRpc(input: {
   const walletId = String(input.walletId ?? "").trim();
   if (!walletId) throw new Error("walletId required");
 
-  const { withRetry } = await import("./rpc");
-
+  const { sendAndConfirmDurable } = await import("./rpc");
   const tx = input.transaction;
-  const serializeForPrivy = () => tx.serialize({ requireAllSignatures: false }).toString("base64");
 
-  let signature = "";
-  let usedBlockhash = "";
-  let usedLastValidBlockHeight = 0;
-
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const latest = await withRetry(() => input.connection.getLatestBlockhash("processed"));
-    usedBlockhash = latest.blockhash;
-    usedLastValidBlockHeight = latest.lastValidBlockHeight;
-    tx.recentBlockhash = usedBlockhash;
-    tx.lastValidBlockHeight = usedLastValidBlockHeight;
-
-    try {
-      const signed = await privySignSolanaTransaction({ walletId, transactionBase64: serializeForPrivy() });
-      const raw = Buffer.from(signed.signedTransactionBase64, "base64");
-      signature = await withRetry(() =>
-        input.connection.sendRawTransaction(raw, { skipPreflight: false, preflightCommitment: "processed", maxRetries: 3 })
-      );
-      break;
-    } catch (e) {
-      const msg = getSafeErrorMessage(e);
-      const isBlockhashNotFound = msg.toLowerCase().includes("blockhash not found");
-
-      let logs: string[] | undefined;
-      const maybeLogs = (e as any)?.logs;
-      if (Array.isArray(maybeLogs) && maybeLogs.length) {
-        logs = maybeLogs.map((l: any) => String(l));
+  try {
+    const res = await sendAndConfirmDurable({
+      connection: input.connection,
+      maxRebuilds: 1,
+      sign: async (latest) => {
+        tx.recentBlockhash = latest.blockhash;
+        tx.lastValidBlockHeight = latest.lastValidBlockHeight;
+        const signed = await privySignSolanaTransaction({
+          walletId,
+          transactionBase64: tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64"),
+        });
+        return Buffer.from(signed.signedTransactionBase64, "base64");
+      },
+    });
+    return { signature: res.signature, blockhash: res.blockhash, lastValidBlockHeight: res.lastValidBlockHeight };
+  } catch (e) {
+    const cause = (e as any)?.cause;
+    const rawLogs = (e as any)?.logs ?? cause?.logs;
+    if (Array.isArray(rawLogs) && rawLogs.length && !(e as any).logs) {
+      try {
+        (e as any).logs = rawLogs.map((l: any) => String(l));
+      } catch {
+        // ignore
       }
-
-      if (!logs) {
-        const getLogsFn = (e as any)?.getLogs;
-        if (typeof getLogsFn === "function") {
-          try {
-            const l = await getLogsFn.call(e, input.connection);
-            if (Array.isArray(l) && l.length) logs = l.map((x: any) => String(x));
-          } catch {
-            // ignore
-          }
-        }
-      }
-
-      if (!logs) {
-        try {
-          const signed = await privySignSolanaTransaction({ walletId, transactionBase64: serializeForPrivy() });
-          const raw = Buffer.from(signed.signedTransactionBase64, "base64");
-          const parsed = Transaction.from(raw);
-          const sim = await withRetry(() => input.connection.simulateTransaction(parsed));
-          const l = sim.value?.logs;
-          if (Array.isArray(l) && l.length) logs = l.map((x: any) => String(x));
-        } catch {
-          // ignore
-        }
-      }
-
-      const err: any = new Error(msg);
-      if (logs) err.logs = logs;
-
-      if (!isBlockhashNotFound || attempt === 3) throw err;
     }
+    throw e;
   }
-
-  const { confirmSignatureViaRpc } = await import("./rpc");
-  await confirmSignatureViaRpc(input.connection, signature, "confirmed");
-
-  return { signature, blockhash: usedBlockhash, lastValidBlockHeight: usedLastValidBlockHeight };
 }
 
 export async function privyTransferLamportsFromWallet(input: {

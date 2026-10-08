@@ -61,7 +61,6 @@ export async function POST(req: Request) {
 
     if (!payerWallet) return NextResponse.json({ error: "payerWallet is required" }, { status: 400 });
     if (!tokenMint) return NextResponse.json({ error: "tokenMint is required" }, { status: 400 });
-    if (!creatorWallet) return NextResponse.json({ error: "creatorWallet is required" }, { status: 400 });
 
     try {
       new PublicKey(payerWallet);
@@ -78,11 +77,13 @@ export async function POST(req: Request) {
 
     let payerPubkey: PublicKey;
     let mintPubkey: PublicKey;
-    let creatorPubkey: PublicKey;
+    // creatorWallet is optional and only cross-checked: the creator (whose vault the buy pays) is read from the
+    // token's bonding curve on-chain, never trusted from the request.
+    let creatorCheck: PublicKey | undefined;
     try {
       payerPubkey = new PublicKey(payerWallet);
       mintPubkey = new PublicKey(tokenMint);
-      creatorPubkey = new PublicKey(creatorWallet);
+      creatorCheck = creatorWallet ? new PublicKey(creatorWallet) : undefined;
     } catch {
       return NextResponse.json({ error: "Invalid payerWallet/tokenMint/creatorWallet" }, { status: 400 });
     }
@@ -93,11 +94,11 @@ export async function POST(req: Request) {
     }
 
     const connection = getConnection();
-    const { tx } = await buildUnsignedPumpfunBuyTx({
+    const { tx, creator } = await buildUnsignedPumpfunBuyTx({
       connection,
       user: payerPubkey,
       mint: mintPubkey,
-      creator: creatorPubkey,
+      creator: creatorCheck,
       spendableSolInLamports: BigInt(devBuyLamports),
       minTokensOut: 0n,
       computeUnitLimit: 300_000,
@@ -110,7 +111,7 @@ export async function POST(req: Request) {
     await auditLog("launch_devbuy_tx", {
       payerWallet,
       tokenMint,
-      creatorWallet,
+      creatorWallet: creator.toBase58(),
       devBuySol,
       devBuyLamports,
     });

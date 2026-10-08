@@ -4,30 +4,39 @@ import { isAdminRequestAsync } from "../../../../../../lib/adminAuth";
 import { verifyAdminOrigin } from "../../../../../../lib/adminSession";
 import { auditLog } from "../../../../../../lib/auditLog";
 import { checkRateLimit } from "../../../../../../lib/rateLimit";
-import { getCommitment, publicView, RewardMilestone, updateRewardTotalsAndMilestones } from "../../../../../../lib/escrowStore";
+import {
+  allocatedPercentFromMilestones,
+  getCommitment,
+  publicView,
+  RewardMilestone,
+  updateRewardTotalsAndMilestones,
+} from "../../../../../../lib/escrowStore";
+import { apiError } from "../../../../../../lib/apiError";
 import { getSafeErrorMessage } from "../../../../../../lib/safeError";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request, ctx: { params: { id: string; milestoneId: string } }) {
-  const rl = await checkRateLimit(req, { keyPrefix: "milestone:override", limit: 30, windowSeconds: 60 });
-  if (!rl.allowed) {
-    const res = NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
-    res.headers.set("retry-after", String(rl.retryAfterSeconds));
-    return res;
-  }
-
-  verifyAdminOrigin(req);
-  if (!(await isAdminRequestAsync(req))) {
-    await auditLog("admin_reward_milestone_override_denied", { commitmentId: ctx.params.id, milestoneId: ctx.params.milestoneId });
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const id = ctx.params.id;
   const milestoneId = ctx.params.milestoneId;
-  const body = (await req.json().catch(() => null)) as any;
 
   try {
+    const rl = await checkRateLimit(req, { keyPrefix: "milestone:override", limit: 30, windowSeconds: 60 });
+    if (!rl.allowed) {
+      const res = NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+      res.headers.set("retry-after", String(rl.retryAfterSeconds));
+      return res;
+    }
+
+    // Inside the try: a foreign/missing Origin becomes a 403 via apiError, never an unhandled 500.
+    verifyAdminOrigin(req);
+    if (!(await isAdminRequestAsync(req))) {
+      await auditLog("admin_reward_milestone_override_denied", { commitmentId: id, milestoneId });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = (await req.json().catch(() => null)) as any;
+
     const record = await getCommitment(id);
     if (!record) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
@@ -80,28 +89,38 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
       unlockPercent = Math.floor(rawUnlockPercent);
     }
 
-    milestones[idx] = {
-      ...existing,
-      title,
-      dueAtUnix,
-      unlockPercent,
-    };
+    const next: RewardMilestone = { ...existing, title, dueAtUnix, unlockPercent };
+    const nextMilestones = milestones.slice();
+    nextMilestones[idx] = next;
 
-    const updated = await updateRewardTotalsAndMilestones({ id, milestones });
+    // M8: the milestones together may never unlock more than 100% of the escrow (same rule as add/edit).
+    if (rawUnlockPercent != null) {
+      const totalFundedLamports = Number(record.totalFundedLamports ?? 0);
+      const totalNext = allocatedPercentFromMilestones({ milestones: nextMilestones, totalFundedLamports });
+      if (totalNext > 100.0001) {
+        return NextResponse.json({ error: `Total allocation cannot exceed 100% (would be ${totalNext}%).` }, { status: 400 });
+      }
+    }
+
+    const updated = await updateRewardTotalsAndMilestones({ id, milestones: nextMilestones, expectedMilestones: record.milestones ?? [] });
+    const applied = (updated.milestones ?? []).find((m) => m.id === milestoneId);
+    if (!applied || applied.title !== title || applied.dueAtUnix !== dueAtUnix || applied.unlockPercent !== unlockPercent) {
+      return NextResponse.json({ error: "The commitment changed concurrently; reload and try again" }, { status: 409 });
+    }
 
     await auditLog("admin_reward_milestone_override_ok", {
       commitmentId: id,
       milestoneId,
       fields: {
-        title: rawTitle != null ? true : false,
-        dueAtUnix: rawDueAtUnix != null ? true : false,
-        unlockPercent: rawUnlockPercent != null ? true : false,
+        title: rawTitle != null,
+        dueAtUnix: rawDueAtUnix != null,
+        unlockPercent: rawUnlockPercent != null,
       },
     });
 
     return NextResponse.json({ ok: true, commitment: publicView(updated) });
   } catch (e) {
     await auditLog("admin_reward_milestone_override_error", { commitmentId: id, milestoneId, error: getSafeErrorMessage(e) });
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    return apiError(e, "milestone/override");
   }
 }

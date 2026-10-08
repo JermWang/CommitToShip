@@ -1,3 +1,5 @@
+import crypto from "crypto";
+
 import { getPool, hasDatabase } from "./db";
 
 type LockRow = {
@@ -5,6 +7,7 @@ type LockRow = {
   milestoneId: string;
   createdAtUnix: number;
   txSig?: string | null;
+  ownerToken?: string | null;
 };
 
 const mem = {
@@ -36,6 +39,7 @@ async function ensureSchema(): Promise<void> {
         primary key (commitment_id, milestone_id)
       );
     `);
+    await pool.query("alter table reward_release_locks add column if not exists owner_token text null");
   })().catch((e) => {
     ensuredSchema = null;
     throw e;
@@ -47,29 +51,30 @@ async function ensureSchema(): Promise<void> {
 export async function tryAcquireRewardReleaseLock(input: {
   commitmentId: string;
   milestoneId: string;
-}): Promise<{ acquired: true } | { acquired: false; existing: LockRow }> {
+}): Promise<{ acquired: true; token: string } | { acquired: false; existing: LockRow }> {
   await ensureSchema();
 
   const createdAtUnix = nowUnix();
+  const token = crypto.randomBytes(16).toString("hex");
 
   if (!hasDatabase()) {
     const k = key(input.commitmentId, input.milestoneId);
     const existing = mem.locks.get(k);
     if (existing) return { acquired: false, existing };
-    mem.locks.set(k, { commitmentId: input.commitmentId, milestoneId: input.milestoneId, createdAtUnix, txSig: null });
-    return { acquired: true };
+    mem.locks.set(k, { commitmentId: input.commitmentId, milestoneId: input.milestoneId, createdAtUnix, txSig: null, ownerToken: token });
+    return { acquired: true, token };
   }
 
   const pool = getPool();
   const res = await pool.query(
-    `insert into reward_release_locks (commitment_id, milestone_id, created_at_unix, tx_sig)
-     values ($1,$2,$3,null)
+    `insert into reward_release_locks (commitment_id, milestone_id, created_at_unix, tx_sig, owner_token)
+     values ($1,$2,$3,null,$4)
      on conflict (commitment_id, milestone_id) do nothing
      returning commitment_id`,
-    [input.commitmentId, input.milestoneId, String(createdAtUnix)]
+    [input.commitmentId, input.milestoneId, String(createdAtUnix), token]
   );
 
-  if (res.rows[0]) return { acquired: true };
+  if (res.rows[0]) return { acquired: true, token };
 
   const existingRes = await pool.query(
     "select commitment_id, milestone_id, created_at_unix, tx_sig from reward_release_locks where commitment_id=$1 and milestone_id=$2",
@@ -85,16 +90,27 @@ export async function tryAcquireRewardReleaseLock(input: {
   return { acquired: false, existing };
 }
 
-export async function releaseRewardReleaseLock(input: { commitmentId: string; milestoneId: string }): Promise<void> {
+/**
+ * Releases the lock. With `token` only the holder's lock is deleted (CAS) - a lock that recorded a tx signature is
+ * never deleted by a non-holder. Without `token` (legacy callers) the lock is deleted unless it holds a signature.
+ */
+export async function releaseRewardReleaseLock(input: { commitmentId: string; milestoneId: string; token?: string }): Promise<void> {
   await ensureSchema();
 
   if (!hasDatabase()) {
-    mem.locks.delete(key(input.commitmentId, input.milestoneId));
+    const k = key(input.commitmentId, input.milestoneId);
+    const cur = mem.locks.get(k);
+    if (!cur) return;
+    if (input.token ? cur.ownerToken === input.token : !cur.txSig) mem.locks.delete(k);
     return;
   }
 
   const pool = getPool();
-  await pool.query("delete from reward_release_locks where commitment_id=$1 and milestone_id=$2", [input.commitmentId, input.milestoneId]);
+  if (input.token) {
+    await pool.query("delete from reward_release_locks where commitment_id=$1 and milestone_id=$2 and owner_token=$3", [input.commitmentId, input.milestoneId, input.token]);
+    return;
+  }
+  await pool.query("delete from reward_release_locks where commitment_id=$1 and milestone_id=$2 and tx_sig is null", [input.commitmentId, input.milestoneId]);
 }
 
 export async function setRewardReleaseLockTxSig(input: {

@@ -4,11 +4,11 @@ import nacl from "tweetnacl";
 import bs58 from "bs58";
 
 import { checkRateLimit } from "../../../../../lib/rateLimit";
-import { getSafeErrorMessage } from "../../../../../lib/safeError";
 import { getChainUnixTime, getConnection } from "../../../../../lib/solana";
 import { getCommitment } from "../../../../../lib/escrowStore";
 import { sweepManagedCreatorFeesToEscrow } from "../../../../../lib/escrowSweep";
 import { getAllowedCreatorWallets } from "../../../../../lib/creatorAuth";
+import { apiError } from "../../../../../lib/apiError";
 
 export const runtime = "nodejs";
 
@@ -85,6 +85,7 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
     } catch {
       return NextResponse.json({ error: "Invalid signature encoding" }, { status: 400 });
     }
+    if (signature.length !== 64) return NextResponse.json({ error: "Invalid signature length" }, { status: 400 });
     const ok = nacl.sign.detached.verify(new TextEncoder().encode(msg), signature, creator.toBytes());
     if (!ok) return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
 
@@ -96,12 +97,12 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
 
     const signatureTx =
       (typeof result?.signature === "string" ? result.signature.trim() : "") ||
-      (typeof result?.pumpportal?.signature === "string" ? result.pumpportal.signature.trim() : "") ||
+      (typeof result?.pumpswap?.signature === "string" ? result.pumpswap.signature.trim() : "") ||
       (typeof result?.pumpfun?.signature === "string" ? result.pumpfun.signature.trim() : "");
     const solscanUrl = signatureTx ? `https://solscan.io/tx/${encodeURIComponent(signatureTx)}` : null;
 
     return NextResponse.json({ ok: true, nowUnix, result, solscanUrl });
   } catch (e) {
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    return apiError(e, "commitment/escrow/sweep");
   }
 }

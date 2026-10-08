@@ -1,23 +1,13 @@
 import { NextResponse } from "next/server";
 import { PublicKey } from "@solana/web3.js";
-import nacl from "tweetnacl";
-import bs58 from "bs58";
 
-import { isAdminRequestAsync } from "../../../../../lib/adminAuth";
-import { verifyAdminOrigin } from "../../../../../lib/adminSession";
-import { getAllowedCreatorWallets } from "../../../../../lib/creatorAuth";
 import { checkRateLimit } from "../../../../../lib/rateLimit";
-import { getSafeErrorMessage } from "../../../../../lib/safeError";
+import { apiError } from "../../../../../lib/apiError";
 import { getCommitment } from "../../../../../lib/escrowStore";
 import { getAsdConfig, upsertAsdDraftConfig } from "../../../../../lib/asdStore";
+import { authorizeAsdRequest } from "../../../../../lib/asdAuth";
 
 export const runtime = "nodejs";
-
-function isPublicLaunchEnabled(): boolean {
-  // Public launches enabled by default (closed beta ended)
-  const raw = String(process.env.CTS_PUBLIC_LAUNCHES ?? "true").trim().toLowerCase();
-  return raw !== "0" && raw !== "false" && raw !== "no" && raw !== "off";
-}
 
 function configureMessage(input: {
   commitmentId: string;
@@ -27,13 +17,18 @@ function configureMessage(input: {
   slippageBps: number;
   maxDailyAmountRaw: string | null;
   minIntervalSeconds: number;
+  timestampUnix: number;
 }): string {
-  return `Ship & Commit\nASD Configure\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}\nDestination: ${input.destinationPubkey}\nDailyPercentBps: ${input.dailyPercentBps}\nSlippageBps: ${input.slippageBps}\nMaxDailyAmountRaw: ${input.maxDailyAmountRaw ?? ""}\nMinIntervalSeconds: ${input.minIntervalSeconds}`;
+  return `Ship & Commit\nASD Configure\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}\nDestination: ${input.destinationPubkey}\nDailyPercentBps: ${input.dailyPercentBps}\nSlippageBps: ${input.slippageBps}\nMaxDailyAmountRaw: ${input.maxDailyAmountRaw ?? ""}\nMinIntervalSeconds: ${input.minIntervalSeconds}\nTimestamp: ${input.timestampUnix}`;
 }
 
 function defaultDestinationPubkey(): string {
   const raw = String(process.env.CTS_ASD_DEFAULT_DESTINATION_PUBKEY ?? "").trim();
-  return raw;
+  return raw ? new PublicKey(raw).toBase58() : "";
+}
+
+function httpError(status: number, message: string): Error {
+  return Object.assign(new Error(message), { status });
 }
 
 export async function POST(req: Request, ctx: { params: { id: string } }) {
@@ -54,22 +49,15 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
 
     const tokenMintRaw = String(record.tokenMint ?? "").trim();
     const creatorPubkeyRaw = String(record.creatorPubkey ?? "").trim();
-    if (!tokenMintRaw) return NextResponse.json({ error: "Missing tokenMint" }, { status: 500 });
-    if (!creatorPubkeyRaw) return NextResponse.json({ error: "Missing creator pubkey" }, { status: 500 });
+    if (!tokenMintRaw) return NextResponse.json({ error: "Commitment has no token mint" }, { status: 409 });
+    if (!creatorPubkeyRaw) return NextResponse.json({ error: "Commitment has no creator wallet" }, { status: 409 });
 
     const tokenMint = new PublicKey(tokenMintRaw).toBase58();
     const creatorPubkey = new PublicKey(creatorPubkeyRaw).toBase58();
 
     const body = (await req.json().catch(() => null)) as any;
 
-    const isAdmin = await isAdminRequestAsync(req);
-    if (isAdmin) {
-      verifyAdminOrigin(req);
-    }
-
     const requestId = typeof body?.requestId === "string" ? body.requestId.trim() : "";
-    if (!requestId) return NextResponse.json({ error: "requestId is required" }, { status: 400 });
-    if (requestId.length > 80) return NextResponse.json({ error: "requestId too long" }, { status: 400 });
 
     const dailyPercentBpsRaw = Number(body?.dailyPercentBps);
     if (!Number.isFinite(dailyPercentBpsRaw) || dailyPercentBpsRaw <= 0 || dailyPercentBpsRaw > 10_000) {
@@ -84,71 +72,53 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
     }
 
     const destinationRaw = typeof body?.destinationPubkey === "string" ? body.destinationPubkey.trim() : "";
-    const destinationPubkey = destinationRaw.length ? new PublicKey(destinationRaw).toBase58() : defaultDestinationPubkey();
+    let destinationPubkey: string;
+    try {
+      destinationPubkey = destinationRaw.length ? new PublicKey(destinationRaw).toBase58() : defaultDestinationPubkey();
+    } catch {
+      throw httpError(400, "Invalid destinationPubkey");
+    }
     if (!destinationPubkey) {
       return NextResponse.json({ error: "destinationPubkey is required (or set CTS_ASD_DEFAULT_DESTINATION_PUBKEY)" }, { status: 400 });
     }
 
     const maxDailyAmountRaw = body?.maxDailyAmountRaw == null ? null : String(body.maxDailyAmountRaw).trim();
+    const maxRawNormalized = maxDailyAmountRaw && maxDailyAmountRaw.length ? maxDailyAmountRaw : null;
+    if (maxRawNormalized != null && !/^\d{1,20}$/.test(maxRawNormalized)) {
+      return NextResponse.json({ error: "maxDailyAmountRaw must be a positive integer (raw token units)" }, { status: 400 });
+    }
+
     const minIntervalSecondsRaw = body?.minIntervalSeconds != null ? Number(body.minIntervalSeconds) : undefined;
     const minIntervalSeconds = minIntervalSecondsRaw == null ? 20 * 60 * 60 : Math.floor(minIntervalSecondsRaw);
-
-    const maxRawNormalized = maxDailyAmountRaw && maxDailyAmountRaw.length ? maxDailyAmountRaw : null;
-
-    const expected = configureMessage({
-      commitmentId,
-      requestId,
-      destinationPubkey,
-      dailyPercentBps,
-      slippageBps,
-      maxDailyAmountRaw: maxRawNormalized,
-      minIntervalSeconds,
-    });
-
-    if (!isAdmin) {
-      if (!isPublicLaunchEnabled()) {
-        const allowed = getAllowedCreatorWallets();
-        if (!allowed.has(creatorPubkey)) {
-          return NextResponse.json(
-            { error: "This wallet is not approved to launch yet", hint: "Launches are currently limited to approved wallets." },
-            { status: 403 }
-          );
-        }
-      }
-
-      const signatureB58 =
-        typeof body?.signatureB58 === "string"
-          ? body.signatureB58.trim()
-          : typeof body?.signature === "string"
-            ? body.signature.trim()
-            : "";
-      if (!signatureB58) {
-        return NextResponse.json(
-          {
-            error: "signature required",
-            message: expected,
-            creatorPubkey,
-            tokenMint,
-          },
-          { status: 400 }
-        );
-      }
-
-      const providedMessage = typeof body?.message === "string" ? body.message : expected;
-      if (providedMessage !== expected) {
-        return NextResponse.json({ error: "Invalid message" }, { status: 400 });
-      }
-
-      const signature = bs58.decode(signatureB58);
-      const creatorPk = new PublicKey(creatorPubkey);
-      const ok = nacl.sign.detached.verify(new TextEncoder().encode(expected), signature, creatorPk.toBytes());
-      if (!ok) return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+    if (!Number.isFinite(minIntervalSeconds) || minIntervalSeconds < 60 || minIntervalSeconds > 14 * 24 * 60 * 60) {
+      return NextResponse.json({ error: "minIntervalSeconds must be between 60 and 1209600" }, { status: 400 });
     }
 
     const existing = await getAsdConfig(commitmentId);
     if (existing?.activatedAtUnix) {
       return NextResponse.json({ error: "ASD is already activated and cannot be modified" }, { status: 409 });
     }
+
+    const auth = await authorizeAsdRequest({
+      req,
+      body,
+      commitmentId,
+      creatorPubkey,
+      action: "configure",
+      buildMessage: (timestampUnix) =>
+        configureMessage({
+          commitmentId,
+          requestId,
+          destinationPubkey,
+          dailyPercentBps,
+          slippageBps,
+          maxDailyAmountRaw: maxRawNormalized,
+          minIntervalSeconds,
+          timestampUnix,
+        }),
+      extraOnMissingSignature: { tokenMint },
+    });
+    if (!auth.ok) return auth.response;
 
     const updated = await upsertAsdDraftConfig({
       commitmentId,
@@ -163,6 +133,7 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
 
     return NextResponse.json({
       ok: true,
+      requestId: auth.requestId,
       config: {
         commitmentId: updated.commitmentId,
         tokenMint: updated.tokenMint,
@@ -181,6 +152,9 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
       },
     });
   } catch (e) {
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    if (String((e as any)?.message ?? "") === "ASD is already activated and cannot be modified") {
+      return NextResponse.json({ error: "ASD is already activated and cannot be modified" }, { status: 409 });
+    }
+    return apiError(e, "asd/configure");
   }
 }

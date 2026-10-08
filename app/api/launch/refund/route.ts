@@ -3,15 +3,18 @@ import { PublicKey } from "@solana/web3.js";
 
 import { checkRateLimit } from "../../../lib/rateLimit";
 import { auditLog } from "../../../lib/auditLog";
+import { apiError } from "../../../lib/apiError";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 import { getAdminCookieName, getAdminSessionWallet, getAllowedAdminWallets, verifyAdminOrigin } from "../../../lib/adminSession";
 import { getConnection } from "../../../lib/solana";
-import { getPool, hasDatabase } from "../../../lib/db";
-import { privyFindSolanaWalletIdByAddress, privyRefundWalletToDestination } from "../../../lib/privy";
+import {
+  getLaunchTreasuryWallet,
+  getLaunchTreasuryWalletByAddress,
+  refundLaunchWalletToPayer,
+  type LaunchTreasuryWalletRecord,
+} from "../../../lib/launchTreasuryStore";
 
 export const runtime = "nodejs";
-
-const SOLANA_CAIP2 = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"; // mainnet
 
 export async function GET() {
   const res = NextResponse.json({ error: "Method Not Allowed. Use POST /api/launch/refund." }, { status: 405 });
@@ -80,7 +83,14 @@ function extractSystemTransferParties(parsedTx: any): { source: string; destinat
   if (!source || !destination || !Number.isFinite(lamports) || lamports <= 0) return null;
   return { source, destination, lamports };
 }
-
+/**
+ * POST /api/launch/refund (admin)
+ *
+ * Returns the SOL in a payer's launch wallet to that payer. Identify the launch wallet by `payerWallet`, by its
+ * address (`creatorWallet`) or by the payer's top-up transaction (`fundingSig`). The Privy wallet id, the source and
+ * the destination are ALWAYS resolved from launch_treasury_wallets - never taken from the request - and a launch
+ * wallet that is a commitment escrow (it launched a token) or has a launch running/pending is refused.
+ */
 export async function POST(req: Request) {
   try {
     const rl = await checkRateLimit(req, { keyPrefix: "launch:refund", limit: 10, windowSeconds: 60 });
@@ -98,111 +108,66 @@ export async function POST(req: Request) {
     const keepLamportsRaw = body?.keepLamports != null ? Number(body.keepLamports) : 10_000;
     const keepLamports = Math.max(5_000, Math.floor(Number.isFinite(keepLamportsRaw) ? keepLamportsRaw : 10_000));
 
-    let walletId = typeof body?.walletId === "string" ? body.walletId.trim() : "";
-    let creatorWallet = typeof body?.creatorWallet === "string" ? body.creatorWallet.trim() : "";
-    let payerWallet = typeof body?.payerWallet === "string" ? body.payerWallet.trim() : "";
+    if (typeof body?.walletId === "string" && body.walletId.trim()) {
+      return NextResponse.json({ error: "walletId is not accepted: the launch wallet is resolved from our records" }, { status: 400 });
+    }
 
+    let payerWallet = typeof body?.payerWallet === "string" ? body.payerWallet.trim() : "";
+    const creatorWallet = typeof body?.creatorWallet === "string" ? body.creatorWallet.trim() : "";
     const fundingSig = typeof body?.fundingSig === "string" ? body.fundingSig.trim() : "";
 
-    if ((!creatorWallet || !payerWallet) && !fundingSig) {
-      return NextResponse.json(
-        { error: "Provide either (creatorWallet, payerWallet) or fundingSig" },
-        { status: 400 }
-      );
+    if (!payerWallet && !creatorWallet && !fundingSig) {
+      return NextResponse.json({ error: "Provide payerWallet, creatorWallet (launch wallet address) or fundingSig" }, { status: 400 });
     }
 
-    if ((!creatorWallet || !payerWallet) && fundingSig) {
+    let record: LaunchTreasuryWalletRecord | null = null;
 
+    if (payerWallet) {
+      record = await getLaunchTreasuryWallet(new PublicKey(payerWallet).toBase58());
+    } else if (creatorWallet) {
+      record = await getLaunchTreasuryWalletByAddress(new PublicKey(creatorWallet).toBase58());
+    } else {
       const connection = getConnection();
-      const parsed = await connection.getParsedTransaction(fundingSig, {
-        commitment: "confirmed",
-        maxSupportedTransactionVersion: 0,
-      } as any);
-
-      if (!parsed) {
-        return NextResponse.json({ error: "Funding transaction not found/confirmed" }, { status: 400 });
-      }
-
+      const parsed = await connection.getParsedTransaction(fundingSig, { commitment: "confirmed", maxSupportedTransactionVersion: 0 });
+      if (!parsed) return NextResponse.json({ error: "Funding transaction not found/confirmed" }, { status: 400 });
       const parties = extractSystemTransferParties(parsed);
-      if (!parties) {
-        return NextResponse.json({ error: "Funding transaction is not a simple SystemProgram transfer" }, { status: 400 });
-      }
-
-      // For a payer->treasury top-up, this sets payerWallet=source, creatorWallet=destination.
-      // For a treasury->launch-wallet funding transfer, this sets creatorWallet=destination.
-      // If caller provided payerWallet explicitly, keep it so they can refund directly back to their wallet.
-      if (!payerWallet) payerWallet = parties.source;
-      if (!creatorWallet) creatorWallet = parties.destination;
-
-      if (hasDatabase()) {
-        const pool = getPool();
-        const { rows } = await pool.query(
-          `
-          select
-            fields->>'walletId' as wallet_id,
-            fields->>'treasuryWallet' as treasury_wallet,
-            fields->>'payerWallet' as payer_wallet,
-            ts_unix
-          from public.audit_logs
-          where event = 'launch_prepare'
-            and fields->>'treasuryWallet' = $1
-            and fields->>'payerWallet' = $2
-          order by ts_unix desc
-          limit 1
-          `,
-          [creatorWallet, payerWallet]
-        );
-
-        const row = rows?.[0];
-        walletId = String(row?.wallet_id ?? "").trim();
+      if (!parties) return NextResponse.json({ error: "Funding transaction is not a simple SystemProgram transfer" }, { status: 400 });
+      // A payer -> launch wallet top-up: the destination must be a launch wallet we created FOR that source.
+      record = await getLaunchTreasuryWalletByAddress(parties.destination);
+      if (record && record.payerWallet !== parties.source) {
+        return NextResponse.json({ error: "Funding transaction was not sent by this launch wallet's payer" }, { status: 400 });
       }
     }
 
-    // If caller didn't provide walletId, try to resolve it from the Privy wallet address.
-    if (!walletId && creatorWallet) {
-      const wid = await privyFindSolanaWalletIdByAddress({ address: creatorWallet, maxPages: 20 });
-      walletId = wid || "";
+    if (!record) return NextResponse.json({ error: "No launch wallet found for that payer/address" }, { status: 404 });
+    if (creatorWallet && new PublicKey(creatorWallet).toBase58() !== record.treasuryWallet) {
+      return NextResponse.json({ error: "creatorWallet is not this payer's launch wallet" }, { status: 400 });
     }
+    payerWallet = record.payerWallet;
 
-    if (!walletId || !creatorWallet || !payerWallet) {
-      return NextResponse.json(
-        {
-          error: "Missing required fields after resolution",
-          walletId: walletId || null,
-          creatorWallet: creatorWallet || null,
-          payerWallet: payerWallet || null,
-        },
-        { status: 400 }
-      );
-    }
-
-    const fromPubkey = new PublicKey(creatorWallet);
-    const toPubkey = new PublicKey(payerWallet);
-
-    const refund = await privyRefundWalletToDestination({
-      walletId,
-      fromPubkey,
-      toPubkey,
-      caip2: SOLANA_CAIP2,
-      keepLamports,
-    });
+    const refund = await refundLaunchWalletToPayer({ record, keepLamports });
 
     await auditLog("launch_refund_manual", {
-      walletId,
-      creatorWallet,
+      adminWallet: admin.adminWallet,
+      walletId: record.walletId,
+      creatorWallet: record.treasuryWallet,
       payerWallet,
       keepLamports,
       ok: refund.ok,
       refundSignature: refund.ok ? refund.signature : undefined,
       refundedLamports: refund.ok ? refund.refundedLamports : undefined,
       refundError: refund.ok ? undefined : refund.error,
+      refusedCode: refund.ok ? undefined : refund.code,
       fundingSig: fundingSig || undefined,
     });
 
-    return NextResponse.json({ ok: true, walletId, creatorWallet, payerWallet, refund });
+    if (!refund.ok && refund.status === 409) {
+      return NextResponse.json({ error: refund.error, code: refund.code, commitmentId: refund.commitmentId ?? null }, { status: 409 });
+    }
+
+    return NextResponse.json({ ok: true, creatorWallet: record.treasuryWallet, payerWallet, refund });
   } catch (e) {
-    const msg = getSafeErrorMessage(e);
-    await auditLog("launch_refund_error", { error: msg });
-    return NextResponse.json({ error: msg }, { status: 500 });
+    await auditLog("launch_refund_error", { error: getSafeErrorMessage(e) });
+    return apiError(e, "launch/refund");
   }
 }

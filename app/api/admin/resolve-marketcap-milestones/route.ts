@@ -483,6 +483,8 @@ export async function POST(req: Request) {
           unlockedLamports,
           totalFundedLamports,
           status: c.status === "created" ? "active" : c.status,
+          // CAS: a concurrent completion/vote/release on another milestone is never overwritten by this stale copy.
+          expectedMilestones: c.milestones ?? [],
         });
         anyChanged = false;
         void updated;

@@ -7,7 +7,7 @@ import { Buffer } from "buffer";
 import { getConnection, getChainUnixTime } from "../../../lib/solana";
 import { buildUnsignedClaimCreatorFeesTx } from "../../../lib/pumpfun";
 import { checkRateLimit } from "../../../lib/rateLimit";
-import { getSafeErrorMessage } from "../../../lib/safeError";
+import { apiError } from "../../../lib/apiError";
 
 export const runtime = "nodejs";
 
@@ -48,7 +48,13 @@ export async function POST(req: Request) {
     }
 
     const msg = expectedClaimMessage({ creatorPubkey, timestampUnix: Math.floor(timestampUnix) });
-    const signature = bs58.decode(signatureB58);
+    let signature: Uint8Array;
+    try {
+      signature = bs58.decode(signatureB58);
+    } catch {
+      return NextResponse.json({ error: "Invalid signature encoding" }, { status: 400 });
+    }
+    if (signature.length !== 64) return NextResponse.json({ error: "Invalid signature length" }, { status: 400 });
     const ok = nacl.sign.detached.verify(new TextEncoder().encode(msg), signature, creator.toBytes());
     if (!ok) return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
 
@@ -84,6 +90,6 @@ export async function POST(req: Request) {
       message: msg,
     });
   } catch (e) {
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    return apiError(e, "pumpfun/claim");
   }
 }

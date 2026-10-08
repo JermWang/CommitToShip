@@ -1391,15 +1391,45 @@ export default function Home() {
               error?: string;
             };
 
-        const launchBody = () => ({
+        // The execute call needs its own signature that commits to the payout wallet, token name/symbol and dev buy,
+        // so a launch_access signature can't be replayed to launch something else or redirect the creator fees.
+        // Must match expectedLaunchExecuteMessage() in app/lib/creatorAuth.ts exactly.
+        const executeDevBuySol = 0;
+        let executeAuth: { walletPubkey: string; signatureB58: string; timestampUnix: number } | undefined;
+        const getExecuteAuth = async () => {
+          if (adminWalletPubkey) return undefined;
+          const nowUnix = Math.floor(Date.now() / 1000);
+          if (executeAuth && Math.abs(nowUnix - executeAuth.timestampUnix) < 4 * 60) return executeAuth;
+          if (!provider.signMessage) throw new Error("Wallet does not support message signing");
+          const norm = (v: unknown) => String(v ?? "").trim();
+          const devBuyLamports = Math.floor(Math.min(Math.max(0, executeDevBuySol), 100) * 1_000_000_000);
+          const message = [
+            "Ship & Commit",
+            "Creator Auth",
+            "Action: launch_execute",
+            `Wallet: ${payerWallet}`,
+            `Payout wallet: ${norm(launchForm.payoutWallet)}`,
+            `Token name: ${JSON.stringify(norm(launchForm.name))}`,
+            `Token symbol: ${JSON.stringify(norm(launchForm.symbol).replace(/^\$+/, "").trim())}`,
+            `Dev buy lamports: ${devBuyLamports}`,
+            `Timestamp: ${nowUnix}`,
+          ].join("\n");
+          setStep("launch", { status: "active", detail: "Approve the launch details in your wallet" });
+          const signed = await provider.signMessage(new TextEncoder().encode(message), "utf8");
+          const signatureBytes: Uint8Array = signed?.signature ?? signed;
+          executeAuth = { walletPubkey: payerWallet, signatureB58: bs58.encode(signatureBytes), timestampUnix: nowUnix };
+          return executeAuth;
+        };
+
+        const launchBody = async () => ({
           payerWallet,
           ...launchForm,
-          devBuySol: 0,
+          devBuySol: executeDevBuySol,
           fundingSig: fundSig || undefined,
-          creatorAuth,
+          creatorAuth: await getExecuteAuth(),
         });
 
-        const executeOnce = async () => apiPost<LaunchExecuteResponse>("/api/launch/execute", launchBody());
+        const executeOnce = async () => apiPost<LaunchExecuteResponse>("/api/launch/execute", await launchBody());
         const isNeedsFunding = (r: LaunchExecuteResponse): r is Extract<LaunchExecuteResponse, { needsFunding: true }> =>
           "needsFunding" in r && Boolean(r.needsFunding);
 
@@ -1489,7 +1519,7 @@ export default function Home() {
       setStep("validate", { status: "done" });
       setStep("create", { status: "active" });
 
-      const body = (() => {
+      const body = await (async () => {
         if (commitKind === "creator_reward") {
           return {
             kind: "creator_reward" as const,
@@ -1502,14 +1532,42 @@ export default function Home() {
           };
         }
 
-        const deadlineUnix = localInputToUnix(deadlineLocal);
+        const deadlineUnix = Math.floor(Number(localInputToUnix(deadlineLocal)));
+        const authorityPk = authority.trim();
+        const destinationPk = destinationOnFail.trim();
+        const lamports = Math.floor(Number(amountLamports));
+
+        // The server only creates the escrow after the authority (refund) wallet signs these exact parameters.
+        const provider = getSolanaProvider();
+        if (!provider?.connect) throw new Error("Wallet provider not found");
+        const connectRes = await provider.connect();
+        const connectedPk = (connectRes?.publicKey ?? provider.publicKey)?.toBase58?.();
+        if (!connectedPk) throw new Error("Failed to read wallet public key");
+        if (connectedPk !== authorityPk) {
+          throw new Error("Connect your refund wallet (the authority address) to sign this commitment.");
+        }
+        if (!provider.signMessage) throw new Error("Wallet does not support message signing");
+        const timestampUnix = Math.floor(Date.now() / 1000);
+        const message = [
+          "Ship & Commit",
+          "Create Commitment",
+          `Authority: ${authorityPk}`,
+          `DestinationOnFail: ${destinationPk}`,
+          `AmountLamports: ${lamports}`,
+          `DeadlineUnix: ${deadlineUnix}`,
+          `Timestamp: ${timestampUnix}`,
+        ].join("\n");
+        const signed = await provider.signMessage(new TextEncoder().encode(message), "utf8");
+        const signatureBytes: Uint8Array = signed?.signature ?? signed;
+
         return {
           kind: "personal" as const,
           statement,
-          authority,
-          destinationOnFail,
-          amountLamports,
+          authority: authorityPk,
+          destinationOnFail: destinationPk,
+          amountLamports: lamports,
           deadlineUnix,
+          authorityAuth: { signatureB58: bs58.encode(signatureBytes), timestampUnix },
         };
       })();
       if (commitKind === "creator_reward") {

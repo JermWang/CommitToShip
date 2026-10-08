@@ -1,26 +1,16 @@
 import { NextResponse } from "next/server";
 import { PublicKey } from "@solana/web3.js";
-import nacl from "tweetnacl";
-import bs58 from "bs58";
 
-import { isAdminRequestAsync } from "../../../../../lib/adminAuth";
-import { verifyAdminOrigin } from "../../../../../lib/adminSession";
-import { getAllowedCreatorWallets } from "../../../../../lib/creatorAuth";
 import { checkRateLimit } from "../../../../../lib/rateLimit";
-import { getSafeErrorMessage } from "../../../../../lib/safeError";
+import { apiError } from "../../../../../lib/apiError";
 import { getCommitment } from "../../../../../lib/escrowStore";
-import { getAsdConfig, setAsdStatus } from "../../../../../lib/asdStore";
+import { getAsdConfig, resumeAsdConfig } from "../../../../../lib/asdStore";
+import { authorizeAsdRequest } from "../../../../../lib/asdAuth";
 
 export const runtime = "nodejs";
 
-function isPublicLaunchEnabled(): boolean {
-  // Public launches enabled by default (closed beta ended)
-  const raw = String(process.env.CTS_PUBLIC_LAUNCHES ?? "true").trim().toLowerCase();
-  return raw !== "0" && raw !== "false" && raw !== "no" && raw !== "off";
-}
-
-function resumeMessage(input: { commitmentId: string; requestId: string }): string {
-  return `Ship & Commit\nASD Resume\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}`;
+function resumeMessage(input: { commitmentId: string; requestId: string; timestampUnix: number }): string {
+  return ["Ship & Commit", "ASD Resume", `Commitment: ${input.commitmentId}`, `Request: ${input.requestId}`, `Timestamp: ${input.timestampUnix}`].join("\n");
 }
 
 export async function POST(req: Request, ctx: { params: { id: string } }) {
@@ -39,63 +29,38 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
     if (!record || record.status === "archived") return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     const creatorPubkeyRaw = String(record.creatorPubkey ?? "").trim();
-    if (!creatorPubkeyRaw) return NextResponse.json({ error: "Missing creator pubkey" }, { status: 500 });
+    if (!creatorPubkeyRaw) return NextResponse.json({ error: "Commitment has no creator wallet" }, { status: 409 });
     const creatorPubkey = new PublicKey(creatorPubkeyRaw).toBase58();
 
     const cfg = await getAsdConfig(commitmentId);
     if (!cfg) return NextResponse.json({ error: "ASD config not found" }, { status: 404 });
 
     const body = (await req.json().catch(() => null)) as any;
-
-    const isAdmin = await isAdminRequestAsync(req);
-    if (isAdmin) {
-      verifyAdminOrigin(req);
-    }
-
     const requestId = typeof body?.requestId === "string" ? body.requestId.trim() : "";
-    if (!requestId) return NextResponse.json({ error: "requestId is required" }, { status: 400 });
 
-    const expected = resumeMessage({ commitmentId, requestId });
+    const auth = await authorizeAsdRequest({
+      req,
+      body,
+      commitmentId,
+      creatorPubkey,
+      action: "resume",
+      buildMessage: (timestampUnix) => resumeMessage({ commitmentId, requestId, timestampUnix }),
+    });
+    if (!auth.ok) return auth.response;
 
-    if (!isAdmin) {
-      if (!isPublicLaunchEnabled()) {
-        const allowed = getAllowedCreatorWallets();
-        if (!allowed.has(creatorPubkey)) {
-          return NextResponse.json(
-            { error: "This wallet is not approved to launch yet", hint: "Launches are currently limited to approved wallets." },
-            { status: 403 }
-          );
-        }
-      }
-
-      const signatureB58 =
-        typeof body?.signatureB58 === "string"
-          ? body.signatureB58.trim()
-          : typeof body?.signature === "string"
-            ? body.signature.trim()
-            : "";
-      if (!signatureB58) {
-        return NextResponse.json({ error: "signature required", message: expected, creatorPubkey }, { status: 400 });
-      }
-
-      const providedMessage = typeof body?.message === "string" ? body.message : expected;
-      if (providedMessage !== expected) {
-        return NextResponse.json({ error: "Invalid message" }, { status: 400 });
-      }
-
-      const signature = bs58.decode(signatureB58);
-      const creatorPk = new PublicKey(creatorPubkey);
-      const ok = nacl.sign.detached.verify(new TextEncoder().encode(expected), signature, creatorPk.toBytes());
-      if (!ok) return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+    const res = await resumeAsdConfig({ commitmentId });
+    if (!res.changed) {
+      return NextResponse.json({ error: "ASD is not paused (a disabled config can only be re-enabled by an admin)", status: res.config?.status ?? null }, { status: 409 });
     }
-
-    const updated = await setAsdStatus({ commitmentId, status: "active" });
 
     return NextResponse.json({
       ok: true,
-      status: updated.status,
+      requestId: auth.requestId,
+      status: res.config?.status ?? null,
+      pausedAtUnix: res.config?.pausedAtUnix ?? null,
+      resumedAtUnix: res.config?.resumedAtUnix ?? null,
     });
   } catch (e) {
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    return apiError(e, "asd/resume");
   }
 }

@@ -5,22 +5,30 @@ import crypto from "crypto";
 
 import { checkRateLimit } from "../../../lib/rateLimit";
 import { apiError } from "../../../lib/apiError";
-import { confirmTransactionSignature, getConnection, waitForSignatureConfirmed } from "../../../lib/solana";
+import { getConnection, waitForSignatureConfirmed } from "../../../lib/solana";
+import { isTxSendError, sendAndConfirmDurable } from "../../../lib/rpc";
 import { privySignSolanaTransaction } from "../../../lib/privy";
-import { buildUnsignedPumpfunCreateV2Tx } from "../../../lib/pumpfun";
+import {
+  assertSignedAsBuilt,
+  buildUnsignedPumpfunBuyTx,
+  buildUnsignedPumpfunCreateV2Tx,
+  getBondingCurvePda,
+  loadPumpLookupTable,
+  type PumpfunCreatePlan,
+} from "../../../lib/pumpfun";
 import { createRewardCommitmentRecord, findManagedCommitmentByAuthority, insertCommitment } from "../../../lib/escrowStore";
 import { upsertProjectProfile } from "../../../lib/projectProfilesStore";
 import { auditLog } from "../../../lib/auditLog";
 import { verifyAdminOrigin } from "../../../lib/adminSession";
-import { authorizeLaunchAccess } from "../../../lib/creatorAuth";
+import { authorizeLaunchAccess, launchExecuteBindingFromBody } from "../../../lib/creatorAuth";
 import { getLaunchTreasuryWallet } from "../../../lib/launchTreasuryStore";
-import { claimLaunchAttempt, updateLaunchAttempt } from "../../../lib/launchAttemptStore";
+import { claimLaunchAttempt, markLaunchSubmitted, updateLaunchAttempt } from "../../../lib/launchAttemptStore";
 import { LAUNCH_DESCRIPTION_MAX, LaunchInputError, loadLaunchImage, validateLaunchInput } from "../../../lib/launchValidation";
-import { extFromContentType } from "../../../lib/assetStorage";
-import { withRetry } from "../../../lib/rpc";
+import { extFromContentType, promoteLaunchAsset } from "../../../lib/assetStorage";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+// create (<=90s durable confirm) + optional separate dev buy (<=60s) + metadata upload.
+export const maxDuration = 300;
 
 const IS_PROD = process.env.NODE_ENV === "production";
 
@@ -93,9 +101,10 @@ export async function POST(req: Request) {
   let bondingCurveB58 = "";
   let escrowPubkey = "";
   let onchainOk = false;
-  let attemptClaimed = false;
-  let sendBlockhash = "";
-  let sendLastValid = 0;
+  let claimId = "";
+  let launchMode: "single" | "split" | "create_only" = "create_only";
+  let devBuyTxSig = "";
+  let devBuyError: string | null = null;
 
   try {
     const rl = await checkRateLimit(req, { keyPrefix: "launch:execute", limit: 12, windowSeconds: 60 });
@@ -121,16 +130,17 @@ export async function POST(req: Request) {
     }
     payerWallet = payerPubkey.toBase58();
 
+    // The execute signature commits to the payout wallet, token name/symbol and dev buy: a launch_access signature
+    // (also used by upload/prepare/dev-buy) can't be replayed to launch something else or redirect creator fees.
     stage = "authorize";
-    const denied = await authorizeLaunchAccess(req, { body, payerWallet, auditEvent: "launch_execute_denied" });
+    const binding = launchExecuteBindingFromBody(body);
+    const denied = await authorizeLaunchAccess(req, { body, payerWallet, auditEvent: "launch_execute_denied", executeBinding: binding });
     if (denied) return NextResponse.json({ error: denied.error, hint: denied.hint }, { status: denied.status });
 
     stage = "validate";
     const input = validateLaunchInput(body);
 
-    const devBuySolParsed = Number(body.devBuySol ?? 0);
-    const devBuySol = Number.isFinite(devBuySolParsed) && devBuySolParsed >= 0 ? Math.min(devBuySolParsed, 100) : 0;
-    const devBuyLamports = Math.floor(devBuySol * 1_000_000_000);
+    const devBuyLamports = binding.devBuyLamports;
     const requiredLamports = devBuyLamports + 10_000_000;
 
     // The launch wallet ALWAYS comes from our own records for this (authenticated) payer - never from the request.
@@ -211,9 +221,10 @@ export async function POST(req: Request) {
       });
     }
 
-    // From here on money can move: only one launch per payer at a time.
+    // From here on money can move: only one launch per payer at a time. A previous 'submitted' launch is resolved
+    // against the chain first (landed -> already launched; still pending -> wait; provably dead -> retry allowed).
     stage = "claim_attempt";
-    const claim = await claimLaunchAttempt(payerWallet);
+    const claim = await claimLaunchAttempt(payerWallet, { connection });
     if (!claim.ok) {
       const msg =
         claim.reason === "already_launched"
@@ -226,7 +237,7 @@ export async function POST(req: Request) {
         { status: 409 }
       );
     }
-    attemptClaimed = true;
+    claimId = claim.claimId;
 
     stage = "load_image";
     const image = await loadLaunchImage(input.imageUrl);
@@ -264,26 +275,13 @@ export async function POST(req: Request) {
 
     stage = "build_tx";
     const creatorPubkey = treasuryPubkey;
+    // One mint keypair for every (re)build of this launch: even if two versions were ever broadcast, only one create
+    // can succeed (the mint account can be created once).
     const mintKeypair = Keypair.generate();
-
-    const { tx, bondingCurve } = await buildUnsignedPumpfunCreateV2Tx({
-      connection,
-      user: creatorPubkey,
-      mint: mintKeypair.publicKey,
-      name: input.name,
-      symbol: input.symbol,
-      uri: metadataUri,
-      creator: creatorPubkey,
-      isMayhemMode: false,
-      spendableSolInLamports: BigInt(devBuyLamports),
-      minTokensOut: 0n,
-      computeUnitLimit: 300_000,
-      computeUnitPriceMicroLamports: 100_000,
-    });
-
     commitmentId = crypto.randomBytes(16).toString("hex");
     tokenMintB58 = mintKeypair.publicKey.toBase58();
-    bondingCurveB58 = bondingCurve.toBase58();
+    bondingCurveB58 = getBondingCurvePda(mintKeypair.publicKey).toBase58();
+    const lookupTable = await loadPumpLookupTable(connection);
 
     stage = "audit_attempt";
     await auditLog("launch_attempt", {
@@ -295,49 +293,118 @@ export async function POST(req: Request) {
       symbol: input.symbol,
       treasuryWallet,
       requiredLamports,
+      devBuyLamports,
+      lookupTable: lookupTable ? lookupTable.key.toBase58() : null,
       fundingSig,
     });
 
+    // Sign -> persist signature + lastValidBlockHeight (compare-and-set on our claim) -> broadcast the same bytes until
+    // final. A new transaction is only built once the previous one is provably expired.
     stage = "send_tx";
-    for (let attempt = 0; attempt < 4; attempt++) {
-      const latest = await withRetry(() => connection.getLatestBlockhash("processed"));
-      sendBlockhash = latest.blockhash;
-      sendLastValid = latest.lastValidBlockHeight;
-
-      tx.recentBlockhash = sendBlockhash;
-      (tx as any).lastValidBlockHeight = sendLastValid;
-      tx.partialSign(mintKeypair);
-
-      try {
+    const planRef: { current: PumpfunCreatePlan | null } = { current: null };
+    await sendAndConfirmDurable({
+      connection,
+      maxRebuilds: 1,
+      confirmTimeoutMs: 90_000,
+      sign: async (latest) => {
+        const plan = await buildUnsignedPumpfunCreateV2Tx({
+          connection,
+          user: creatorPubkey,
+          mint: mintKeypair.publicKey,
+          name: input.name,
+          symbol: input.symbol,
+          uri: metadataUri,
+          creator: creatorPubkey,
+          isMayhemMode: false,
+          spendableSolInLamports: BigInt(devBuyLamports),
+          minTokensOut: 0n,
+          computeUnitLimit: 260_000,
+          computeUnitPriceMicroLamports: 100_000,
+          latestBlockhash: latest,
+          lookupTable,
+        });
+        plan.tx.sign([mintKeypair]);
         const signed = await privySignSolanaTransaction({
           walletId: launchWalletId,
-          transactionBase64: tx.serialize({ requireAllSignatures: false }).toString("base64"),
+          transactionBase64: Buffer.from(plan.tx.serialize()).toString("base64"),
         });
         const raw = Buffer.from(signed.signedTransactionBase64, "base64");
-        launchTxSig = await withRetry(() => connection.sendRawTransaction(raw, { skipPreflight: false, preflightCommitment: "processed", maxRetries: 3 }));
-        break;
-      } catch (sendErr) {
-        const msg = (sendErr instanceof Error ? sendErr.message : String(sendErr)).toLowerCase();
-        if (!msg.includes("blockhash not found") || attempt === 3) throw sendErr;
-      }
-    }
-
-    // The tx is out. Persist mint + signature immediately so a crash/timeout can never lose track of it.
-    stage = "confirm_tx";
-    await updateLaunchAttempt(payerWallet, { status: "submitted", tokenMint: tokenMintB58, txSig: launchTxSig }).catch(() => null);
-
-    await confirmTransactionSignature({
-      connection,
-      signature: launchTxSig,
-      blockhash: sendBlockhash,
-      lastValidBlockHeight: sendLastValid,
+        assertSignedAsBuilt(raw, plan.tx.message.serialize());
+        planRef.current = plan;
+        return raw;
+      },
+      onPrepared: async (info) => {
+        launchTxSig = info.signature;
+        const owned = await markLaunchSubmitted(payerWallet, {
+          claimId,
+          tokenMint: tokenMintB58,
+          txSig: info.signature,
+          lastValidBlockHeight: info.lastValidBlockHeight,
+        });
+        if (!owned) await auditLog("launch_claim_lost", { commitmentId, payerWallet, tokenMint: tokenMintB58, launchTxSig: info.signature });
+        return owned;
+      },
     });
 
-    await auditLog("launch_onchain_success", { commitmentId, tokenMint: tokenMintB58, launchTxSig, treasuryWallet });
+    const plan = planRef.current as PumpfunCreatePlan | null;
+    launchMode = plan?.devBuyIncluded ? "single" : plan?.devBuyRequested ? "split" : "create_only";
+    await auditLog("launch_onchain_success", {
+      commitmentId,
+      tokenMint: tokenMintB58,
+      launchTxSig,
+      treasuryWallet,
+      walletId: launchWalletId,
+      launchMode,
+      txSizeBytes: plan?.sizeBytes ?? null,
+      lookupTable: plan?.lookupTable ?? null,
+    });
 
     onchainOk = true;
     escrowPubkey = creatorPubkey.toBase58();
-    await updateLaunchAttempt(payerWallet, { status: "confirmed", tokenMint: tokenMintB58, txSig: launchTxSig }).catch(() => null);
+    await updateLaunchAttempt(payerWallet, { status: "confirmed", tokenMint: tokenMintB58, txSig: launchTxSig, claimId }).catch(() => null);
+
+    // Fallback path: the dev buy didn't fit in the create transaction, so it goes out on its own now. The token is
+    // already live - a failed dev buy is reported, never turned into a failed launch.
+    if (launchMode === "split") {
+      stage = "dev_buy";
+      try {
+        await sendAndConfirmDurable({
+          connection,
+          maxRebuilds: 1,
+          confirmTimeoutMs: 60_000,
+          sign: async (latest) => {
+            const { tx } = await buildUnsignedPumpfunBuyTx({
+              connection,
+              user: creatorPubkey,
+              mint: mintKeypair.publicKey,
+              creator: creatorPubkey,
+              spendableSolInLamports: BigInt(devBuyLamports),
+              computeUnitLimit: 200_000,
+              computeUnitPriceMicroLamports: 100_000,
+              latestBlockhash: latest,
+            });
+            const signed = await privySignSolanaTransaction({
+              walletId: launchWalletId,
+              transactionBase64: tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64"),
+            });
+            const raw = Buffer.from(signed.signedTransactionBase64, "base64");
+            assertSignedAsBuilt(raw, tx.serializeMessage());
+            return raw;
+          },
+          onPrepared: async (info) => {
+            devBuyTxSig = info.signature;
+            await auditLog("launch_devbuy_prepared", { commitmentId, tokenMint: tokenMintB58, devBuyTxSig: info.signature, attempt: info.attempt });
+          },
+        });
+        await auditLog("launch_devbuy_success", { commitmentId, tokenMint: tokenMintB58, devBuyTxSig, devBuyLamports });
+      } catch (buyErr) {
+        const pending = isTxSendError(buyErr) && buyErr.code === "TX_UNCERTAIN";
+        devBuyError = pending
+          ? "Your dev buy was submitted and is still confirming."
+          : "Your token launched, but the dev buy did not go through. The SOL is still in your launch wallet.";
+        await auditLog("launch_devbuy_error", { commitmentId, tokenMint: tokenMintB58, devBuyTxSig, pending, error: buyErr });
+      }
+    }
 
     let postLaunchError: string | null = null;
     try {
@@ -357,6 +424,9 @@ export async function POST(req: Request) {
 
       stage = "save_profile";
       try {
+        // Launch images live under launch-staging/ until now; copy them to their permanent home (staging is pruned).
+        const imageUrl = (await promoteLaunchAsset(input.imageUrl, tokenMintB58).catch(() => null)) || input.imageUrl;
+        const bannerUrl = input.bannerUrl ? (await promoteLaunchAsset(input.bannerUrl, tokenMintB58).catch(() => null)) || input.bannerUrl : null;
         await upsertProjectProfile({
           tokenMint: tokenMintB58,
           name: input.name,
@@ -366,8 +436,8 @@ export async function POST(req: Request) {
           xUrl: input.xUrl || null,
           telegramUrl: input.telegramUrl || null,
           discordUrl: input.discordUrl || null,
-          imageUrl: input.imageUrl,
-          bannerUrl: input.bannerUrl || null,
+          imageUrl,
+          bannerUrl,
           metadataUri: metadataUri || null,
           createdByWallet: input.payoutWallet,
         });
@@ -376,10 +446,22 @@ export async function POST(req: Request) {
         await auditLog("launch_profile_save_error", { commitmentId, tokenMint: tokenMintB58, error: profileErr });
       }
 
-      await auditLog("launch_success", { commitmentId, tokenMint: tokenMintB58, payerWallet, payoutWallet: input.payoutWallet, treasuryWallet, requiredLamports, fundingSig, launchTxSig });
+      await auditLog("launch_success", {
+        commitmentId,
+        tokenMint: tokenMintB58,
+        payerWallet,
+        payoutWallet: input.payoutWallet,
+        treasuryWallet,
+        walletId: launchWalletId,
+        requiredLamports,
+        fundingSig,
+        launchTxSig,
+        launchMode,
+        devBuyTxSig: devBuyTxSig || null,
+      });
     } catch (postErr) {
       console.error("[launch/execute] post-chain step failed", stage, postErr);
-      await updateLaunchAttempt(payerWallet, { status: "onchain_unrecorded", tokenMint: tokenMintB58, txSig: launchTxSig }).catch(() => null);
+      await updateLaunchAttempt(payerWallet, { status: "onchain_unrecorded", tokenMint: tokenMintB58, txSig: launchTxSig, claimId }).catch(() => null);
       postLaunchError = IS_PROD
         ? "Your token launched successfully. We're finishing a few setup steps in the background."
         : postErr instanceof Error
@@ -397,6 +479,9 @@ export async function POST(req: Request) {
       treasuryWallet,
       bondingCurve: bondingCurveB58,
       launchTxSig,
+      launchMode,
+      devBuyTxSig: devBuyTxSig || null,
+      devBuyError,
       metadataUri,
       escrowPubkey,
       postLaunchError,
@@ -417,6 +502,9 @@ export async function POST(req: Request) {
         treasuryWallet,
         bondingCurve: bondingCurveB58,
         launchTxSig,
+        launchMode,
+        devBuyTxSig: devBuyTxSig || null,
+        devBuyError,
         metadataUri,
         escrowPubkey,
         postLaunchError: IS_PROD ? "Your token launched successfully. We're finishing a few setup steps in the background." : rawMsg,
@@ -425,10 +513,12 @@ export async function POST(req: Request) {
 
     console.error(`[launch/execute] failed at stage "${stage}"`, e);
 
-    // Release the per-payer lock unless the transaction might still land.
-    if (attemptClaimed) {
-      if (launchTxSig && code === "TX_UNCERTAIN") {
-        await auditLog("launch_error", { stage, commitmentId, tokenMint: tokenMintB58, payerWallet, launchTxSig, error: e });
+    if (claimId) {
+      // Release the per-payer slot ONLY when it is proven that nothing can land. An uncertain send keeps the
+      // 'submitted' row (signature + lastValidBlockHeight) so the next attempt resolves it against the chain.
+      const provenNoEffect = !isTxSendError(e) || e.noEffect;
+      if (!provenNoEffect) {
+        await auditLog("launch_error", { stage, commitmentId, tokenMint: tokenMintB58, payerWallet, launchTxSig, code, error: e });
         return NextResponse.json(
           {
             error: "Your launch was submitted but hasn't confirmed yet. Do NOT launch again - check your dashboard in a few minutes.",
@@ -439,13 +529,13 @@ export async function POST(req: Request) {
           { status: 202 }
         );
       }
-      await updateLaunchAttempt(payerWallet, { status: "failed" }).catch(() => null);
+      await updateLaunchAttempt(payerWallet, { status: "failed", claimId }).catch(() => null);
     }
 
     await auditLog("launch_error", { stage, commitmentId, payerWallet, launchTxSig, code, error: e });
 
-    if (e instanceof LaunchInputError || Number.isFinite(Number((e as any)?.status))) {
-      // Deliberate, user-actionable failures (validation, pump.fun unreachable, conflicts).
+    if (e instanceof LaunchInputError || (!isTxSendError(e) && Number.isFinite(Number((e as any)?.status)))) {
+      // Deliberate, user-actionable failures (validation, pump.fun unreachable, conflicts, origin).
       return apiError(e, "launch/execute", IS_PROD ? undefined : { stage });
     }
 
@@ -453,7 +543,7 @@ export async function POST(req: Request) {
     let friendly = "Launch failed. Your funds are safe in your launch wallet - please try again.";
     if (lower.includes("insufficient") || lower.includes("0x1")) friendly = "Your launch wallet doesn't have enough SOL to cover the launch. Please press Create again to top it up.";
     else if (code === "TX_EXPIRED" || lower.includes("blockhash")) friendly = "The network was congested and the launch didn't land. You weren't charged - please press Create again.";
-    else if (lower.includes("simulation failed")) friendly = "The network rejected the launch transaction. Please try again in a moment.";
+    else if (lower.includes("simulation failed") || code === "TX_PREFLIGHT_FAILED" || code === "TX_FAILED") friendly = "The network rejected the launch transaction. Please try again in a moment.";
     else if (lower.includes("privy")) friendly = "Our wallet service had a hiccup. Your funds are safe - please try again.";
 
     return NextResponse.json({ error: friendly, code: code || "LAUNCH_FAILED", ...(IS_PROD ? {} : { stage, detail: rawMsg }) }, { status: 502 });

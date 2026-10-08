@@ -4,7 +4,17 @@ import { Keypair, PublicKey } from "@solana/web3.js";
 import bs58 from "bs58";
 import nacl from "tweetnacl";
 
-import { CommitmentKind, CreatorFeeMode, createCommitmentRecord, createRewardCommitmentRecord, getActiveCommitmentByTokenMint, insertCommitment, listCommitments, publicView } from "../../lib/escrowStore";
+import {
+  CommitmentKind,
+  CreatorFeeMode,
+  createCommitmentRecord,
+  createRewardCommitmentRecord,
+  getActiveCommitmentByTokenMint,
+  insertCommitment,
+  listCommitments,
+  publicView,
+  tryConsumeSignedRequestNonce,
+} from "../../lib/escrowStore";
 import { checkRateLimit } from "../../lib/rateLimit";
 import { getConnection, getMintAuthorityBase58, getTokenMetadataUpdateAuthorityBase58, verifyTokenExistsOnChain } from "../../lib/solana";
 import { privyCreateSolanaWallet } from "../../lib/privy";
@@ -17,6 +27,25 @@ function isPublicLaunchEnabled(): boolean {
   // Public launches enabled by default (closed beta ended)
   const raw = String(process.env.CTS_PUBLIC_LAUNCHES ?? "true").trim().toLowerCase();
   return raw !== "0" && raw !== "false" && raw !== "no" && raw !== "off";
+}
+
+/** What the authority wallet signs to create a personal commitment (binds every parameter + a timestamp). */
+function personalCommitmentMessage(input: {
+  authority: string;
+  destinationOnFail: string;
+  amountLamports: number;
+  deadlineUnix: number;
+  timestampUnix: number;
+}): string {
+  return [
+    "Ship & Commit",
+    "Create Commitment",
+    `Authority: ${input.authority}`,
+    `DestinationOnFail: ${input.destinationOnFail}`,
+    `AmountLamports: ${input.amountLamports}`,
+    `DeadlineUnix: ${input.deadlineUnix}`,
+    `Timestamp: ${input.timestampUnix}`,
+  ].join("\n");
 }
 
 async function createEscrow(): Promise<{ escrowPubkey: string; escrowSecretKeyB58: string }> {
@@ -226,6 +255,17 @@ export async function POST(req: Request) {
           const id = typeof m?.id === "string" && m.id.trim().length > 0 ? m.id.trim() : crypto.randomBytes(8).toString("hex");
           return { id, title, unlockLamports: Math.floor(unlockLamports), unlockPercent, dueAtUnix: Math.floor(dueAtUnix) };
         });
+
+        // The milestones together may never unlock more than the whole escrow (same rule as add/edit).
+        if (hasPercents) {
+          const totalPercent = milestones.reduce((acc, m) => acc + (Number(m.unlockPercent) || 0), 0);
+          if (totalPercent > 100.0001) {
+            return NextResponse.json({ error: `Total allocation cannot exceed 100% (would be ${totalPercent}%).` }, { status: 400 });
+          }
+        }
+        if (new Set(milestones.map((m) => m.id)).size !== milestones.length) {
+          return NextResponse.json({ error: "Duplicate milestone ids" }, { status: 400 });
+        }
       }
 
       const escrow = await createEscrow();
@@ -271,6 +311,47 @@ export async function POST(req: Request) {
 
     if (!Number.isFinite(deadlineUnix) || deadlineUnix <= Math.floor(Date.now() / 1000)) {
       return NextResponse.json({ error: "Invalid deadline" }, { status: 400 });
+    }
+
+    // The authority wallet must sign the exact commitment (single use, +-5 min) BEFORE any escrow wallet is created:
+    // otherwise anyone could mint Privy wallets + DB rows for arbitrary addresses.
+    const authorityAuth = body.authorityAuth as any;
+    const authSigB58 = typeof authorityAuth?.signatureB58 === "string" ? authorityAuth.signatureB58.trim() : "";
+    const authTs = Math.floor(Number(authorityAuth?.timestampUnix));
+    const expectedAuthMessage = personalCommitmentMessage({
+      authority: authority.toBase58(),
+      destinationOnFail: destinationOnFail.toBase58(),
+      amountLamports: Math.floor(amountLamports),
+      deadlineUnix: Math.floor(deadlineUnix),
+      timestampUnix: Number.isFinite(authTs) && authTs > 0 ? authTs : Math.floor(Date.now() / 1000),
+    });
+    if (!authSigB58 || !Number.isFinite(authTs) || authTs <= 0) {
+      return NextResponse.json(
+        {
+          error: "authorityAuth (signatureB58, timestampUnix) is required",
+          hint: "Sign the commitment with the authority (refund) wallet.",
+          message: expectedAuthMessage,
+        },
+        { status: 400 }
+      );
+    }
+    if (Math.abs(Math.floor(Date.now() / 1000) - authTs) > 5 * 60) {
+      return NextResponse.json({ error: "Signature timestamp expired, sign again" }, { status: 400 });
+    }
+    let authSig: Uint8Array;
+    try {
+      authSig = bs58.decode(authSigB58);
+    } catch {
+      authSig = new Uint8Array(0);
+    }
+    if (authSig.length !== nacl.sign.signatureLength) {
+      return NextResponse.json({ error: "Invalid signature encoding" }, { status: 400 });
+    }
+    if (!nacl.sign.detached.verify(new TextEncoder().encode(expectedAuthMessage), authSig, authority.toBytes())) {
+      return NextResponse.json({ error: "Invalid authority signature", hint: "Sign with the authority (refund) wallet." }, { status: 401 });
+    }
+    if (!(await tryConsumeSignedRequestNonce({ scope: "create_commitment", nonce: authSigB58 }))) {
+      return NextResponse.json({ error: "This signature was already used" }, { status: 409 });
     }
 
     const escrow = await createEscrow();

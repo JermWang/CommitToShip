@@ -7,6 +7,7 @@ import { getSafeErrorMessage } from "../../../lib/safeError";
 import { listCommitments } from "../../../lib/escrowStore";
 import { sweepManagedCreatorFeesToEscrow } from "../../../lib/escrowSweep";
 import { auditLog } from "../../../lib/auditLog";
+import { apiError } from "../../../lib/apiError";
 
 export const runtime = "nodejs";
 
@@ -96,26 +97,16 @@ export async function POST(req: Request) {
           continue;
         }
 
-        let attempts = 0;
-        const maxAttempts = 2;
-        let lastError = "";
-        
-        while (attempts < maxAttempts) {
-          attempts++;
-          try {
-            const r = await sweepOne(c.id, { kind: "cron" });
-            results.push(r);
-            break; // Success, exit retry loop
-          } catch (e) {
-            lastError = getSafeErrorMessage(e);
-            if (attempts >= maxAttempts) {
-              results.push({ id: c.id, ok: false, error: lastError, attempts });
-              failed.push({ id: c.id, error: lastError, attempts });
-            } else {
-              // Wait before retry
-              await new Promise(resolve => setTimeout(resolve, 500));
-            }
-          }
+        // One attempt per run: a sweep whose transaction is uncertain stays recorded under its lock and is settled
+        // (from the chain) by the next run - blind retries could stack transactions.
+        try {
+          const r = await sweepOne(c.id, { kind: "cron" });
+          results.push(r);
+          if (!r?.ok) failed.push({ id: c.id, error: String(r?.error ?? "Sweep failed"), attempts: 1 });
+        } catch (e) {
+          const lastError = getSafeErrorMessage(e);
+          results.push({ id: c.id, ok: false, error: lastError, attempts: 1 });
+          failed.push({ id: c.id, error: lastError, attempts: 1 });
         }
       }
       
@@ -135,12 +126,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: result.error }, { status: 404 });
     }
     if (!result.ok) {
-      return NextResponse.json({ error: result.error ?? "Sweep failed" }, { status: 400 });
+      const status = Number(result.status);
+      return NextResponse.json({ ...result, error: result.error ?? "Sweep failed" }, { status: Number.isFinite(status) && status >= 400 ? status : 400 });
     }
     return NextResponse.json(result);
 
   } catch (e) {
-    await auditLog("sweep_error", { error: getSafeErrorMessage(e) });
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    await auditLog("sweep_error", { error: getSafeErrorMessage(e) }).catch(() => null);
+    return apiError(e, "escrow/sweep");
   }
 }

@@ -211,6 +211,8 @@ export default async function CommitDashboardPage({ params }: { params: { id: st
 
   // Handle mock project IDs
   if (id.startsWith("mock-")) {
+    // Demo projects are a development aid only; production never serves fabricated projects.
+    if (process.env.NODE_ENV === "production") notFound();
     const mockKey = id.replace("mock-", "");
     const mockProject = MOCK_PROJECTS[mockKey];
     if (!mockProject) notFound();

@@ -227,18 +227,19 @@ function completionMessage(commitmentId: string, milestoneId: string): string {
   return `Ship & Commit\nMilestone Completion\nCommitment: ${commitmentId}\nMilestone: ${milestoneId}`;
 }
 
-function signalMessage(commitmentId: string, milestoneId: string, vote: "approve" | "reject"): string {
+function signalMessage(commitmentId: string, milestoneId: string, vote: "approve" | "reject", timestampUnix: number): string {
   const v = vote === "reject" ? "reject" : "approve";
   const title = v === "reject" ? "Milestone Reject Signal" : "Milestone Approval Signal";
-  return `Ship & Commit\n${title}\nCommitment: ${commitmentId}\nMilestone: ${milestoneId}\nVote: ${v}`;
+  return `Ship & Commit\n${title}\nCommitment: ${commitmentId}\nMilestone: ${milestoneId}\nVote: ${v}\nTimestamp: ${Math.floor(timestampUnix)}`;
 }
 
 function addMilestoneMessage(input: { commitmentId: string; requestId: string; title: string; unlockPercent: number; dueAtUnix: number }): string {
   return `Ship & Commit\nAdd Milestone\nCommitment: ${input.commitmentId}\nRequest: ${input.requestId}\nTitle: ${input.title}\nUnlockPercent: ${input.unlockPercent}\nDueAtUnix: ${input.dueAtUnix}`;
 }
 
-function claimMessage(commitmentId: string, milestoneId: string): string {
-  return `Ship & Commit\nMilestone Claim\nCommitment: ${commitmentId}\nMilestone: ${milestoneId}`;
+/** Must match the server's milestone claim message (a signed claim is accepted within ±5 minutes of timestampUnix). */
+function claimMessage(commitmentId: string, milestoneId: string, timestampUnix: number): string {
+  return `Ship & Commit\nMilestone Claim\nCommitment: ${commitmentId}\nMilestone: ${milestoneId}\nTimestamp: ${timestampUnix}`;
 }
 
 function makeRequestId(): string {
@@ -749,11 +750,13 @@ export default function CommitDashboardClient(props: Props) {
       if (unique.length === 0) throw new Error("Select at least one milestone");
 
       for (const milestoneId of unique) {
-        const message = signalMessage(id, milestoneId, signalVote);
+        // Votes carry a timestamp (the server accepts a signature for 10 minutes), so sign each one right before sending.
+        const timestampUnix = Math.floor(Date.now() / 1000);
+        const message = signalMessage(id, milestoneId, signalVote, timestampUnix);
         const signed = await provider.signMessage(new TextEncoder().encode(message), "utf8");
         const signatureBytes: Uint8Array = signed?.signature ?? signed;
         const signature = bs58.encode(signatureBytes);
-        await jsonPost(`/api/commitments/${id}/milestones/${milestoneId}/signal`, { signerPubkey, message, signature, vote: signalVote });
+        await jsonPost(`/api/commitments/${id}/milestones/${milestoneId}/signal`, { signerPubkey, message, signature, vote: signalVote, timestampUnix });
       }
 
       toast({ kind: "success", message: `Voted on ${unique.length} milestone${unique.length === 1 ? "" : "s"}` });
@@ -768,15 +771,19 @@ export default function CommitDashboardClient(props: Props) {
     }
   }
 
-  async function signalMilestone(milestoneId: string, override?: { signerPubkey: string; signature: string; vote?: "approve" | "reject" }) {
+  async function signalMilestone(
+    milestoneId: string,
+    override?: { signerPubkey: string; signature: string; vote?: "approve" | "reject"; timestampUnix?: number }
+  ) {
     setSignalError(null);
     setSignalBusy(`signal:${milestoneId}`);
     try {
       const signerPubkey = (override?.signerPubkey ?? signalSignerPubkey).trim();
       const vote = override?.vote ?? signalVote;
-      const message = signalMessage(id, milestoneId, vote);
+      const timestampUnix = override?.timestampUnix ?? Math.floor(Date.now() / 1000);
+      const message = signalMessage(id, milestoneId, vote, timestampUnix);
       const signature = (override?.signature ?? signalSignatureInput[milestoneId] ?? "").trim();
-      await jsonPost(`/api/commitments/${id}/milestones/${milestoneId}/signal`, { signerPubkey, message, signature, vote });
+      await jsonPost(`/api/commitments/${id}/milestones/${milestoneId}/signal`, { signerPubkey, message, signature, vote, timestampUnix });
       toast({ kind: "success", message: "Vote submitted" });
       router.refresh();
     } catch (e) {
@@ -796,7 +803,8 @@ export default function CommitDashboardClient(props: Props) {
       if (!provider.signMessage) throw new Error("Wallet does not support message signing");
 
       const signerPubkey = provider.publicKey.toBase58();
-      const message = signalMessage(id, milestoneId, signalVote);
+      const timestampUnix = Math.floor(Date.now() / 1000);
+      const message = signalMessage(id, milestoneId, signalVote, timestampUnix);
       const signed = await provider.signMessage(new TextEncoder().encode(message), "utf8");
       const signatureBytes: Uint8Array = signed?.signature ?? signed;
       const signature = bs58.encode(signatureBytes);
@@ -805,7 +813,7 @@ export default function CommitDashboardClient(props: Props) {
       setSignalSignerPubkey(signerPubkey);
       setSignalSignatureInput((prev) => ({ ...prev, [milestoneId]: signature }));
 
-      await signalMilestone(milestoneId, { signerPubkey, signature, vote: signalVote });
+      await signalMilestone(milestoneId, { signerPubkey, signature, vote: signalVote, timestampUnix });
     } catch (e) {
       setSignalError((e as Error).message);
     } finally {

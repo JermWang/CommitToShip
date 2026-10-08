@@ -451,8 +451,8 @@ export default function CreatorDashboardPage() {
     return base;
   }, []);
 
-  const milestoneClaimMessage = useCallback((input: { commitmentId: string; milestoneId: string }): string => {
-    return `Ship & Commit\nMilestone Claim\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}`;
+  const milestoneClaimMessage = useCallback((input: { commitmentId: string; milestoneId: string; timestampUnix: number }): string => {
+    return `Ship & Commit\nMilestone Claim\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}\nTimestamp: ${input.timestampUnix}`;
   }, []);
 
   const milestoneEditMessage = useCallback((input: { commitmentId: string; milestoneId: string; requestId: string; title: string; unlockPercent: number; dueAtUnix: number }): string => {
@@ -598,13 +598,16 @@ export default function CreatorDashboardPage() {
       return;
     }
 
-    const message = milestoneClaimMessage({ commitmentId, milestoneId });
+    // The server accepts a signed claim only within ±5 minutes of its timestamp.
+    const timestampUnix = Math.floor(Date.now() / 1000);
+    const message = milestoneClaimMessage({ commitmentId, milestoneId, timestampUnix });
     setMilestoneBusy(`claim:${milestoneId}`);
     try {
       const signature = await signText(message);
       await postJson(`/api/commitments/${encodeURIComponent(commitmentId)}/milestones/${encodeURIComponent(milestoneId)}/claim`, {
         message,
         signature,
+        timestampUnix,
       });
       toast({ kind: "success", message: "Milestone claimed" });
       await refreshSelected();

@@ -5,6 +5,7 @@ import { auditLog } from "../../../lib/auditLog";
 import { checkRateLimit } from "../../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 import { getPool, hasDatabase } from "../../../lib/db";
+import { ensureEscrowSchema } from "../../../lib/escrowStore";
 import { getConnection, verifyTokenExistsOnChain } from "../../../lib/solana";
 import { ensureVoteRewardDistributionsForWallet } from "../../../lib/voteRewardDistributions";
 
@@ -49,6 +50,8 @@ export async function POST(req: Request) {
     } catch {
     }
 
+    // These tables are created lazily by escrowStore; never rely on boot-time warm-up.
+    await ensureEscrowSchema();
     const pool = getPool();
     const res = await pool.query(
       `select

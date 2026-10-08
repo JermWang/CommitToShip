@@ -4,6 +4,7 @@ import bs58 from "bs58";
 import { Keypair } from "@solana/web3.js";
 
 import { getPool, hasDatabase } from "./db";
+import { fetchCloseBalances } from "./voteCloseRecheck";
 
 export type CommitmentKind = "personal" | "creator_reward";
 
@@ -269,6 +270,147 @@ export async function setVoteRewardDistributionClaimTxSig(input: {
   );
 }
 
+/**
+ * Creates a vote reward distribution together with ALL of its allocations in one transaction (no allocation can
+ * exist before the distribution is final). The pool cap is enforced in SQL inside the same transaction: the sum of
+ * the allocations must not exceed the distribution's pool_amount_raw, nor `maxPoolAmountRaw` when given; otherwise
+ * everything is rolled back. Exactly one concurrent caller creates it; the others get `existing`.
+ */
+export async function createVoteRewardDistributionWithAllocations(input: {
+  distribution: VoteRewardDistributionRecord;
+  allocations: VoteRewardDistributionAllocation[];
+  maxPoolAmountRaw?: string | null;
+}): Promise<{ created: true } | { created: false; existing: VoteRewardDistributionRecord }> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  const d = input.distribution;
+  const maxPool = input.maxPoolAmountRaw == null || String(input.maxPoolAmountRaw).trim() === "" ? null : BigInt(String(input.maxPoolAmountRaw));
+  let sum = 0n;
+  for (const a of input.allocations) {
+    const amt = BigInt(String(a.amountRaw));
+    if (amt <= 0n) throw new Error("Vote reward allocation must be positive");
+    if (a.distributionId !== d.id) throw new Error("Vote reward allocation distribution mismatch");
+    sum += amt;
+  }
+  if (sum > BigInt(String(d.poolAmountRaw))) throw new Error("Vote reward allocations exceed the distribution pool");
+  if (maxPool != null && sum > maxPool) throw new Error("Vote reward allocations exceed CTS_VOTE_REWARD_MAX_POOL_UI_AMOUNT");
+
+  if (!hasDatabase()) {
+    const k = voteRewardKey({ commitmentId: d.commitmentId, milestoneId: d.milestoneId });
+    const existing = mem.voteRewardDistributionsByCommitmentMilestone.get(k);
+    if (existing) return { created: false, existing };
+    mem.voteRewardDistributionsByCommitmentMilestone.set(k, d);
+    const byWallet = new Map<string, VoteRewardDistributionAllocation>();
+    for (const a of input.allocations) byWallet.set(a.walletPubkey, a);
+    mem.voteRewardAllocationsByDistributionId.set(d.id, byWallet);
+    return { created: true };
+  }
+
+  const client = await getPool().connect();
+  let committed = false;
+  let released = false;
+  try {
+    await client.query("begin");
+    const ins = await client.query(
+      `insert into vote_reward_distributions (
+        id, commitment_id, milestone_id, created_at_unix, mint_pubkey, token_program_pubkey, pool_amount_raw, faucet_owner_pubkey, status
+      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      on conflict (commitment_id, milestone_id) do nothing
+      returning id`,
+      [d.id, d.commitmentId, d.milestoneId, String(d.createdAtUnix), d.mintPubkey, d.tokenProgramPubkey, String(d.poolAmountRaw), d.faucetOwnerPubkey, d.status]
+    );
+    if (!ins.rows[0]) {
+      await client.query("rollback");
+      committed = true;
+      // Give the connection back BEFORE reading through the pool: concurrent losers holding their clients while
+      // waiting for another one would starve the pool.
+      client.release();
+      released = true;
+      const existing = await getVoteRewardDistribution({ commitmentId: d.commitmentId, milestoneId: d.milestoneId });
+      if (!existing) throw new Error("Failed to acquire vote reward distribution");
+      return { created: false, existing };
+    }
+
+    if (input.allocations.length) {
+      await client.query(
+        `insert into vote_reward_distribution_allocations (distribution_id, wallet_pubkey, amount_raw, weight)
+         select $1, w, a::bigint, x from unnest($2::text[], $3::text[], $4::double precision[]) as t(w, a, x)`,
+        [d.id, input.allocations.map((a) => a.walletPubkey), input.allocations.map((a) => String(a.amountRaw)), input.allocations.map((a) => Number(a.weight) || 0)]
+      );
+    }
+
+    // Cap enforced by the database, inside the same transaction.
+    const capCheck = await client.query(
+      `select coalesce(sum(a.amount_raw), 0) <= d.pool_amount_raw and ($2::numeric is null or coalesce(sum(a.amount_raw), 0) <= $2::numeric) as ok
+       from vote_reward_distributions d
+       left join vote_reward_distribution_allocations a on a.distribution_id = d.id
+       where d.id = $1
+       group by d.pool_amount_raw`,
+      [d.id, maxPool == null ? null : maxPool.toString()]
+    );
+    if (capCheck.rows[0]?.ok !== true) throw new Error("Vote reward allocations exceed the pool cap");
+
+    await client.query("commit");
+    committed = true;
+    return { created: true };
+  } catch (e) {
+    if (!committed) {
+      try {
+        await client.query("rollback");
+      } catch {
+        // ignore
+      }
+    }
+    throw e;
+  } finally {
+    if (!released) client.release();
+  }
+}
+
+/**
+ * Single-use nonce (request id / signature) for signed requests. Returns false if it was already used in `scope`.
+ * Old entries are pruned opportunistically (anything older than 7 days can no longer pass a timestamp check).
+ */
+export async function tryConsumeSignedRequestNonce(input: { scope: string; nonce: string; nowUnix?: number }): Promise<boolean> {
+  await ensureSchema();
+  const scope = String(input.scope ?? "").trim();
+  const nonce = String(input.nonce ?? "").trim();
+  if (!scope || !nonce) throw new Error("scope and nonce are required");
+  const now = Math.floor(Number(input.nowUnix ?? nowUnix()));
+
+  if (!hasDatabase()) {
+    const g = globalThis as any;
+    const set: Set<string> = g.__cts_signed_request_nonces ?? (g.__cts_signed_request_nonces = new Set<string>());
+    const k = `${scope}\u0000${nonce}`;
+    if (set.has(k)) return false;
+    set.add(k);
+    return true;
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    "insert into signed_request_nonces (scope, nonce, created_at_unix) values ($1,$2,$3) on conflict (scope, nonce) do nothing returning nonce",
+    [scope, nonce, String(now)]
+  );
+  if (Math.random() < 0.02) {
+    pool.query("delete from signed_request_nonces where created_at_unix < $1", [String(now - 7 * 86400)]).catch(() => null);
+  }
+  return Boolean(res.rows[0]);
+}
+
+/** Sum of the unlock percentages a milestone list allocates (explicit lamports are converted against totalFunded). */
+export function allocatedPercentFromMilestones(input: { milestones: RewardMilestone[]; totalFundedLamports: number }): number {
+  const total = Number(input.totalFundedLamports ?? 0);
+  return input.milestones.reduce((acc, m) => {
+    const explicitLamports = Number(m.unlockLamports ?? 0);
+    if (Number.isFinite(total) && total > 0 && Number.isFinite(explicitLamports) && explicitLamports > 0) {
+      return acc + (explicitLamports / total) * 100;
+    }
+    return acc + (Number(m.unlockPercent ?? 0) || 0);
+  }, 0);
+}
+
 export type CommitmentRecord = {
   id: string;
   statement?: string;
@@ -299,6 +441,8 @@ export type RewardMilestoneVoteCounts = {
   approvalCounts: RewardMilestoneApprovalCounts;
   rejectCounts: RewardMilestoneApprovalCounts;
   totalCounts: RewardMilestoneApprovalCounts;
+  /** Milestones whose vote window closed but whose close-time holder re-check has not completed yet. */
+  pendingCloseRecheck?: Record<string, boolean>;
 };
 
 type InMemoryRewardSignals = Map<
@@ -804,6 +948,11 @@ function decryptSecret(stored: string): string {
 
 let ensuredSchema: Promise<void> | null = null;
 
+/** Public entry point so routes that query these tables directly never depend on boot-time warm-up. */
+export async function ensureEscrowSchema(): Promise<void> {
+  await ensureSchema();
+}
+
 async function ensureSchema(): Promise<void> {
   if (!hasDatabase()) return;
   if (ensuredSchema) return ensuredSchema;
@@ -864,6 +1013,27 @@ async function ensureSchema(): Promise<void> {
     await pool.query(`alter table reward_milestone_signals add column if not exists vote text not null default 'approve';`);
     await pool.query(`alter table reward_milestone_signals add column if not exists project_price_usd double precision not null default 0;`);
     await pool.query(`alter table reward_milestone_signals add column if not exists project_value_usd double precision not null default 0;`);
+    // Close-time holder re-check (a vote only counts if the wallet still holds the minimum when the window closes).
+    await pool.query(`
+    alter table reward_milestone_signals add column if not exists vote_amount_raw text null;
+    alter table reward_milestone_signals add column if not exists token_decimals integer null;
+    alter table reward_milestone_signals add column if not exists min_amount_raw text null;
+    alter table reward_milestone_signals add column if not exists close_checked_at_unix bigint null;
+    alter table reward_milestone_signals add column if not exists close_amount_raw text null;
+    alter table reward_milestone_signals add column if not exists close_eligible boolean null;
+    alter table reward_milestone_signals add column if not exists close_slot bigint null;
+  `);
+
+    // Single-use request ids / signatures (replay protection for signed requests).
+    await pool.query(`
+    create table if not exists signed_request_nonces (
+      scope text not null,
+      nonce text not null,
+      created_at_unix bigint not null,
+      primary key (scope, nonce)
+    );
+    create index if not exists signed_request_nonces_created_idx on signed_request_nonces(created_at_unix);
+  `);
 
     await pool.query(`
     create table if not exists reward_voter_snapshots (
@@ -1369,6 +1539,11 @@ export async function upsertRewardMilestoneSignal(input: {
   createdAtUnix: number;
   projectPriceUsd: number;
   projectValueUsd: number;
+  /** Raw project-token balance at vote time (all token accounts). */
+  voteAmountRaw?: string | null;
+  tokenDecimals?: number | null;
+  /** Minimum raw balance the wallet must still hold when the vote window closes (≈ $20 at the vote-time price). */
+  minAmountRaw?: string | null;
 }): Promise<{ inserted: boolean }> {
   await ensureSchema();
 
@@ -1400,8 +1575,11 @@ export async function upsertRewardMilestoneSignal(input: {
 
   const pool = getPool();
   const res = await pool.query(
-    `insert into reward_milestone_signals (commitment_id, milestone_id, signer_pubkey, vote, created_at_unix, project_price_usd, project_value_usd)
-     values ($1,$2,$3,$4,$5,$6,$7)
+    `insert into reward_milestone_signals (
+       commitment_id, milestone_id, signer_pubkey, vote, created_at_unix, project_price_usd, project_value_usd,
+       vote_amount_raw, token_decimals, min_amount_raw
+     )
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
      on conflict (commitment_id, milestone_id, signer_pubkey) do nothing
      returning commitment_id`,
     [
@@ -1412,6 +1590,9 @@ export async function upsertRewardMilestoneSignal(input: {
       String(input.createdAtUnix),
       Number(input.projectPriceUsd ?? 0),
       Number(input.projectValueUsd ?? 0),
+      input.voteAmountRaw == null ? null : String(input.voteAmountRaw),
+      input.tokenDecimals == null || !Number.isFinite(Number(input.tokenDecimals)) ? null : Math.floor(Number(input.tokenDecimals)),
+      input.minAmountRaw == null ? null : String(input.minAmountRaw),
     ]
   );
   return { inserted: Boolean(res.rows[0]) };
@@ -1668,9 +1849,10 @@ export async function getMilestoneFailureDistribution(input: {
     voterPotLamports: Number(row.voter_pot_lamports),
     shipBuybackTreasuryPubkey: String(row.ship_buyback_treasury_pubkey),
     voteRewardTreasuryPubkey: row.vote_reward_treasury_pubkey == null ? undefined : String(row.vote_reward_treasury_pubkey),
-    buybackTxSig: String(row.buyback_tx_sig),
-    voteRewardTxSig: row.vote_reward_tx_sig == null ? undefined : String(row.vote_reward_tx_sig),
-    voterPotTxSig: row.voter_pot_tx_sig == null ? undefined : String(row.voter_pot_tx_sig),
+    // In-flight step reservations ("sending:...") are internal; readers see them as not-yet-sent.
+    buybackTxSig: isFailureDistributionStepMarker(row.buyback_tx_sig) ? "pending" : String(row.buyback_tx_sig),
+    voteRewardTxSig: row.vote_reward_tx_sig == null || isFailureDistributionStepMarker(row.vote_reward_tx_sig) ? undefined : String(row.vote_reward_tx_sig),
+    voterPotTxSig: row.voter_pot_tx_sig == null || isFailureDistributionStepMarker(row.voter_pot_tx_sig) ? undefined : String(row.voter_pot_tx_sig),
     status: String(row.status) as MilestoneFailureDistributionStatus,
   };
 }
@@ -1705,9 +1887,10 @@ export async function listMilestoneFailureDistributionsByCommitmentId(commitment
     voterPotLamports: Number(row.voter_pot_lamports),
     shipBuybackTreasuryPubkey: String(row.ship_buyback_treasury_pubkey),
     voteRewardTreasuryPubkey: row.vote_reward_treasury_pubkey == null ? undefined : String(row.vote_reward_treasury_pubkey),
-    buybackTxSig: String(row.buyback_tx_sig),
-    voteRewardTxSig: row.vote_reward_tx_sig == null ? undefined : String(row.vote_reward_tx_sig),
-    voterPotTxSig: row.voter_pot_tx_sig == null ? undefined : String(row.voter_pot_tx_sig),
+    // In-flight step reservations ("sending:...") are internal; readers see them as not-yet-sent.
+    buybackTxSig: isFailureDistributionStepMarker(row.buyback_tx_sig) ? "pending" : String(row.buyback_tx_sig),
+    voteRewardTxSig: row.vote_reward_tx_sig == null || isFailureDistributionStepMarker(row.vote_reward_tx_sig) ? undefined : String(row.vote_reward_tx_sig),
+    voterPotTxSig: row.voter_pot_tx_sig == null || isFailureDistributionStepMarker(row.voter_pot_tx_sig) ? undefined : String(row.voter_pot_tx_sig),
     status: String(row.status) as MilestoneFailureDistributionStatus,
   }));
 }
@@ -1917,6 +2100,300 @@ export async function tryAcquireMilestoneFailureDistributionCreate(input: {
     );
   }
  }
+
+/**
+ * Creates a milestone failure distribution and all of its voter allocations in one transaction, so allocations are
+ * fixed at creation time and a concurrent/retried call can never add a second, different allocation set.
+ * Exactly one concurrent caller gets `created: true`; the others get the stored record.
+ */
+export async function createMilestoneFailureDistributionWithAllocations(input: {
+  distribution: MilestoneFailureDistributionRecord;
+  allocations: MilestoneFailureDistributionAllocation[];
+}): Promise<{ created: true } | { created: false; existing: MilestoneFailureDistributionRecord }> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  const d = input.distribution;
+  let sum = 0;
+  for (const a of input.allocations) {
+    if (a.distributionId !== d.id) throw new Error("Allocation distribution mismatch");
+    if (!Number.isSafeInteger(a.amountLamports) || a.amountLamports <= 0) throw new Error("Allocation must be a positive integer");
+    sum += a.amountLamports;
+  }
+  if (sum > d.voterPotLamports) throw new Error("Allocations exceed the voter pot");
+
+  if (!hasDatabase()) {
+    const k = milestoneFailureKey({ commitmentId: d.commitmentId, milestoneId: d.milestoneId });
+    const existing = mem.milestoneFailureDistributionsByCommitmentMilestone.get(k);
+    if (existing) return { created: false, existing };
+    mem.milestoneFailureDistributionsByCommitmentMilestone.set(k, d);
+    const byWallet = new Map<string, MilestoneFailureDistributionAllocation>();
+    for (const a of input.allocations) byWallet.set(a.walletPubkey, a);
+    mem.milestoneFailureAllocationsByDistributionId.set(d.id, byWallet);
+    return { created: true };
+  }
+
+  const client = await getPool().connect();
+  let done = false;
+  let released = false;
+  try {
+    await client.query("begin");
+    const ins = await client.query(
+      `insert into milestone_failure_distributions (
+        id, commitment_id, milestone_id, created_at_unix, forfeited_lamports, buyback_lamports, vote_reward_lamports, voter_pot_lamports,
+        ship_buyback_treasury_pubkey, vote_reward_treasury_pubkey, buyback_tx_sig, vote_reward_tx_sig, voter_pot_tx_sig, status
+      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+      on conflict (commitment_id, milestone_id) do nothing
+      returning id`,
+      [
+        d.id,
+        d.commitmentId,
+        d.milestoneId,
+        String(d.createdAtUnix),
+        String(d.forfeitedLamports),
+        String(d.buybackLamports),
+        String(d.voteRewardLamports),
+        String(d.voterPotLamports),
+        d.shipBuybackTreasuryPubkey,
+        d.voteRewardTreasuryPubkey ?? null,
+        d.buybackTxSig,
+        d.voteRewardTxSig ?? null,
+        d.voterPotTxSig ?? null,
+        d.status,
+      ]
+    );
+    if (!ins.rows[0]) {
+      await client.query("rollback");
+      done = true;
+      // Release before reading through the pool (see createVoteRewardDistributionWithAllocations).
+      client.release();
+      released = true;
+      const existing = await getMilestoneFailureDistribution({ commitmentId: d.commitmentId, milestoneId: d.milestoneId });
+      if (!existing) throw new Error("Failed to acquire milestone failure distribution");
+      return { created: false, existing };
+    }
+    if (input.allocations.length) {
+      await client.query(
+        `insert into milestone_failure_distribution_allocations (distribution_id, wallet_pubkey, amount_lamports, weight)
+         select $1, w, a::bigint, x from unnest($2::text[], $3::text[], $4::double precision[]) as t(w, a, x)`,
+        [d.id, input.allocations.map((a) => a.walletPubkey), input.allocations.map((a) => String(a.amountLamports)), input.allocations.map((a) => Number(a.weight) || 0)]
+      );
+    }
+    await client.query("commit");
+    done = true;
+    return { created: true };
+  } catch (e) {
+    if (!done) {
+      try {
+        await client.query("rollback");
+      } catch {
+        // ignore
+      }
+    }
+    throw e;
+  } finally {
+    if (!released) client.release();
+  }
+}
+
+export type MilestoneFailureDistributionStep = "buyback" | "vote_reward" | "voter_pot";
+
+function failureStepColumn(step: MilestoneFailureDistributionStep): "buyback_tx_sig" | "vote_reward_tx_sig" | "voter_pot_tx_sig" {
+  if (step === "buyback") return "buyback_tx_sig";
+  if (step === "vote_reward") return "vote_reward_tx_sig";
+  return "voter_pot_tx_sig";
+}
+
+function failureStepField(step: MilestoneFailureDistributionStep): "buybackTxSig" | "voteRewardTxSig" | "voterPotTxSig" {
+  if (step === "buyback") return "buybackTxSig";
+  if (step === "vote_reward") return "voteRewardTxSig";
+  return "voterPotTxSig";
+}
+
+/**
+ * Step reservation values stored in the <step>_tx_sig column while a transfer is in flight:
+ *   sending:<unix>:<nonce>                      reserved, nothing signed/broadcast yet
+ *   sending:<unix>:<nonce>:<signature>:<lvbh>   signed; signature persisted BEFORE the first broadcast (onPrepared)
+ * Anything else that is not unset ('', 'pending', 'none', null) is the final transaction signature.
+ */
+export function isFailureDistributionStepMarker(v: string | null | undefined): boolean {
+  return String(v ?? "").startsWith("sending:");
+}
+
+export function parseFailureDistributionStepMarker(
+  v: string | null | undefined
+): { base: string; reservedAtUnix: number; signature: string | null; lastValidBlockHeight: number | null } | null {
+  const s = String(v ?? "");
+  if (!s.startsWith("sending:")) return null;
+  const parts = s.split(":");
+  const reservedAtUnix = Number(parts[1]);
+  const base = parts.slice(0, 3).join(":");
+  const signature = parts[3] ? String(parts[3]) : null;
+  const lvbh = parts[4] != null ? Number(parts[4]) : NaN;
+  return {
+    base,
+    reservedAtUnix: Number.isFinite(reservedAtUnix) ? reservedAtUnix : 0,
+    signature,
+    lastValidBlockHeight: Number.isFinite(lvbh) && lvbh > 0 ? lvbh : null,
+  };
+}
+
+function isUnsetFailureStepValue(v: string | null | undefined): boolean {
+  const t = String(v ?? "").trim();
+  return !t || t === "pending" || t === "none";
+}
+
+async function memUpdateFailureStep(
+  distributionId: string,
+  step: MilestoneFailureDistributionStep,
+  fn: (cur: string | undefined) => string | undefined | false
+): Promise<boolean> {
+  for (const [k, d] of Array.from(mem.milestoneFailureDistributionsByCommitmentMilestone.entries())) {
+    if (d.id !== distributionId) continue;
+    const field = failureStepField(step);
+    const next = fn((d as any)[field]);
+    if (next === false) return false;
+    mem.milestoneFailureDistributionsByCommitmentMilestone.set(k, { ...d, [field]: next } as any);
+    return true;
+  }
+  return false;
+}
+
+/** Current raw value of one step column (null when the distribution does not exist). */
+export async function getMilestoneFailureDistributionStepValue(input: {
+  distributionId: string;
+  step: MilestoneFailureDistributionStep;
+}): Promise<string | null> {
+  await ensureSchema();
+  ensureMockSeeded();
+  if (!hasDatabase()) {
+    for (const d of Array.from(mem.milestoneFailureDistributionsByCommitmentMilestone.values())) {
+      if (d.id === input.distributionId) return ((d as any)[failureStepField(input.step)] as string | undefined) ?? null;
+    }
+    return null;
+  }
+  const col = failureStepColumn(input.step);
+  const res = await getPool().query(`select ${col} as v from milestone_failure_distributions where id=$1`, [input.distributionId]);
+  const v = res.rows[0]?.v;
+  return v == null ? null : String(v);
+}
+
+/**
+ * Atomically reserves one transfer step of a milestone failure distribution with a conditional UPDATE:
+ *   - normally only when the step is unset ('' / 'pending' / 'none' / null);
+ *   - with `takeoverFrom`, only when the column still holds exactly that (stale or provably dead) reservation.
+ * Only the caller that wins may send the transfer.
+ */
+export async function tryClaimMilestoneFailureDistributionStep(input: {
+  distributionId: string;
+  step: MilestoneFailureDistributionStep;
+  nowUnix: number;
+  takeoverFrom?: string | null;
+}): Promise<{ claimed: true; marker: string } | { claimed: false }> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  const marker = `sending:${Math.floor(input.nowUnix)}:${crypto.randomBytes(6).toString("hex")}`;
+  const takeoverFrom = input.takeoverFrom == null ? null : String(input.takeoverFrom);
+  if (takeoverFrom != null && !isFailureDistributionStepMarker(takeoverFrom)) throw new Error("takeoverFrom must be a step reservation");
+
+  if (!hasDatabase()) {
+    const ok = await memUpdateFailureStep(input.distributionId, input.step, (cur) => {
+      if (takeoverFrom != null ? cur !== takeoverFrom : !isUnsetFailureStepValue(cur)) return false;
+      return marker;
+    });
+    return ok ? { claimed: true, marker } : { claimed: false };
+  }
+
+  const col = failureStepColumn(input.step);
+  const res =
+    takeoverFrom != null
+      ? await getPool().query(`update milestone_failure_distributions set ${col}=$2 where id=$1 and ${col}=$3 returning id`, [
+          input.distributionId,
+          marker,
+          takeoverFrom,
+        ])
+      : await getPool().query(
+          `update milestone_failure_distributions set ${col}=$2 where id=$1 and (${col} is null or ${col} in ('', 'pending', 'none')) returning id`,
+          [input.distributionId, marker]
+        );
+  return res.rows[0] ? { claimed: true, marker } : { claimed: false };
+}
+
+/**
+ * onPrepared hook target: records the signature (and its lastValidBlockHeight) of a reserved step BEFORE the
+ * transaction is broadcast. Compare-and-set on our reservation; returns false if we no longer hold it (abort send).
+ */
+export async function prepareMilestoneFailureDistributionStep(input: {
+  distributionId: string;
+  step: MilestoneFailureDistributionStep;
+  marker: string;
+  signature: string;
+  lastValidBlockHeight: number;
+}): Promise<boolean> {
+  await ensureSchema();
+  ensureMockSeeded();
+  const next = `${input.marker}:${input.signature}:${Math.floor(Number(input.lastValidBlockHeight) || 0)}`;
+
+  if (!hasDatabase()) {
+    return memUpdateFailureStep(input.distributionId, input.step, (cur) =>
+      cur === input.marker || String(cur ?? "").startsWith(`${input.marker}:`) ? next : false
+    );
+  }
+  const col = failureStepColumn(input.step);
+  const res = await getPool().query(
+    `update milestone_failure_distributions set ${col}=$3 where id=$1 and (${col}=$2 or left(${col}, length($2) + 1) = $2 || ':') returning id`,
+    [input.distributionId, input.marker, next]
+  );
+  return Boolean(res.rows[0]);
+}
+
+/** Records the final signature of a reserved step - only while the reservation is still ours (CAS on the marker). */
+export async function completeMilestoneFailureDistributionStep(input: {
+  distributionId: string;
+  step: MilestoneFailureDistributionStep;
+  marker: string;
+  txSig: string;
+}): Promise<boolean> {
+  await ensureSchema();
+  ensureMockSeeded();
+  const base = parseFailureDistributionStepMarker(input.marker)?.base ?? input.marker;
+
+  if (!hasDatabase()) {
+    return memUpdateFailureStep(input.distributionId, input.step, (cur) =>
+      cur === base || String(cur ?? "").startsWith(`${base}:`) ? input.txSig : false
+    );
+  }
+  const col = failureStepColumn(input.step);
+  const res = await getPool().query(
+    `update milestone_failure_distributions set ${col}=$3 where id=$1 and (${col}=$2 or left(${col}, length($2) + 1) = $2 || ':') returning id`,
+    [input.distributionId, base, input.txSig]
+  );
+  return Boolean(res.rows[0]);
+}
+
+/** Gives a reservation back (only when it is proven that nothing was sent), so the step can be retried right away. */
+export async function releaseMilestoneFailureDistributionStep(input: {
+  distributionId: string;
+  step: MilestoneFailureDistributionStep;
+  marker: string;
+}): Promise<boolean> {
+  await ensureSchema();
+  ensureMockSeeded();
+  const base = parseFailureDistributionStepMarker(input.marker)?.base ?? input.marker;
+
+  if (!hasDatabase()) {
+    return memUpdateFailureStep(input.distributionId, input.step, (cur) =>
+      cur === base || String(cur ?? "").startsWith(`${base}:`) ? "pending" : false
+    );
+  }
+  const col = failureStepColumn(input.step);
+  const res = await getPool().query(
+    `update milestone_failure_distributions set ${col}='pending' where id=$1 and (${col}=$2 or left(${col}, length($2) + 1) = $2 || ':') returning id`,
+    [input.distributionId, base]
+  );
+  return Boolean(res.rows[0]);
+}
 
  export async function getMilestoneFailureAllocation(input: {
   distributionId: string;
@@ -2138,6 +2615,252 @@ export async function releaseFailureDistributionClaim(input: { distributionId: s
   return Math.max(0, Math.floor(total - paid));
  }
 
+export function getRewardVoteCutoffSeconds(): number {
+  const raw = Number(process.env.REWARD_VOTE_CUTOFF_SECONDS ?? "");
+  if (Number.isFinite(raw) && raw > 0) return Math.floor(raw);
+  return 24 * 60 * 60;
+}
+
+/** The holder vote window of a turned-in milestone (same rules the signal route enforces). */
+export function getRewardMilestoneVoteWindow(
+  m: RewardMilestone,
+  cutoffSeconds: number = getRewardVoteCutoffSeconds()
+): { startUnix: number; endUnix: number } | null {
+  const completedAtUnix = Number(m.completedAtUnix ?? 0);
+  if (!Number.isFinite(completedAtUnix) || completedAtUnix <= 0) return null;
+  const reviewOpenedAtUnix = Number((m as any).reviewOpenedAtUnix ?? 0);
+  const hasReview = Number.isFinite(reviewOpenedAtUnix) && reviewOpenedAtUnix > 0;
+  const dueAtUnix = Number(m.dueAtUnix ?? 0);
+  const hasDue = Number.isFinite(dueAtUnix) && dueAtUnix > 0;
+  const startUnix = hasReview ? Math.floor(reviewOpenedAtUnix) : hasDue ? Math.floor(dueAtUnix) : completedAtUnix;
+  const endUnix = hasReview ? startUnix + cutoffSeconds : hasDue ? Math.floor(dueAtUnix) + cutoffSeconds : completedAtUnix + cutoffSeconds;
+  if (!Number.isFinite(endUnix) || endUnix <= startUnix) return null;
+  return { startUnix, endUnix };
+}
+
+function parseBigIntOrNull(v: unknown): bigint | null {
+  if (v == null) return null;
+  const t = String(v).trim();
+  if (!t.length || !/^-?\d+$/.test(t)) return null;
+  try {
+    return BigInt(t);
+  } catch {
+    return null;
+  }
+}
+
+/** approval/reject count objects produced while a close-time re-check was still incomplete, tagged by milestone id. */
+const closeRecheckPendingByCounts = new WeakMap<object, Set<string>>();
+const closeRecheckInFlight = new Map<string, Promise<{ closed: boolean; complete: boolean; checked: number }>>();
+
+/**
+ * Close-time holder re-check for one milestone. After the vote window has closed, every in-window vote that was not
+ * re-checked yet gets the voter's current balance read in one batch (see voteCloseRecheck.ts) and is marked eligible
+ * only if the wallet still holds >= the minimum recorded at vote time (~$20 at the vote-time price; legacy votes
+ * without a recorded minimum need any non-zero balance). Results are persisted in a single statement guarded by
+ * `close_checked_at_unix is null`, so concurrent runs cannot mix two snapshots and the first complete one wins.
+ * Any RPC failure persists nothing (the milestone stays "pending" and is retried by the next caller / cron).
+ */
+export async function ensureRewardMilestoneCloseRecheck(input: {
+  commitmentId: string;
+  milestone: RewardMilestone;
+  tokenMint: string;
+  nowUnix?: number;
+}): Promise<{ closed: boolean; complete: boolean; checked: number }> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  const commitmentId = String(input.commitmentId);
+  const milestoneId = String(input.milestone?.id ?? "");
+  const w = getRewardMilestoneVoteWindow(input.milestone);
+  const now = Math.floor(Number(input.nowUnix ?? nowUnix()));
+  if (!milestoneId || !w) return { closed: false, complete: false, checked: 0 };
+  if (now < w.endUnix) return { closed: false, complete: false, checked: 0 };
+
+  // In-memory (mock/dev) mode has no persisted signal rows to re-check.
+  if (!hasDatabase()) return { closed: true, complete: true, checked: 0 };
+
+  const key = `${commitmentId}:${milestoneId}`;
+  const inflight = closeRecheckInFlight.get(key);
+  if (inflight) return inflight;
+
+  const run = (async () => {
+    const pool = getPool();
+    const res = await pool.query(
+      `select signer_pubkey, min_amount_raw from reward_milestone_signals
+       where commitment_id=$1 and milestone_id=$2 and close_checked_at_unix is null
+         and created_at_unix >= $3 and created_at_unix < $4`,
+      [commitmentId, milestoneId, String(w.startUnix), String(w.endUnix)]
+    );
+    const rows = res.rows ?? [];
+    if (!rows.length) return { closed: true, complete: true, checked: 0 };
+
+    const tokenMint = String(input.tokenMint ?? "").trim();
+    if (!tokenMint) throw new Error("Token mint required for the close-time re-check");
+
+    const owners: string[] = [];
+    const minByOwner = new Map<string, bigint>();
+    for (const r of rows) {
+      const owner = String(r.signer_pubkey);
+      owners.push(owner);
+      const min = parseBigIntOrNull(r.min_amount_raw);
+      minByOwner.set(owner, min != null && min > 0n ? min : 1n);
+    }
+
+    const { balances, slot } = await fetchCloseBalances({ mint: tokenMint, owners, minAmountRawByOwner: minByOwner });
+    for (const o of owners) {
+      if (!balances.has(o)) throw new Error("Close-time balance missing for a voter");
+    }
+
+    const amounts = owners.map((o) => (balances.get(o) ?? 0n).toString());
+    const eligible = owners.map((o) => {
+      const amt = balances.get(o) ?? 0n;
+      return amt > 0n && amt >= (minByOwner.get(o) ?? 1n);
+    });
+
+    await pool.query(
+      `update reward_milestone_signals s set
+         close_checked_at_unix=$3, close_slot=$4, close_amount_raw=v.amt, close_eligible=v.ok
+       from (select unnest($5::text[]) as signer, unnest($6::text[]) as amt, unnest($7::boolean[]) as ok) v
+       where s.commitment_id=$1 and s.milestone_id=$2 and s.signer_pubkey=v.signer and s.close_checked_at_unix is null`,
+      [commitmentId, milestoneId, String(now), slot == null ? null : String(slot), owners, amounts, eligible]
+    );
+
+    return { closed: true, complete: true, checked: owners.length };
+  })();
+
+  closeRecheckInFlight.set(key, run);
+  try {
+    return await run;
+  } finally {
+    closeRecheckInFlight.delete(key);
+  }
+}
+
+export type EligibleRewardVoter = {
+  signerPubkey: string;
+  vote: RewardMilestoneVote;
+  createdAtUnix: number;
+  /** min(vote-time balance, close-time balance) in raw units (null for legacy rows without raw data). */
+  effectiveAmountRaw: bigint | null;
+  tokenDecimals: number | null;
+  /** The same weight in UI units (legacy rows: the vote-time snapshot). */
+  effectiveUiAmount: number;
+  /** Deterministic integer weight base: effective balance in micro-units (1e-6 token). */
+  weightUnits: bigint;
+  shipMultiplierBps: number;
+};
+
+/**
+ * Voters of a milestone that pass the close-time re-check, weighted by min(voteBalance, closeBalance).
+ * Runs the re-check first if needed. `complete: false` means it could not finish (RPC trouble, or the window is still
+ * open) - callers that allocate money must refuse to proceed in that case.
+ */
+export async function listEligibleRewardVotersAtClose(input: {
+  record: CommitmentRecord;
+  milestoneId: string;
+  nowUnix?: number;
+}): Promise<{ complete: boolean; voters: EligibleRewardVoter[] }> {
+  await ensureSchema();
+  ensureMockSeeded();
+
+  const record = input.record;
+  const milestoneId = String(input.milestoneId);
+  const milestone = (Array.isArray(record.milestones) ? record.milestones : []).find((m) => m.id === milestoneId);
+  if (!milestone) return { complete: false, voters: [] };
+  const w = getRewardMilestoneVoteWindow(milestone);
+  // A milestone that was never turned in has no vote window and therefore no voters.
+  if (!w) return { complete: true, voters: [] };
+
+  const now = Math.floor(Number(input.nowUnix ?? nowUnix()));
+  if (now < w.endUnix) return { complete: false, voters: [] };
+
+  if (!hasDatabase()) {
+    const snaps = mem.rewardVoterSnapshots.get(record.id)?.get(milestoneId);
+    const sigs = mem.rewardSignals.get(record.id)?.get(milestoneId);
+    const voters: EligibleRewardVoter[] = [];
+    for (const [signer, v] of Array.from(sigs?.entries() ?? [])) {
+      const snap = snaps?.get(signer);
+      const ui = Number(snap?.projectUiAmount ?? 0);
+      if (!Number.isFinite(ui) || ui <= 0) continue;
+      voters.push({
+        signerPubkey: signer,
+        vote: v.vote,
+        createdAtUnix: v.createdAtUnix,
+        effectiveAmountRaw: null,
+        tokenDecimals: null,
+        effectiveUiAmount: ui,
+        weightUnits: BigInt(Math.floor(ui * 1e6)),
+        shipMultiplierBps: Number(snap?.shipMultiplierBps ?? 10000),
+      });
+    }
+    return { complete: true, voters };
+  }
+
+  const tokenMint = String(record.tokenMint ?? "").trim();
+  try {
+    const r = await ensureRewardMilestoneCloseRecheck({ commitmentId: record.id, milestone, tokenMint, nowUnix: now });
+    if (!r.complete) return { complete: false, voters: [] };
+  } catch (e) {
+    console.warn("[votes] close-time re-check failed", { commitmentId: record.id, milestoneId, error: (e as Error)?.message ?? String(e) });
+    return { complete: false, voters: [] };
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    `select s.signer_pubkey, s.vote, s.created_at_unix, s.vote_amount_raw, s.token_decimals, s.close_checked_at_unix,
+            s.close_amount_raw, s.close_eligible, v.project_ui_amount, v.ship_multiplier_bps
+     from reward_milestone_signals s
+     left join reward_voter_snapshots v
+       on v.commitment_id=s.commitment_id and v.milestone_id=s.milestone_id and v.signer_pubkey=s.signer_pubkey
+     where s.commitment_id=$1 and s.milestone_id=$2 and s.created_at_unix >= $3 and s.created_at_unix < $4
+     order by s.signer_pubkey asc`,
+    [record.id, milestoneId, String(w.startUnix), String(w.endUnix)]
+  );
+
+  const voters: EligibleRewardVoter[] = [];
+  for (const r of res.rows ?? []) {
+    if (r.close_checked_at_unix == null) return { complete: false, voters: [] };
+    if (r.close_eligible !== true) continue;
+
+    const voteRaw = parseBigIntOrNull(r.vote_amount_raw);
+    const closeRaw = parseBigIntOrNull(r.close_amount_raw);
+    const decimalsRaw = r.token_decimals == null ? null : Number(r.token_decimals);
+    const decimals = decimalsRaw != null && Number.isFinite(decimalsRaw) && decimalsRaw >= 0 && decimalsRaw <= 18 ? Math.floor(decimalsRaw) : null;
+    const snapUi = Number(r.project_ui_amount ?? 0);
+
+    let effectiveAmountRaw: bigint | null = null;
+    let effectiveUiAmount = 0;
+    let weightUnits = 0n;
+    if (voteRaw != null && closeRaw != null && decimals != null) {
+      effectiveAmountRaw = voteRaw < closeRaw ? voteRaw : closeRaw;
+      weightUnits = decimals >= 6 ? effectiveAmountRaw / 10n ** BigInt(decimals - 6) : effectiveAmountRaw * 10n ** BigInt(6 - decimals);
+      effectiveUiAmount = Number(effectiveAmountRaw) / 10 ** decimals;
+    } else {
+      // Legacy rows (recorded before raw amounts were stored): use the vote-time snapshot. They still had to pass the
+      // close-time "still holds a non-zero balance" check above.
+      if (!Number.isFinite(snapUi) || snapUi <= 0) continue;
+      effectiveUiAmount = snapUi;
+      weightUnits = BigInt(Math.floor(snapUi * 1e6));
+    }
+    if (weightUnits <= 0n) continue;
+
+    const shipBps = Number(r.ship_multiplier_bps ?? 10000);
+    voters.push({
+      signerPubkey: String(r.signer_pubkey),
+      vote: String(r.vote ?? "approve") === "reject" ? "reject" : "approve",
+      createdAtUnix: Number(r.created_at_unix),
+      effectiveAmountRaw,
+      tokenDecimals: decimals,
+      effectiveUiAmount,
+      weightUnits,
+      shipMultiplierBps: Number.isFinite(shipBps) && shipBps > 0 ? Math.floor(shipBps) : 10000,
+    });
+  }
+
+  return { complete: true, voters };
+}
+
 export async function getRewardMilestoneVoteCounts(commitmentId: string): Promise<RewardMilestoneVoteCounts> {
   await ensureSchema();
 
@@ -2206,11 +2929,45 @@ export async function getRewardMilestoneVoteCounts(commitmentId: string): Promis
   const milestones: RewardMilestone[] = record?.kind === "creator_reward" && Array.isArray(record.milestones) ? (record.milestones as RewardMilestone[]) : [];
   const milestoneById = new Map<string, RewardMilestone>();
   for (const m of milestones) milestoneById.set(m.id, m);
+  const tokenMint = String(record?.tokenMint ?? "").trim();
+  const now = nowUnix();
 
-  const res = await pool.query(
-    "select milestone_id, vote, created_at_unix, project_value_usd from reward_milestone_signals where commitment_id=$1",
-    [commitmentId]
-  );
+  const load = () =>
+    pool.query(
+      "select milestone_id, vote, created_at_unix, close_checked_at_unix, close_eligible from reward_milestone_signals where commitment_id=$1",
+      [commitmentId]
+    );
+
+  let res = await load();
+
+  // Windows that have closed but still hold votes nobody re-checked yet: run the close-time holder re-check now.
+  const needsRecheck = new Set<string>();
+  for (const row of res.rows) {
+    const milestoneId = String(row.milestone_id);
+    const m = milestoneById.get(milestoneId);
+    if (!m || String((m as any).autoKind ?? "") === "market_cap") continue;
+    const w = getVoteWindow(m);
+    if (!w || now < w.endUnix) continue;
+    const createdAtUnix = Number(row.created_at_unix ?? 0);
+    if (!Number.isFinite(createdAtUnix) || createdAtUnix < w.startUnix || createdAtUnix >= w.endUnix) continue;
+    if (row.close_checked_at_unix == null) needsRecheck.add(milestoneId);
+  }
+
+  const pendingCloseRecheck: Record<string, boolean> = {};
+  if (needsRecheck.size) {
+    for (const milestoneId of needsRecheck) {
+      const m = milestoneById.get(milestoneId) as RewardMilestone;
+      try {
+        if (!tokenMint) throw new Error("Commitment has no token mint");
+        const r = await ensureRewardMilestoneCloseRecheck({ commitmentId, milestone: m, tokenMint, nowUnix: now });
+        if (!r.complete) pendingCloseRecheck[milestoneId] = true;
+      } catch (e) {
+        pendingCloseRecheck[milestoneId] = true;
+        console.warn("[votes] close-time re-check pending", { commitmentId, milestoneId, error: (e as Error)?.message ?? String(e) });
+      }
+    }
+    res = await load();
+  }
 
   const approvalCounts: RewardMilestoneApprovalCounts = {};
   const rejectCounts: RewardMilestoneApprovalCounts = {};
@@ -2226,6 +2983,15 @@ export async function getRewardMilestoneVoteCounts(commitmentId: string): Promis
     if (!w) continue;
     if (!Number.isFinite(createdAtUnix) || createdAtUnix < w.startUnix || createdAtUnix >= w.endUnix) continue;
 
+    // Once the window has closed a vote only counts if the wallet still held the minimum at close.
+    if (now >= w.endUnix) {
+      if (row.close_checked_at_unix == null) {
+        pendingCloseRecheck[milestoneId] = true;
+        continue;
+      }
+      if (row.close_eligible !== true) continue;
+    }
+
     if (vote === "reject") {
       rejectCounts[milestoneId] = Number(rejectCounts[milestoneId] ?? 0) + 1;
     } else {
@@ -2234,7 +3000,15 @@ export async function getRewardMilestoneVoteCounts(commitmentId: string): Promis
 
     totalCounts[milestoneId] = Number(totalCounts[milestoneId] ?? 0) + 1;
   }
-  return { approvalCounts, rejectCounts, totalCounts };
+
+  const pendingIds = new Set(Object.keys(pendingCloseRecheck));
+  if (pendingIds.size) {
+    // Callers pass approvalCounts/rejectCounts straight into normalizeRewardMilestonesClaimable; tag them so it can
+    // hold back the approve/fail transition until the re-check has completed.
+    closeRecheckPendingByCounts.set(approvalCounts, pendingIds);
+    closeRecheckPendingByCounts.set(rejectCounts, pendingIds);
+  }
+  return { approvalCounts, rejectCounts, totalCounts, pendingCloseRecheck };
 }
 
 export async function getRewardMilestoneApprovalCounts(commitmentId: string): Promise<RewardMilestoneApprovalCounts> {
@@ -2254,9 +3028,19 @@ export function normalizeRewardMilestonesClaimable(input: {
   approvalCounts: RewardMilestoneApprovalCounts;
   rejectCounts?: RewardMilestoneApprovalCounts;
   approvalThreshold: number;
+  /**
+   * Milestones whose close-time holder re-check is still incomplete (from getRewardMilestoneVoteCounts). Their
+   * approve/fail decision is held back until the re-check completes. Counts objects returned by
+   * getRewardMilestoneVoteCounts carry this automatically, so existing callers do not need to pass it.
+   */
+  pendingCloseRecheck?: Record<string, boolean>;
 }): { milestones: RewardMilestone[]; changed: boolean } {
   const { milestones, nowUnix, approvalCounts, approvalThreshold } = input;
   const rejectCounts = input.rejectCounts ?? {};
+  const pendingRecheck = new Set<string>();
+  for (const [k, v] of Object.entries(input.pendingCloseRecheck ?? {})) if (v) pendingRecheck.add(k);
+  for (const k of Array.from(closeRecheckPendingByCounts.get(approvalCounts) ?? [])) pendingRecheck.add(k);
+  for (const k of Array.from(closeRecheckPendingByCounts.get(rejectCounts) ?? [])) pendingRecheck.add(k);
 
   const claimDelaySeconds = (() => {
     const rawStr = process.env.REWARD_CLAIM_DELAY_SECONDS;
@@ -2373,18 +3157,10 @@ export function normalizeRewardMilestonesClaimable(input: {
     const needsClaimableAtUpdate = Number(m.claimableAtUnix ?? 0) !== desiredClaimableAtUnix;
     if (needsClaimableAtUpdate) changed = true;
 
-    if (claimDelaySeconds === 0 && approved) {
-      changed = true;
-      return {
-        ...m,
-        status: "claimable" as const,
-        approvedAtUnix: m.approvedAtUnix ?? nowUnix,
-        claimableAtUnix: desiredClaimableAtUnix,
-        becameClaimableAtUnix: m.becameClaimableAtUnix ?? nowUnix,
-      };
-    }
-
-    if (nowUnix < voteEndUnix) {
+    // Votes only count once the window has closed AND every voter's holdings were re-checked at close (a wallet that
+    // sold or moved its bag before the close does not count). There is deliberately no early approval while the window
+    // is open, even with REWARD_CLAIM_DELAY_SECONDS=0: a vote-time balance alone can be recycled across wallets.
+    if (nowUnix < voteEndUnix || pendingRecheck.has(m.id)) {
       if (!needsClaimableAtUpdate) return m;
       return { ...m, claimableAtUnix: desiredClaimableAtUnix };
     }

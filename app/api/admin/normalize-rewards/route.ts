@@ -9,6 +9,7 @@ import {
   RewardMilestone,
   getRewardApprovalThreshold,
   getRewardMilestoneVoteCounts,
+  getRewardMilestoneVoteWindow,
   listCommitments,
   normalizeRewardMilestonesClaimable,
   sumReleasedLamports,
@@ -18,6 +19,11 @@ import { getBalanceLamports, getChainUnixTime, getConnection } from "../../../li
 import { getSafeErrorMessage } from "../../../lib/safeError";
 import { isCronAuthorized } from "../../../lib/cronAuth";
 import { apiError } from "../../../lib/apiError";
+import {
+  createVoteRewardDistributionForMilestone,
+  isVoteRewardDistributionsEnabled,
+  loadVoteRewardMintConfig,
+} from "../../../lib/voteRewardDistributions";
 
 export const runtime = "nodejs";
 
@@ -74,6 +80,7 @@ export async function POST(req: Request) {
           approvalCounts,
           rejectCounts: voteCounts.rejectCounts,
           approvalThreshold,
+          pendingCloseRecheck: voteCounts.pendingCloseRecheck,
         });
 
         if (!normalized.changed) {
@@ -97,6 +104,7 @@ export async function POST(req: Request) {
           unlockedLamports,
           totalFundedLamports,
           status: nextStatus,
+          expectedMilestones: c.milestones ?? [],
         });
 
         changedCount++;
@@ -106,15 +114,43 @@ export async function POST(req: Request) {
       }
     }
 
+    // Vote rewards are allocated once per milestone, after its window closed and the close-time holder re-check ran
+    // (lib/voteRewardDistributions.ts). Doing it here means voters see them without an admin call. Bounded per run.
+    let voteRewardsCreated = 0;
+    if (isVoteRewardDistributionsEnabled()) {
+      try {
+        const mint = await loadVoteRewardMintConfig();
+        if (!("error" in mint)) {
+          outer: for (const c of capped) {
+            for (const m of Array.isArray(c.milestones) ? c.milestones : []) {
+              if (voteRewardsCreated >= 10) break outer;
+              if (String((m as any)?.autoKind ?? "") === "market_cap") continue;
+              const w = getRewardMilestoneVoteWindow(m);
+              if (!w || w.endUnix > nowUnix) continue;
+              try {
+                const r = await createVoteRewardDistributionForMilestone({ commitmentId: c.id, milestoneId: m.id, nowUnix, mint });
+                if (r.ok && r.created) voteRewardsCreated++;
+              } catch (e) {
+                console.warn("[normalize-rewards] vote reward create failed", { commitmentId: c.id, milestoneId: m.id, error: getSafeErrorMessage(e) });
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("[normalize-rewards] vote reward pass failed", getSafeErrorMessage(e));
+      }
+    }
+
     await auditLog("admin_normalize_rewards_completed", {
       cron: cronOk,
       nowUnix,
       commitmentId: commitmentId || null,
       targetCount: capped.length,
       changedCount,
+      voteRewardsCreated,
     });
 
-    return NextResponse.json({ ok: true, nowUnix, targetCount: capped.length, changedCount, results });
+    return NextResponse.json({ ok: true, nowUnix, targetCount: capped.length, changedCount, voteRewardsCreated, results });
   } catch (e) {
     await auditLog("admin_normalize_rewards_error", { error: e });
     return apiError(e, "admin/normalize-rewards");

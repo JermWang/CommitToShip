@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { checkRateLimit } from "../../../../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../../../../lib/safeError";
 import { getAsdConfig, listAsdExecutions } from "../../../../../lib/asdStore";
+import { getAsdVaultSolReserveLamports } from "../../../../../lib/asdExecution";
 
 export const runtime = "nodejs";
 
@@ -41,6 +42,12 @@ export async function GET(req: Request, ctx: { params: { id: string } }) {
         activatedAtUnix: cfg.activatedAtUnix ?? null,
         lastExecutedAtUnix: cfg.lastExecutedAtUnix ?? null,
         lastError: cfg.lastError ?? null,
+        pausedAtUnix: cfg.pausedAtUnix ?? null,
+        resumedAtUnix: cfg.resumedAtUnix ?? null,
+        lastRequestId: cfg.lastRequestId ?? null,
+        lastRequestAction: cfg.lastRequestAction ?? null,
+        lastRequestAtUnix: cfg.lastRequestAtUnix ?? null,
+        vaultSolReserveLamports: getAsdVaultSolReserveLamports(),
       },
       recentExecutions: execs.map((e) => ({
         id: e.id,
@@ -55,6 +62,10 @@ export async function GET(req: Request, ctx: { params: { id: string } }) {
         outMint: e.outMint ?? null,
         outAmountRaw: e.outAmountRaw ?? null,
         error: e.error ?? null,
+        confirmedAtUnix: e.confirmedAtUnix ?? null,
+        forwardStatus: e.forwardStatus ?? null,
+        forwardTxSig: e.forwardTxSig ?? null,
+        forwardedLamports: e.forwardedLamports ?? null,
       })),
     });
   } catch (e) {

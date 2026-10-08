@@ -140,7 +140,15 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
       return NextResponse.json({ error: "Invalid message" }, { status: 400 });
     }
 
-    const signature = bs58.decode(signatureB58);
+    let signature: Uint8Array;
+    try {
+      signature = bs58.decode(signatureB58);
+    } catch {
+      signature = new Uint8Array(0);
+    }
+    if (signature.length !== nacl.sign.signatureLength) {
+      return NextResponse.json({ error: "Invalid signature encoding" }, { status: 400 });
+    }
     const creatorPk = new PublicKey(record.creatorPubkey);
     const ok = nacl.sign.detached.verify(new TextEncoder().encode(expectedMessage), signature, creatorPk.toBytes());
     if (!ok) return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
@@ -173,7 +181,12 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
     const updated = await updateRewardTotalsAndMilestones({
       id,
       milestones: nextMilestones,
+      expectedMilestones: record.milestones ?? [],
     });
+    const applied = (updated.milestones ?? []).find((m) => m.id === milestoneId);
+    if (!applied || applied.title !== title || applied.unlockPercent !== nextUnlockPercent || applied.dueAtUnix !== nextDueAtUnix) {
+      return NextResponse.json({ error: "The commitment changed concurrently; reload and try again" }, { status: 409 });
+    }
 
     return NextResponse.json({ ok: true, commitment: publicView(updated) });
   } catch (e) {

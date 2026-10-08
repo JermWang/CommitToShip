@@ -1,20 +1,13 @@
 import { NextResponse } from "next/server";
-import { PublicKey } from "@solana/web3.js";
 
 import { isAdminRequestAsync } from "../../../lib/adminAuth";
 import { verifyAdminOrigin } from "../../../lib/adminSession";
 import { checkRateLimit } from "../../../lib/rateLimit";
 import { auditLog } from "../../../lib/auditLog";
-import { claimForFailureSettlement, finalizeCommitmentStatus, getEscrowSignerRef, listCommitments, releaseFailureSettlementClaim } from "../../../lib/escrowStore";
-import {
-  getChainUnixTime,
-  getConnection,
-  keypairFromBase58Secret,
-  transferAllLamports,
-  transferAllLamportsFromPrivyWallet,
-  transferLamports,
-  transferLamportsFromPrivyWallet,
-} from "../../../lib/solana";
+import { apiError } from "../../../lib/apiError";
+import { listCommitments } from "../../../lib/escrowStore";
+import { getChainUnixTime, getConnection } from "../../../lib/solana";
+import { settlePersonalCommitment } from "../../../lib/payoutClaimStore";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 
 export const runtime = "nodejs";
@@ -24,6 +17,10 @@ function isCronAuthorized(req: Request): boolean {
   return false;
 }
 
+/**
+ * Admin: settle every personal commitment whose deadline passed (status created, or stuck in resolving) as failed.
+ * Each escrow pays its destinationOnFail exactly once (see settlePersonalCommitment).
+ */
 export async function POST(req: Request) {
   try {
     const rl = await checkRateLimit(req, { keyPrefix: "commitments:sweep", limit: 10, windowSeconds: 60 });
@@ -47,63 +44,29 @@ export async function POST(req: Request) {
 
     const commitments = await listCommitments();
 
-    const results: Array<{ id: string; status: string; signature?: string; error?: string }> = [];
+    const results: Array<{ id: string; status: string; signature?: string | null; error?: string }> = [];
 
     for (const c of commitments) {
       if (c.kind !== "personal") continue;
-      if (c.status !== "created") continue;
+      if (c.status !== "created" && c.status !== "resolving") continue;
       if (nowUnix <= c.deadlineUnix) continue;
 
-      const claimed = await claimForFailureSettlement(c.id);
-      if (!claimed) continue;
-
-      if (nowUnix <= claimed.deadlineUnix) {
-        await releaseFailureSettlementClaim({ id: claimed.id, restoreStatus: "created" });
-        continue;
-      }
-
       try {
-        const escrowRef = getEscrowSignerRef(claimed);
-        const fromPubkey = new PublicKey(claimed.escrowPubkey);
-
-        const treasuryRaw = String(process.env.CTS_SHIP_BUYBACK_TREASURY_PUBKEY ?? "").trim();
-        if (!treasuryRaw) throw new Error("CTS_SHIP_BUYBACK_TREASURY_PUBKEY is required");
-        const treasury = new PublicKey(treasuryRaw);
-
-        const buybackLamports = Math.floor((await connection.getBalance(fromPubkey)) * 0.5);
-        let signature: string | undefined;
-        if (buybackLamports > 0) {
-          const res =
-            escrowRef.kind === "privy"
-              ? await transferLamportsFromPrivyWallet({ connection, walletId: escrowRef.walletId, fromPubkey, to: treasury, lamports: buybackLamports })
-              : await transferLamports({ connection, from: keypairFromBase58Secret(escrowRef.escrowSecretKeyB58), to: treasury, lamports: buybackLamports });
-          signature = res.signature;
+        const r = await settlePersonalCommitment({ commitmentId: c.id, outcome: "failure" });
+        if (r.status === 200) {
+          results.push({ id: c.id, status: "resolved_failure", signature: String(r.body.signature ?? "") || null });
+        } else {
+          results.push({ id: c.id, status: r.status === 202 ? "pending" : "error", signature: (r.body.signature as string | null | undefined) ?? null, error: String(r.body.error ?? "") });
         }
-
-        const rest =
-          escrowRef.kind === "privy"
-            ? await transferAllLamportsFromPrivyWallet({ connection, walletId: escrowRef.walletId, fromPubkey, to: treasury })
-            : await transferAllLamports({ connection, from: keypairFromBase58Secret(escrowRef.escrowSecretKeyB58), to: treasury });
-        const resolvedSig = signature ?? rest.signature;
-
-        await finalizeCommitmentStatus({
-          id: claimed.id,
-          status: "resolved_failure",
-          resolvedAtUnix: nowUnix,
-          resolvedTxSig: resolvedSig,
-        });
-
-        results.push({ id: claimed.id, status: "resolved_failure", signature: resolvedSig });
       } catch (e) {
-        await releaseFailureSettlementClaim({ id: claimed.id, restoreStatus: "created" });
-        results.push({ id: claimed.id, status: "error", error: getSafeErrorMessage(e) });
+        results.push({ id: c.id, status: "error", error: getSafeErrorMessage(e) });
       }
     }
 
     await auditLog("admin_sweep_completed", { nowUnix, resultsCount: results.length });
     return NextResponse.json({ nowUnix, results });
   } catch (e) {
-    await auditLog("admin_sweep_error", { error: getSafeErrorMessage(e) });
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    await auditLog("admin_sweep_error", { error: getSafeErrorMessage(e) }).catch(() => null);
+    return apiError(e, "commitments/sweep");
   }
 }

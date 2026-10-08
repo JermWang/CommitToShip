@@ -1,27 +1,11 @@
 import { NextResponse } from "next/server";
 import { PublicKey } from "@solana/web3.js";
-import nacl from "tweetnacl";
-import bs58 from "bs58";
 
-import {
-  getCommitment,
-  getEscrowSignerRef,
-  getFailureAllocation,
-  getFailureDistributionByCommitmentId,
-  setFailureDistributionClaimTxSig,
-  releaseFailureDistributionClaim,
-  tryAcquireFailureDistributionClaim,
-} from "../../../../../lib/escrowStore";
+import { getCommitment, getFailureAllocation, getFailureDistributionByCommitmentId } from "../../../../../lib/escrowStore";
 import { checkRateLimit } from "../../../../../lib/rateLimit";
-import {
-  getChainUnixTime,
-  findRecentSystemTransferSignature,
-  getConnection,
-  keypairFromBase58Secret,
-  transferLamports,
-  transferLamportsFromPrivyWallet,
-} from "../../../../../lib/solana";
-import { getSafeErrorMessage } from "../../../../../lib/safeError";
+import { getChainUnixTime, getConnection } from "../../../../../lib/solana";
+import { apiError } from "../../../../../lib/apiError";
+import { runFailureDistributionClaim, toResponse, verifyWalletMessageSignature } from "../../../../../lib/payoutClaimStore";
 
 export const runtime = "nodejs";
 
@@ -59,6 +43,7 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
     }
 
     const commitmentId = ctx.params.id;
+
     const body = (await req.json().catch(() => null)) as any;
 
     const walletPubkey = typeof body?.walletPubkey === "string" ? body.walletPubkey.trim() : "";
@@ -76,11 +61,10 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
     }
 
     const pk = new PublicKey(walletPubkey);
-    const sigBytes = bs58.decode(signatureB58);
     const message = expectedClaimMessage({ commitmentId, walletPubkey, timestampUnix });
-
-    const ok = nacl.sign.detached.verify(new TextEncoder().encode(message), sigBytes, pk.toBytes());
-    if (!ok) return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+    if (!verifyWalletMessageSignature({ message, signatureB58, walletPubkey: pk })) {
+      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+    }
 
     const distribution = await getFailureDistributionByCommitmentId(commitmentId);
     if (!distribution) return NextResponse.json({ error: "No failure distribution found" }, { status: 404 });
@@ -106,70 +90,18 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
       );
     }
 
-    const escrowRef = getEscrowSignerRef(commitment);
-    const fromPubkey = new PublicKey(commitment.escrowPubkey);
-
-    const claimed = await tryAcquireFailureDistributionClaim({
+    const result = await runFailureDistributionClaim({
+      table: "failure_distribution_claims",
       distributionId: distribution.id,
-      walletPubkey,
-      claimedAtUnix: nowUnix,
+      walletPubkey: pk.toBase58(),
       amountLamports,
+      commitment,
+      nowUnix,
+      // Commitment-level pots have no separate reservation ledger; the balance check guards the payout.
+      reservedOthersLamports: 0,
     });
-
-    if (!claimed.acquired) {
-      const existing = claimed.existing;
-      if (Number(existing.amountLamports) !== amountLamports) {
-        return NextResponse.json(
-          {
-            error: "Existing claim has mismatched amount",
-            existing,
-            expectedAmountLamports: amountLamports,
-          },
-          { status: 409 }
-        );
-      }
-
-      if (existing.txSig) {
-        return NextResponse.json({
-          ok: true,
-          idempotent: true,
-          nowUnix,
-          signature: existing.txSig,
-          amountLamports,
-          distributionId: distribution.id,
-        });
-      }
-
-      return NextResponse.json({ error: "Already claimed" }, { status: 409 });
-    }
-
-    let signature: string;
-    try {
-      ({ signature } =
-        escrowRef.kind === "privy"
-          ? await transferLamportsFromPrivyWallet({ connection, walletId: escrowRef.walletId, fromPubkey, to: pk, lamports: amountLamports })
-          : await transferLamports({ connection, from: keypairFromBase58Secret(escrowRef.escrowSecretKeyB58), to: pk, lamports: amountLamports }));
-    } catch (transferErr) {
-      // The claim row was reserved before sending. If the payout clearly did not land, release it so the voter can
-      // retry; if it did land (e.g. confirmation timed out), record the signature instead of paying twice.
-      let landedSig: string | null = null;
-      try {
-        landedSig = await findRecentSystemTransferSignature({ connection, fromPubkey, toPubkey: pk, lamports: amountLamports, limit: 10 });
-      } catch {
-        landedSig = null;
-      }
-      if (landedSig) {
-        await setFailureDistributionClaimTxSig({ distributionId: distribution.id, walletPubkey, txSig: landedSig });
-        return NextResponse.json({ ok: true, recovered: true, nowUnix, signature: landedSig, amountLamports, distributionId: distribution.id });
-      }
-      await releaseFailureDistributionClaim({ distributionId: distribution.id, walletPubkey }).catch(() => null);
-      throw transferErr;
-    }
-
-    await setFailureDistributionClaimTxSig({ distributionId: distribution.id, walletPubkey, txSig: signature });
-
-    return NextResponse.json({ ok: true, nowUnix, signature, amountLamports, distributionId: distribution.id });
+    return toResponse(result);
   } catch (e) {
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    return apiError(e, "failure-distribution/claim");
   }
 }

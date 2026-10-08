@@ -3,19 +3,18 @@ import { PublicKey } from "@solana/web3.js";
 
 import { checkRateLimit } from "../../../lib/rateLimit";
 import { getSafeErrorMessage } from "../../../lib/safeError";
+import { apiError } from "../../../lib/apiError";
 import { auditLog } from "../../../lib/auditLog";
-import { hasDatabase, getPool } from "../../../lib/db";
 import { getAllowedAdminWallets, getAdminSessionWallet, verifyAdminOrigin } from "../../../lib/adminSession";
-import { privyFindSolanaWalletIdByAddress, privyRefundWalletToFeePayer } from "../../../lib/privy";
+import {
+  getLaunchTreasuryWallet,
+  getLaunchTreasuryWalletByAddress,
+  listLaunchTreasuryWallets,
+  refundLaunchWalletToPayer,
+  type LaunchTreasuryWalletRecord,
+} from "../../../lib/launchTreasuryStore";
 
 export const runtime = "nodejs";
-
-const SOLANA_CAIP2 = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"; // mainnet
-
-function isCronAuthorized(req: Request): boolean {
-  void req;
-  return false;
-}
 
 async function isAdminAuthorized(req: Request): Promise<boolean> {
   try {
@@ -30,6 +29,14 @@ async function isAdminAuthorized(req: Request): Promise<boolean> {
   return allowed.has(adminWallet);
 }
 
+/**
+ * POST /api/launch/sweep (admin)
+ *
+ * Returns abandoned launch-wallet top-ups to the payers that sent them. Only wallets recorded in
+ * launch_treasury_wallets can be touched (wallet id, source and destination come from that table, never from the
+ * request); a wallet that is a commitment escrow/authority (it launched a token) or whose payer has a launch running,
+ * pending or landed is skipped. Single: { payerWallet } or { creatorWallet }. Batch: { sinceUnix?, limit? }.
+ */
 export async function POST(req: Request) {
   try {
     const rl = await checkRateLimit(req, { keyPrefix: "launch:sweep", limit: 10, windowSeconds: 60 });
@@ -39,132 +46,84 @@ export async function POST(req: Request) {
       return res;
     }
 
-    const cronOk = isCronAuthorized(req);
-    const adminOk = cronOk ? true : await isAdminAuthorized(req);
-    if (!adminOk) {
+    if (!(await isAdminAuthorized(req))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const body = (await req.json().catch(() => ({}))) as any;
 
-    const keepLamports = body?.keepLamports != null ? Number(body.keepLamports) : 10_000;
+    const keepLamportsRaw = body?.keepLamports != null ? Number(body.keepLamports) : 10_000;
+    const keepLamports = Math.max(5_000, Math.floor(Number.isFinite(keepLamportsRaw) ? keepLamportsRaw : 10_000));
 
-    let walletId = typeof body?.walletId === "string" ? body.walletId.trim() : "";
+    if (typeof body?.walletId === "string" && body.walletId.trim()) {
+      return NextResponse.json({ error: "walletId is not accepted: launch wallets are resolved from our records" }, { status: 400 });
+    }
+
+    const payerWallet = typeof body?.payerWallet === "string" ? body.payerWallet.trim() : "";
     const creatorWallet = typeof body?.creatorWallet === "string" ? body.creatorWallet.trim() : "";
 
-    if (!walletId && creatorWallet) {
-      if (!hasDatabase()) {
-        const wid = await privyFindSolanaWalletIdByAddress({ address: creatorWallet, maxPages: 20 });
-        walletId = wid || "";
-        if (!walletId) {
-          return NextResponse.json({ error: "Could not resolve walletId for creatorWallet" }, { status: 404 });
-        }
-      } else {
-        const pool = getPool();
-        const { rows } = await pool.query(
-          `
-          select
-            f.fields->>'walletId' as wallet_id,
-            f.ts_unix
-          from public.audit_logs f
-          where f.fields->>'creatorWallet' = $1
-            and f.fields->>'walletId' is not null
-          order by f.ts_unix desc
-          limit 1
-          `,
-          [creatorWallet]
-        );
-        const row = rows?.[0];
-        walletId = String(row?.wallet_id ?? "").trim();
-        if (!walletId) {
-          const wid = await privyFindSolanaWalletIdByAddress({ address: creatorWallet, maxPages: 20 });
-          walletId = wid || "";
-        }
-        if (!walletId) {
-          return NextResponse.json({ error: "Could not resolve walletId for creatorWallet" }, { status: 404 });
-        }
+    if (payerWallet || creatorWallet) {
+      const record: LaunchTreasuryWalletRecord | null = payerWallet
+        ? await getLaunchTreasuryWallet(new PublicKey(payerWallet).toBase58())
+        : await getLaunchTreasuryWalletByAddress(new PublicKey(creatorWallet).toBase58());
+      if (!record) return NextResponse.json({ error: "Not a launch wallet we created" }, { status: 404 });
+
+      const result = await refundLaunchWalletToPayer({ record, keepLamports });
+      await auditLog("launch_sweep_one", {
+        walletId: record.walletId,
+        creatorWallet: record.treasuryWallet,
+        payerWallet: record.payerWallet,
+        ok: result.ok,
+        signature: result.ok ? result.signature : undefined,
+        error: result.ok ? undefined : result.error,
+      });
+      if (!result.ok && result.status === 409) {
+        return NextResponse.json({ error: result.error, code: result.code, commitmentId: result.commitmentId ?? null }, { status: 409 });
       }
+      return NextResponse.json({ ok: true, creatorWallet: record.treasuryWallet, payerWallet: record.payerWallet, result });
     }
 
-    if (walletId && creatorWallet) {
-      const fromPubkey = new PublicKey(creatorWallet);
-      const result = await privyRefundWalletToFeePayer({ walletId, fromPubkey, caip2: SOLANA_CAIP2, keepLamports });
-      await auditLog("launch_sweep_one", { walletId, creatorWallet, ok: result.ok, error: result.ok ? undefined : result.error });
-      return NextResponse.json({ ok: true, walletId, creatorWallet, result });
-    }
-
-    if (!hasDatabase()) {
-      return NextResponse.json({ error: "DATABASE_URL is required for batch sweep" }, { status: 400 });
-    }
-
-    const sinceUnix = body?.sinceUnix != null ? Number(body.sinceUnix) : Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
+    const sinceRaw = body?.sinceUnix != null ? Number(body.sinceUnix) : NaN;
+    const sinceUnix = Number.isFinite(sinceRaw) && sinceRaw >= 0 ? Math.floor(sinceRaw) : Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
     const limitRaw = body?.limit != null ? Number(body.limit) : 50;
     const limit = Math.max(1, Math.min(200, Number.isFinite(limitRaw) ? Math.floor(limitRaw) : 50));
 
-    const pool = getPool();
-
-    const { rows } = await pool.query(
-      `
-      select
-        f.fields->>'walletId' as wallet_id,
-        f.fields->>'creatorWallet' as creator_wallet,
-        max(f.ts_unix) as ts_unix
-      from public.audit_logs f
-      where f.event = 'launch_funding_success'
-        and f.ts_unix >= $1
-        and not exists (
-          select 1 from public.audit_logs s
-          where s.event in ('launch_onchain_success', 'launch_success')
-            and s.fields->>'walletId' = f.fields->>'walletId'
-        )
-        and not exists (
-          select 1 from public.audit_logs r
-          where r.event = 'launch_refund_attempt'
-            and r.fields->>'walletId' = f.fields->>'walletId'
-            and r.fields->>'ok' = 'true'
-        )
-      group by f.fields->>'walletId', f.fields->>'creatorWallet'
-      order by ts_unix desc
-      limit $2
-      `,
-      [String(sinceUnix), String(limit)]
-    );
+    // Leave recently prepared wallets alone: their payer may be about to launch with that top-up.
+    const minAgeRaw = body?.minAgeSeconds != null ? Number(body.minAgeSeconds) : 3600;
+    const minAgeSeconds = Math.max(600, Number.isFinite(minAgeRaw) ? Math.floor(minAgeRaw) : 3600);
+    const cutoff = Math.floor(Date.now() / 1000) - minAgeSeconds;
+    const records = (await listLaunchTreasuryWallets({ sinceUnix, limit })).filter((r) => r.createdAtUnix <= cutoff);
 
     const results: any[] = [];
-    for (const row of rows) {
-      const wid = String(row.wallet_id ?? "").trim();
-      const cwa = String(row.creator_wallet ?? "").trim();
-      if (!wid || !cwa) continue;
-
+    for (const record of records) {
       let ok = false;
+      let skipped = "";
       let error = "";
       let refundSignature = "";
       let refundedLamports = 0;
-
       try {
-        const fromPubkey = new PublicKey(cwa);
-        const r = await privyRefundWalletToFeePayer({ walletId: wid, fromPubkey, caip2: SOLANA_CAIP2, keepLamports });
-        ok = r.ok;
-        if (!r.ok) error = r.error;
+        const r = await refundLaunchWalletToPayer({ record, keepLamports });
         if (r.ok) {
+          ok = true;
           refundSignature = r.signature;
           refundedLamports = r.refundedLamports;
+        } else if (r.status === 409) {
+          skipped = r.code;
+        } else {
+          error = r.error;
         }
       } catch (e) {
-        ok = false;
         error = getSafeErrorMessage(e);
       }
-
-      results.push({ walletId: wid, creatorWallet: cwa, ok, refundSignature, refundedLamports, error });
+      results.push({ creatorWallet: record.treasuryWallet, payerWallet: record.payerWallet, ok, skipped: skipped || undefined, refundSignature, refundedLamports, error });
     }
 
     const swept = results.filter((r) => r.ok).length;
-    await auditLog("launch_sweep", { cronOk, sinceUnix, limit, swept, total: results.length });
+    await auditLog("launch_sweep", { sinceUnix, limit, swept, total: results.length });
 
     return NextResponse.json({ ok: true, swept, total: results.length, results });
   } catch (e) {
-    const msg = getSafeErrorMessage(e);
-    await auditLog("launch_sweep_error", { error: msg });
-    return NextResponse.json({ error: msg }, { status: 500 });
+    await auditLog("launch_sweep_error", { error: getSafeErrorMessage(e) });
+    return apiError(e, "launch/sweep");
   }
 }

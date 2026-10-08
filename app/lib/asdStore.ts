@@ -25,9 +25,19 @@ export type AsdConfigRecord = {
   activatedAtUnix?: number | null;
   lastExecutedAtUnix?: number | null;
   lastError?: string | null;
+  pausedAtUnix?: number | null;
+  resumedAtUnix?: number | null;
+  lastRequestId?: string | null;
+  lastRequestAction?: string | null;
+  lastRequestAtUnix?: number | null;
 };
 
-export type AsdExecutionStatus = "dry_run" | "sent" | "skipped" | "error";
+/**
+ * dry_run / skipped: nothing was signed. pending: the swap was signed and its signature persisted before broadcast,
+ * outcome not known yet. confirmed: swap landed. error: nothing moved (or it failed on-chain). "sent" is legacy.
+ */
+export type AsdExecutionStatus = "dry_run" | "sent" | "pending" | "confirmed" | "skipped" | "error";
+export type AsdForwardStatus = "none" | "pending" | "confirmed" | "error";
 
 export type AsdExecutionRecord = {
   id: string;
@@ -45,6 +55,12 @@ export type AsdExecutionRecord = {
   outAmountRaw?: string | null;
   quoteJson?: string | null;
   error?: string | null;
+  lastValidBlockHeight?: number | null;
+  confirmedAtUnix?: number | null;
+  forwardStatus?: AsdForwardStatus | null;
+  forwardTxSig?: string | null;
+  forwardLastValidBlockHeight?: number | null;
+  forwardedLamports?: string | null;
 };
 
 const mem = {
@@ -123,6 +139,31 @@ async function ensureSchema(): Promise<void> {
       alter table asd_executions add column if not exists out_mint text null;
       alter table asd_executions add column if not exists out_amount_raw text null;
       alter table asd_executions add column if not exists quote_json text null;
+
+      alter table asd_configs add column if not exists paused_at_unix bigint null;
+      alter table asd_configs add column if not exists resumed_at_unix bigint null;
+      alter table asd_configs add column if not exists last_request_id text null;
+      alter table asd_configs add column if not exists last_request_action text null;
+      alter table asd_configs add column if not exists last_request_at_unix bigint null;
+
+      alter table asd_executions add column if not exists last_valid_block_height bigint null;
+      alter table asd_executions add column if not exists confirmed_at_unix bigint null;
+      alter table asd_executions add column if not exists forward_status text null;
+      alter table asd_executions add column if not exists forward_tx_sig text null;
+      alter table asd_executions add column if not exists forward_last_valid_block_height bigint null;
+      alter table asd_executions add column if not exists forwarded_lamports text null;
+      create index if not exists asd_executions_unresolved_idx on asd_executions(commitment_id) where status='pending' or forward_status='pending';
+
+      -- Every signed (or admin) ASD request, by request id: replay protection + a trail of who did what when.
+      create table if not exists asd_requests (
+        commitment_id text not null,
+        request_id text not null,
+        action text not null,
+        signer_pubkey text null,
+        signed_at_unix bigint null,
+        created_at_unix bigint not null,
+        primary key (commitment_id, request_id)
+      );
     `);
   })().catch((e) => {
     ensuredSchema = null;
@@ -152,6 +193,11 @@ function rowToConfig(row: any): AsdConfigRecord {
     activatedAtUnix: row.activated_at_unix == null ? null : Number(row.activated_at_unix),
     lastExecutedAtUnix: row.last_executed_at_unix == null ? null : Number(row.last_executed_at_unix),
     lastError: row.last_error == null ? null : String(row.last_error),
+    pausedAtUnix: row.paused_at_unix == null ? null : Number(row.paused_at_unix),
+    resumedAtUnix: row.resumed_at_unix == null ? null : Number(row.resumed_at_unix),
+    lastRequestId: row.last_request_id == null ? null : String(row.last_request_id),
+    lastRequestAction: row.last_request_action == null ? null : String(row.last_request_action),
+    lastRequestAtUnix: row.last_request_at_unix == null ? null : Number(row.last_request_at_unix),
   };
 }
 
@@ -172,6 +218,12 @@ function rowToExecution(row: any): AsdExecutionRecord {
     outAmountRaw: row.out_amount_raw == null ? null : String(row.out_amount_raw),
     quoteJson: row.quote_json == null ? null : String(row.quote_json),
     error: row.error == null ? null : String(row.error),
+    lastValidBlockHeight: row.last_valid_block_height == null ? null : Number(row.last_valid_block_height),
+    confirmedAtUnix: row.confirmed_at_unix == null ? null : Number(row.confirmed_at_unix),
+    forwardStatus: row.forward_status == null ? null : (String(row.forward_status) as AsdForwardStatus),
+    forwardTxSig: row.forward_tx_sig == null ? null : String(row.forward_tx_sig),
+    forwardLastValidBlockHeight: row.forward_last_valid_block_height == null ? null : Number(row.forward_last_valid_block_height),
+    forwardedLamports: row.forwarded_lamports == null ? null : String(row.forwarded_lamports),
   };
 }
 
@@ -500,8 +552,9 @@ export async function insertAsdExecution(input: Omit<AsdExecutionRecord, "id">):
   const res = await pool.query(
     `insert into asd_executions (
       id, commitment_id, token_mint, run_at_unix, planned_amount_raw, executed_amount_raw,
-      status, tx_sig, vault_pubkey, destination_pubkey, vault_balance_raw, out_mint, out_amount_raw, quote_json, error
-    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+      status, tx_sig, vault_pubkey, destination_pubkey, vault_balance_raw, out_mint, out_amount_raw, quote_json, error,
+      last_valid_block_height, forward_status
+    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
     returning *`,
     [
       rec.id,
@@ -519,6 +572,8 @@ export async function insertAsdExecution(input: Omit<AsdExecutionRecord, "id">):
       rec.outAmountRaw ?? null,
       rec.quoteJson ?? null,
       rec.error ?? null,
+      rec.lastValidBlockHeight == null ? null : String(rec.lastValidBlockHeight),
+      rec.forwardStatus ?? null,
     ]
   );
   const row = res.rows[0];
@@ -572,4 +627,252 @@ export async function updateAsdAfterExecution(input: {
     "update asd_configs set last_executed_at_unix=$2, last_error=$3, updated_at_unix=$4 where commitment_id=$1",
     [commitmentId, String(executedAtUnix), lastError, String(nowUnix())]
   );
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Request ids, pause/resume, atomic execution claim, execution lifecycle
+// ---------------------------------------------------------------------------------------------------------------------
+
+/**
+ * Records a signed/admin ASD request id (single use per commitment). Returns false on replay. The latest request is
+ * also stamped onto the config row (last_request_id / action / time).
+ */
+export async function recordAsdRequest(input: {
+  commitmentId: string;
+  requestId: string;
+  action: "configure" | "activate" | "pause" | "resume";
+  signerPubkey?: string | null;
+  signedAtUnix?: number | null;
+}): Promise<boolean> {
+  await ensureSchema();
+  const commitmentId = String(input.commitmentId ?? "").trim();
+  const requestId = String(input.requestId ?? "").trim();
+  if (!commitmentId || !requestId) throw new Error("commitmentId and requestId are required");
+  const t = nowUnix();
+
+  if (!hasDatabase()) {
+    const g = globalThis as any;
+    const set: Set<string> = g.__cts_asd_requests ?? (g.__cts_asd_requests = new Set<string>());
+    const k = `${commitmentId}:${requestId}`;
+    if (set.has(k)) return false;
+    set.add(k);
+    const cfg = mem.configs.get(commitmentId);
+    if (cfg) mem.configs.set(commitmentId, { ...cfg, lastRequestId: requestId, lastRequestAction: input.action, lastRequestAtUnix: t });
+    return true;
+  }
+
+  const pool = getPool();
+  const res = await pool.query(
+    `insert into asd_requests (commitment_id, request_id, action, signer_pubkey, signed_at_unix, created_at_unix)
+     values ($1,$2,$3,$4,$5,$6) on conflict (commitment_id, request_id) do nothing returning request_id`,
+    [commitmentId, requestId, input.action, input.signerPubkey ?? null, input.signedAtUnix == null ? null : String(input.signedAtUnix), String(t)]
+  );
+  if (!res.rows[0]) return false;
+  await pool.query("update asd_configs set last_request_id=$2, last_request_action=$3, last_request_at_unix=$4 where commitment_id=$1", [
+    commitmentId,
+    requestId,
+    input.action,
+    String(t),
+  ]);
+  return true;
+}
+
+/** Pauses an active (or draft) config. Never touches an admin-'disabled' one. */
+export async function pauseAsdConfig(input: { commitmentId: string }): Promise<{ changed: boolean; config: AsdConfigRecord | null }> {
+  await ensureSchema();
+  const commitmentId = String(input.commitmentId ?? "").trim();
+  const t = nowUnix();
+  if (!hasDatabase()) {
+    const cfg = mem.configs.get(commitmentId) ?? null;
+    if (!cfg || (cfg.status !== "active" && cfg.status !== "draft")) return { changed: false, config: cfg };
+    const next: AsdConfigRecord = { ...cfg, status: "paused", pausedAtUnix: t, updatedAtUnix: t };
+    mem.configs.set(commitmentId, next);
+    return { changed: true, config: next };
+  }
+  const res = await getPool().query(
+    "update asd_configs set status='paused', paused_at_unix=$2, updated_at_unix=$2 where commitment_id=$1 and status in ('active','draft') returning *",
+    [commitmentId, String(t)]
+  );
+  if (res.rows[0]) return { changed: true, config: rowToConfig(res.rows[0]) };
+  return { changed: false, config: await getAsdConfig(commitmentId) };
+}
+
+/**
+ * Resumes ONLY a paused config (`where status='paused'`): a creator can never revive an admin-'disabled' config.
+ * A config that was paused before activation goes back to 'draft'.
+ */
+export async function resumeAsdConfig(input: { commitmentId: string }): Promise<{ changed: boolean; config: AsdConfigRecord | null }> {
+  await ensureSchema();
+  const commitmentId = String(input.commitmentId ?? "").trim();
+  const t = nowUnix();
+  if (!hasDatabase()) {
+    const cfg = mem.configs.get(commitmentId) ?? null;
+    if (!cfg || cfg.status !== "paused") return { changed: false, config: cfg };
+    const next: AsdConfigRecord = { ...cfg, status: cfg.activatedAtUnix ? "active" : "draft", resumedAtUnix: t, updatedAtUnix: t };
+    mem.configs.set(commitmentId, next);
+    return { changed: true, config: next };
+  }
+  const res = await getPool().query(
+    `update asd_configs set status=case when activated_at_unix is null then 'draft' else 'active' end,
+       resumed_at_unix=$2, updated_at_unix=$2
+     where commitment_id=$1 and status='paused' returning *`,
+    [commitmentId, String(t)]
+  );
+  if (res.rows[0]) return { changed: true, config: rowToConfig(res.rows[0]) };
+  return { changed: false, config: await getAsdConfig(commitmentId) };
+}
+
+/**
+ * Atomic per-interval execution claim. Exactly one caller wins a given interval:
+ *   update asd_configs set last_executed_at_unix=now
+ *   where active and (last_executed_at_unix is null or last_executed_at_unix <= now - min_interval_seconds)
+ *   returning *
+ * The previous value is returned so a run that provably did nothing can give the interval back
+ * (releaseAsdExecutionSlot) instead of waiting a whole interval.
+ */
+export async function claimAsdExecutionSlot(input: {
+  commitmentId: string;
+  nowUnix: number;
+}): Promise<{ config: AsdConfigRecord; previousLastExecutedAtUnix: number | null } | null> {
+  await ensureSchema();
+  const commitmentId = String(input.commitmentId ?? "").trim();
+  const now = Math.floor(Number(input.nowUnix));
+  if (!commitmentId || !Number.isFinite(now) || now <= 0) return null;
+
+  if (!hasDatabase()) {
+    const cfg = mem.configs.get(commitmentId);
+    if (!cfg || cfg.status !== "active" || !cfg.activatedAtUnix) return null;
+    const prev = cfg.lastExecutedAtUnix ?? null;
+    if (prev != null && prev > now - cfg.minIntervalSeconds) return null;
+    const next = { ...cfg, lastExecutedAtUnix: now, updatedAtUnix: now };
+    mem.configs.set(commitmentId, next);
+    return { config: next, previousLastExecutedAtUnix: prev };
+  }
+
+  const res = await getPool().query(
+    `with prev as (
+       select commitment_id, last_executed_at_unix as prev_last from asd_configs where commitment_id=$1 for update
+     )
+     update asd_configs c set last_executed_at_unix=$2, updated_at_unix=$2
+     from prev
+     where c.commitment_id=prev.commitment_id and c.status='active' and c.activated_at_unix is not null
+       and (c.last_executed_at_unix is null or c.last_executed_at_unix <= $2 - c.min_interval_seconds)
+     returning c.*, prev.prev_last`,
+    [commitmentId, String(now)]
+  );
+  const row = res.rows[0];
+  if (!row) return null;
+  return { config: rowToConfig(row), previousLastExecutedAtUnix: row.prev_last == null ? null : Number(row.prev_last) };
+}
+
+/** Gives an interval back - only if it is still the one we claimed (compare-and-set). */
+export async function releaseAsdExecutionSlot(input: {
+  commitmentId: string;
+  claimedAtUnix: number;
+  previousLastExecutedAtUnix: number | null;
+}): Promise<boolean> {
+  await ensureSchema();
+  const commitmentId = String(input.commitmentId ?? "").trim();
+  if (!hasDatabase()) {
+    const cfg = mem.configs.get(commitmentId);
+    if (!cfg || cfg.lastExecutedAtUnix !== input.claimedAtUnix) return false;
+    mem.configs.set(commitmentId, { ...cfg, lastExecutedAtUnix: input.previousLastExecutedAtUnix });
+    return true;
+  }
+  const res = await getPool().query(
+    "update asd_configs set last_executed_at_unix=$3 where commitment_id=$1 and last_executed_at_unix=$2 returning commitment_id",
+    [commitmentId, String(input.claimedAtUnix), input.previousLastExecutedAtUnix == null ? null : String(input.previousLastExecutedAtUnix)]
+  );
+  return Boolean(res.rows[0]);
+}
+
+/** Records lastError without touching the interval clock. */
+export async function setAsdLastError(input: { commitmentId: string; lastError: string | null }): Promise<void> {
+  await ensureSchema();
+  const commitmentId = String(input.commitmentId ?? "").trim();
+  if (!hasDatabase()) {
+    const cfg = mem.configs.get(commitmentId);
+    if (cfg) mem.configs.set(commitmentId, { ...cfg, lastError: input.lastError, updatedAtUnix: nowUnix() });
+    return;
+  }
+  await getPool().query("update asd_configs set last_error=$2, updated_at_unix=$3 where commitment_id=$1", [
+    commitmentId,
+    input.lastError,
+    String(nowUnix()),
+  ]);
+}
+
+type AsdExecutionPatch = {
+  status?: AsdExecutionStatus;
+  txSig?: string | null;
+  lastValidBlockHeight?: number | null;
+  executedAmountRaw?: string;
+  outAmountRaw?: string | null;
+  quoteJson?: string | null;
+  error?: string | null;
+  confirmedAtUnix?: number | null;
+  forwardStatus?: AsdForwardStatus | null;
+  forwardTxSig?: string | null;
+  forwardLastValidBlockHeight?: number | null;
+  forwardedLamports?: string | null;
+};
+
+const EXECUTION_PATCH_COLUMNS: Array<[keyof AsdExecutionPatch, string]> = [
+  ["status", "status"],
+  ["txSig", "tx_sig"],
+  ["lastValidBlockHeight", "last_valid_block_height"],
+  ["executedAmountRaw", "executed_amount_raw"],
+  ["outAmountRaw", "out_amount_raw"],
+  ["quoteJson", "quote_json"],
+  ["error", "error"],
+  ["confirmedAtUnix", "confirmed_at_unix"],
+  ["forwardStatus", "forward_status"],
+  ["forwardTxSig", "forward_tx_sig"],
+  ["forwardLastValidBlockHeight", "forward_last_valid_block_height"],
+  ["forwardedLamports", "forwarded_lamports"],
+];
+
+/** Partial update of an execution row (status transitions, signatures, forward step). */
+export async function updateAsdExecution(input: { id: string } & AsdExecutionPatch): Promise<void> {
+  await ensureSchema();
+
+  if (!hasDatabase()) {
+    for (const [cid, list] of Array.from(mem.executionsByCommitment.entries())) {
+      const i = list.findIndex((e) => e.id === input.id);
+      if (i < 0) continue;
+      const next: any = { ...list[i] };
+      for (const [k] of EXECUTION_PATCH_COLUMNS) if (input[k] !== undefined) next[k] = input[k];
+      const copy = list.slice();
+      copy[i] = next;
+      mem.executionsByCommitment.set(cid, copy);
+      return;
+    }
+    return;
+  }
+
+  const sets: string[] = [];
+  const values: any[] = [input.id];
+  for (const [k, col] of EXECUTION_PATCH_COLUMNS) {
+    const v = input[k] as any;
+    if (v === undefined) continue;
+    values.push(v == null ? null : typeof v === "number" ? String(Math.floor(v)) : v);
+    sets.push(`${col}=$${values.length}`);
+  }
+  if (!sets.length) return;
+  await getPool().query(`update asd_executions set ${sets.join(", ")} where id=$1`, values);
+}
+
+/** Executions whose swap or forward signature was persisted but whose outcome is not known yet. */
+export async function listUnresolvedAsdExecutions(commitmentId: string): Promise<AsdExecutionRecord[]> {
+  await ensureSchema();
+  const id = String(commitmentId ?? "").trim();
+  if (!id) return [];
+  if (!hasDatabase()) {
+    return (mem.executionsByCommitment.get(id) ?? []).filter((e) => e.status === "pending" || e.forwardStatus === "pending");
+  }
+  const res = await getPool().query(
+    "select * from asd_executions where commitment_id=$1 and (status='pending' or forward_status='pending') order by run_at_unix asc",
+    [id]
+  );
+  return res.rows.map(rowToExecution);
 }

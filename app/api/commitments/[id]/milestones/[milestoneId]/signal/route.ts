@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import crypto from "crypto";
 import { PublicKey } from "@solana/web3.js";
 import nacl from "tweetnacl";
 import bs58 from "bs58";
@@ -9,73 +8,37 @@ import {
   getCommitment,
   getRewardApprovalThreshold,
   getRewardMilestoneVoteCounts,
-  getVoteRewardDistribution,
-  insertVoteRewardDistributionAllocations,
+  getRewardMilestoneVoteWindow,
+  getRewardVoteCutoffSeconds,
   normalizeRewardMilestonesClaimable,
   publicView,
-  tryAcquireVoteRewardDistributionCreate,
   updateRewardTotalsAndMilestones,
   upsertRewardMilestoneSignal,
   upsertRewardVoterSnapshot,
 } from "../../../../../../lib/escrowStore";
-import {
-  getChainUnixTime,
-  getConnection,
-  getTokenBalanceForMint,
-  getTokenProgramIdForMint,
-  hasAnyTokenBalanceForMint,
-  verifyTokenExistsOnChain,
-} from "../../../../../../lib/solana";
-import { getCachedJupiterPriceUsd, getCachedJupiterPriceUsdAllowStale, setCachedJupiterPriceUsd } from "../../../../../../lib/priceCache";
-import { jupiterUsdPrice } from "../../../../../../lib/jupiter";
-import { fetchDexScreenerPairsByTokenMint, pickBestDexScreenerPair } from "../../../../../../lib/dexScreener";
+import { getChainUnixTime, getConnection, getTokenBalanceForMint } from "../../../../../../lib/solana";
+import { resolveTokenUsdPrice } from "../../../../../../lib/priceCache";
 import { checkRateLimit } from "../../../../../../lib/rateLimit";
 import { getSafeErrorMessage, redactSensitive } from "../../../../../../lib/safeError";
 
 export const runtime = "nodejs";
+
+/** Minimum position (USD, at the vote-time price) a wallet must hold to vote - and still hold when the window closes. */
+const MIN_VOTE_USD = 20;
+
+/** How far a signed vote's timestamp may be from the server clock. */
+const VOTE_SIGNATURE_MAX_AGE_SECONDS = 10 * 60;
 
 function isCanaryRewardVoting(): boolean {
   const raw = String(process.env.CTS_CANARY_REWARD_VOTING ?? "").trim().toLowerCase();
   return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
 }
 
-function milestoneSignalMessage(input: { commitmentId: string; milestoneId: string; vote: "approve" | "reject" }): string {
+/** The vote message binds the vote and a timestamp (votes expire: a signature is only accepted for ±10 minutes). */
+function milestoneSignalMessage(input: { commitmentId: string; milestoneId: string; vote: "approve" | "reject"; timestampUnix: number }): string {
   const vote = input.vote === "reject" ? "reject" : "approve";
   const title = vote === "reject" ? "Milestone Reject Signal" : "Milestone Approval Signal";
-  return `Ship & Commit\n${title}\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}\nVote: ${vote}`;
-}
-
-function legacyApproveSignalMessage(input: { commitmentId: string; milestoneId: string }): string {
-  return `Ship & Commit\nMilestone Approval Signal\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}`;
-}
-
-function getVoteCutoffSeconds(): number {
-  const raw = Number(process.env.REWARD_VOTE_CUTOFF_SECONDS ?? "");
-  if (Number.isFinite(raw) && raw > 0) return Math.floor(raw);
-  return 24 * 60 * 60;
-}
-
-function getVoteWindowUnix(input: { milestone: RewardMilestone; cutoffSeconds: number }): { startUnix: number; endUnix: number } | null {
-  const completedAtUnix = Number(input.milestone.completedAtUnix ?? 0);
-  if (!Number.isFinite(completedAtUnix) || completedAtUnix <= 0) return null;
-  const reviewOpenedAtUnix = Number((input.milestone as any).reviewOpenedAtUnix ?? 0);
-  const dueAtUnix = Number((input.milestone as any).dueAtUnix ?? 0);
-  const hasReview = Number.isFinite(reviewOpenedAtUnix) && reviewOpenedAtUnix > 0;
-  const hasDue = Number.isFinite(dueAtUnix) && dueAtUnix > 0;
-
-  const startUnix = hasReview
-    ? Math.floor(reviewOpenedAtUnix)
-    : hasDue
-      ? Math.floor(dueAtUnix)
-      : completedAtUnix;
-
-  const endUnix = hasReview
-    ? startUnix + input.cutoffSeconds
-    : hasDue
-      ? Math.floor(dueAtUnix) + input.cutoffSeconds
-      : completedAtUnix + input.cutoffSeconds;
-  if (!Number.isFinite(endUnix) || endUnix <= startUnix) return null;
-  return { startUnix, endUnix };
+  return `Ship & Commit\n${title}\nCommitment: ${input.commitmentId}\nMilestone: ${input.milestoneId}\nVote: ${vote}\nTimestamp: ${Math.floor(input.timestampUnix)}`;
 }
 
 function shipMultiplierBpsFromUiAmount(shipUiAmount: number): number {
@@ -85,40 +48,14 @@ function shipMultiplierBpsFromUiAmount(shipUiAmount: number): number {
   return 10000;
 }
 
-function isVoteRewardDistributionsEnabled(): boolean {
-  const raw = String(process.env.CTS_ENABLE_VOTE_REWARD_DISTRIBUTIONS ?? "").trim().toLowerCase();
-  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
-}
-
-function getVoteRewardMode(): "pool" | "fixed" {
-  const raw = String(process.env.CTS_VOTE_REWARD_MODE ?? "").trim().toLowerCase();
-  if (raw === "fixed" || raw === "per_vote" || raw === "per-vote" || raw === "per_voter" || raw === "per-voter") return "fixed";
-  if (raw === "pool") return "pool";
-  const perVote = Number(String(process.env.CTS_VOTE_REWARD_PER_VOTE_UI_AMOUNT ?? "").trim());
-  const pool = Number(String(process.env.CTS_VOTE_REWARD_POOL_UI_AMOUNT ?? "").trim());
-  if (Number.isFinite(perVote) && perVote > 0 && (!Number.isFinite(pool) || pool <= 0)) return "fixed";
-  if (Number.isFinite(pool) && pool > 0 && (!Number.isFinite(perVote) || perVote <= 0)) return "pool";
-  if (Number.isFinite(perVote) && perVote > 0) return "fixed";
-  return "pool";
-}
-
-function getVoteRewardPerVoteUiAmount(): number {
-  const raw = String(process.env.CTS_VOTE_REWARD_PER_VOTE_UI_AMOUNT ?? "").trim();
-  const n = Number(raw);
-  if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) return 0;
-  return Math.floor(n);
-}
-
-/** Jupiter first; DexScreener as a second opinion (covers fresh pump.fun tokens Jupiter doesn't price yet). */
-async function getJupiterUsdPriceForMint(mint: string): Promise<number | null> {
-  const fromJupiter = await jupiterUsdPrice(mint);
-  if (fromJupiter != null) return fromJupiter;
-
+/** ceil(minUsd / priceUsd) in raw token units, or null when it cannot be represented sensibly. */
+function minAmountRawForUsd(input: { minUsd: number; priceUsd: number; decimals: number }): bigint | null {
+  const { minUsd, priceUsd, decimals } = input;
+  if (!Number.isFinite(priceUsd) || priceUsd <= 0) return null;
+  const raw = Math.ceil((minUsd / priceUsd) * 10 ** decimals);
+  if (!Number.isFinite(raw) || raw <= 0 || raw > 1e30) return null;
   try {
-    const { pairs } = await fetchDexScreenerPairsByTokenMint({ tokenMint: mint, timeoutMs: 4000 });
-    const best = pickBestDexScreenerPair({ pairs, chainId: "solana", minLiquidityUsd: 1000 });
-    const price = Number(best?.priceUsd);
-    return Number.isFinite(price) && price > 0 ? price : null;
+    return BigInt(raw.toLocaleString("fullwide", { useGrouping: false }));
   } catch {
     return null;
   }
@@ -169,24 +106,23 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
     }
 
     const vote: "approve" | "reject" = String(body?.vote ?? "approve") === "reject" ? "reject" : "approve";
+    const serverNowUnix = Math.floor(Date.now() / 1000);
 
     const signatureB58 = typeof body?.signature === "string" ? body.signature.trim() : "";
     if (!signatureB58) {
-      const message = milestoneSignalMessage({ commitmentId: id, milestoneId, vote });
+      const message = milestoneSignalMessage({ commitmentId: id, milestoneId, vote, timestampUnix: serverNowUnix });
       return NextResponse.json(
         {
           error: "signature required",
           code: "signature_required",
           hint: "Sign the message with the same wallet you are voting from.",
           message,
+          timestampUnix: serverNowUnix,
           signerPubkey: signerB58,
         },
         { status: 400 }
       );
     }
-
-    const expectedMessage = milestoneSignalMessage({ commitmentId: id, milestoneId, vote });
-    const providedMessage = typeof body?.message === "string" ? body.message : expectedMessage;
 
     let signerPk: PublicKey;
     try {
@@ -207,6 +143,9 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
     try {
       signature = bs58.decode(signatureB58);
     } catch {
+      signature = new Uint8Array(0);
+    }
+    if (signature.length !== nacl.sign.signatureLength) {
       return NextResponse.json(
         {
           error: "Invalid signature encoding",
@@ -217,18 +156,36 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
       );
     }
 
-    const ok = (() => {
-      if (providedMessage === expectedMessage) {
-        return nacl.sign.detached.verify(new TextEncoder().encode(expectedMessage), signature, signerPk.toBytes());
-      }
-      if (vote === "approve") {
-        const legacy = legacyApproveSignalMessage({ commitmentId: id, milestoneId });
-        if (providedMessage === legacy) {
-          return nacl.sign.detached.verify(new TextEncoder().encode(legacy), signature, signerPk.toBytes());
-        }
-      }
-      return false;
-    })();
+    const timestampUnix = Math.floor(Number(body?.timestampUnix));
+    if (!Number.isFinite(timestampUnix) || timestampUnix <= 0) {
+      return NextResponse.json(
+        {
+          error: "timestampUnix required",
+          code: "timestamp_required",
+          hint: "Votes now include a timestamp. Refresh the page and sign again.",
+          message: milestoneSignalMessage({ commitmentId: id, milestoneId, vote, timestampUnix: serverNowUnix }),
+          timestampUnix: serverNowUnix,
+        },
+        { status: 400 }
+      );
+    }
+    if (Math.abs(serverNowUnix - timestampUnix) > VOTE_SIGNATURE_MAX_AGE_SECONDS) {
+      return NextResponse.json(
+        { error: "Vote signature expired", code: "signature_expired", hint: "Sign the vote again.", nowUnix: serverNowUnix },
+        { status: 400 }
+      );
+    }
+
+    const expectedMessage = milestoneSignalMessage({ commitmentId: id, milestoneId, vote, timestampUnix });
+    const providedMessage = typeof body?.message === "string" ? body.message : expectedMessage;
+    if (providedMessage !== expectedMessage) {
+      return NextResponse.json(
+        { error: "Invalid message", code: "invalid_message", hint: "Refresh the page and sign the vote again.", message: expectedMessage },
+        { status: 400 }
+      );
+    }
+
+    const ok = nacl.sign.detached.verify(new TextEncoder().encode(expectedMessage), signature, signerPk.toBytes());
     if (!ok) {
       return NextResponse.json(
         {
@@ -309,16 +266,9 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
     const connection = getConnection();
     const nowUnix = await getChainUnixTime(connection);
 
-    const cutoffSeconds = getVoteCutoffSeconds();
-    const window = getVoteWindowUnix({ milestone, cutoffSeconds });
+    const window = getRewardMilestoneVoteWindow(milestone, getRewardVoteCutoffSeconds());
     if (!window) {
-      return NextResponse.json(
-        {
-          error: "Invalid vote window",
-          code: "invalid_vote_window",
-        },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Invalid vote window", code: "invalid_vote_window" }, { status: 409 });
     }
 
     if (nowUnix < window.startUnix) {
@@ -349,157 +299,102 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
       );
     }
 
-    const withinCutoff = true;
+    let mintPk: PublicKey;
+    try {
+      mintPk = new PublicKey(record.tokenMint);
+    } catch {
+      return NextResponse.json(
+        {
+          error: "Invalid project token mint",
+          code: "invalid_token_mint",
+          hint: "This project has an invalid token mint configured. Ask the creator/admin to fix the token mint before voting.",
+        },
+        { status: 400 }
+      );
+    }
 
-    let projectUiAmount = 0;
-    let shipUiAmount = 0;
-    let shipMultiplierBps = 10000;
+    let bal: { uiAmount: number; amountRaw: bigint; decimals: number };
+    try {
+      bal = await getTokenBalanceForMint({ connection, owner: signerPk, mint: mintPk });
+    } catch {
+      return NextResponse.json(
+        {
+          error: "RPC error while fetching token balance",
+          code: "rpc_error",
+          hint: "Voting is temporarily unavailable due to an RPC error. Please try again in a moment.",
+        },
+        { status: 503 }
+      );
+    }
+    if (bal.amountRaw <= 0n) {
+      return NextResponse.json(
+        {
+          error: "You are not a holder of the project token",
+          code: "not_token_holder",
+          hint: "Switch to a wallet that holds this project's token, then try again.",
+          tokenMint: mintPk.toBase58(),
+          signerPubkey: signerPk.toBase58(),
+        },
+        { status: 403 }
+      );
+    }
+
+    const projectUiAmount = bal.uiAmount;
     let projectPriceUsd = 0;
     let projectValueUsd = 0;
+    // The minimum the wallet must STILL hold when the window closes (re-checked then; see escrowStore).
+    let minAmountRaw: bigint;
 
-    if (record.tokenMint) {
-      let mintPk: PublicKey;
-      try {
-        mintPk = new PublicKey(record.tokenMint);
-      } catch {
+    if (isCanaryRewardVoting()) {
+      // Canary mode: any non-zero holder may vote (no price feed / USD minimum); at close it must still hold > 0.
+      projectValueUsd = 1;
+      minAmountRaw = 1n;
+    } else {
+      // No token-count fallback: without a price (Jupiter -> DexScreener -> pump.fun bonding curve on-chain -> recent
+      // cache) the $20 minimum cannot be verified, so the wallet is not eligible to vote right now.
+      const price = await resolveTokenUsdPrice(mintPk.toBase58());
+      if (!price) {
         return NextResponse.json(
           {
-            error: "Invalid project token mint",
-            code: "invalid_token_mint",
-            hint: "This project has an invalid token mint configured. Ask the creator/admin to fix the token mint before voting.",
-          },
-          { status: 400 }
-        );
-      }
-
-      let isHolder = false;
-      try {
-        isHolder = await hasAnyTokenBalanceForMint({ connection, owner: signerPk, mint: mintPk });
-      } catch {
-        return NextResponse.json(
-          {
-            error: "RPC error while checking token holdings",
-            code: "rpc_error",
-            hint: "Voting is temporarily unavailable due to an RPC error. Please try again in a moment.",
+            error: "Token price unavailable, so the $20 voting minimum cannot be verified",
+            code: "price_unavailable",
+            hint: "No price source (Jupiter, DexScreener or the on-chain bonding curve) has a price for this token right now. Try again later.",
           },
           { status: 503 }
         );
       }
-      if (!isHolder) {
+      const valueUsd = bal.uiAmount * price.priceUsd;
+      projectPriceUsd = price.priceUsd;
+      projectValueUsd = valueUsd;
+      const min = minAmountRawForUsd({ minUsd: MIN_VOTE_USD, priceUsd: price.priceUsd, decimals: bal.decimals });
+      if (!Number.isFinite(valueUsd) || valueUsd <= MIN_VOTE_USD || min == null) {
         return NextResponse.json(
           {
-            error: "You are not a holder of the project token",
-            code: "not_token_holder",
-            hint: "Switch to a wallet that holds this project's token, then try again.",
-            tokenMint: mintPk.toBase58(),
-            signerPubkey: signerPk.toBase58(),
+            error: "Token holdings below minimum required value to vote",
+            code: "insufficient_holdings_value",
+            hint: "Switch to a wallet with a larger position in the project token.",
+            minUsd: MIN_VOTE_USD,
+            priceUsd: price.priceUsd,
+            uiAmount: bal.uiAmount,
+            valueUsd,
           },
           { status: 403 }
         );
       }
+      minAmountRaw = min > bal.amountRaw ? bal.amountRaw : min;
+    }
 
-      let bal: { uiAmount: number; amountRaw: bigint; decimals: number };
+    let shipUiAmount = 0;
+    let shipMultiplierBps = 10000;
+    const shipMint = String(process.env.CTS_SHIP_TOKEN_MINT ?? "").trim();
+    if (shipMint.length) {
       try {
-        bal = await getTokenBalanceForMint({ connection, owner: signerPk, mint: mintPk });
+        const shipBal = await getTokenBalanceForMint({ connection, owner: signerPk, mint: new PublicKey(shipMint) });
+        shipUiAmount = shipBal.uiAmount;
+        shipMultiplierBps = shipMultiplierBpsFromUiAmount(shipUiAmount);
       } catch {
-        return NextResponse.json(
-          {
-            error: "RPC error while fetching token balance",
-            code: "rpc_error",
-            hint: "Voting is temporarily unavailable due to an RPC error. Please try again in a moment.",
-          },
-          { status: 503 }
-        );
-      }
-      if (bal.uiAmount <= 0) {
-        return NextResponse.json(
-          {
-            error: "You have no balance of the project token",
-            code: "no_token_balance",
-            hint: "Switch wallets or acquire the project token to vote.",
-            tokenMint: mintPk.toBase58(),
-            signerPubkey: signerPk.toBase58(),
-          },
-          { status: 403 }
-        );
-      }
-
-      projectUiAmount = bal.uiAmount;
-
-      if (isCanaryRewardVoting()) {
-        // Canary mode: allow any non-zero holder to vote without requiring
-        // price feeds or a minimum USD value.
-        projectPriceUsd = 0;
-        projectValueUsd = 1;
-      } else {
-        const minUsd = 20;
-
-        const mintB58 = mintPk.toBase58();
-        let priceUsd = await getCachedJupiterPriceUsd(mintB58);
-        if (priceUsd == null) {
-          priceUsd = await getJupiterUsdPriceForMint(mintB58);
-          if (priceUsd != null) {
-            await setCachedJupiterPriceUsd(mintB58, priceUsd);
-          }
-        }
-
-        if (priceUsd == null) {
-          priceUsd = await getCachedJupiterPriceUsdAllowStale(mintB58);
-        }
-
-        // Fallback: If price is unavailable, allow voting with minimum token balance check
-        // This prevents price feed outages from blocking voting entirely
-        const minTokensForFallback = 1000; // Minimum tokens required if no price available
-        
-        if (priceUsd == null) {
-          // Price unavailable - use token balance fallback
-          if (bal.uiAmount < minTokensForFallback) {
-            return NextResponse.json(
-              {
-                error: "Token price unavailable and holdings below minimum token threshold",
-                code: "price_unavailable_insufficient_tokens",
-                minTokensForFallback,
-                uiAmount: bal.uiAmount,
-                hint: "Price feed is temporarily unavailable. You need at least " + minTokensForFallback + " tokens to vote.",
-              },
-              { status: 403 }
-            );
-          }
-          // Allow voting with fallback - use minUsd as the assumed value
-          projectPriceUsd = 0;
-          projectValueUsd = minUsd; // Assign minimum value for voting weight
-        } else {
-          const valueUsd = bal.uiAmount * priceUsd;
-          projectPriceUsd = priceUsd;
-          projectValueUsd = valueUsd;
-          if (!Number.isFinite(valueUsd) || valueUsd <= minUsd) {
-            return NextResponse.json(
-              {
-                error: "Token holdings below minimum required value to vote",
-                code: "insufficient_holdings_value",
-                hint: "Switch to a wallet with a larger position in the project token.",
-                minUsd,
-                priceUsd,
-                uiAmount: bal.uiAmount,
-                valueUsd,
-              },
-              { status: 403 }
-            );
-          }
-        }
-      }
-
-      const shipMint = String(process.env.CTS_SHIP_TOKEN_MINT ?? "").trim();
-      if (shipMint.length) {
-        try {
-          const shipMintPk = new PublicKey(shipMint);
-          const shipBal = await getTokenBalanceForMint({ connection, owner: signerPk, mint: shipMintPk });
-          shipUiAmount = shipBal.uiAmount;
-          shipMultiplierBps = shipMultiplierBpsFromUiAmount(shipUiAmount);
-        } catch {
-          shipUiAmount = 0;
-          shipMultiplierBps = 10000;
-        }
+        shipUiAmount = 0;
+        shipMultiplierBps = 10000;
       }
     }
 
@@ -511,77 +406,26 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
       createdAtUnix: nowUnix,
       projectPriceUsd,
       projectValueUsd,
+      voteAmountRaw: bal.amountRaw.toString(),
+      tokenDecimals: bal.decimals,
+      minAmountRaw: minAmountRaw.toString(),
     });
 
-    if (
-      inserted &&
-      withinCutoff &&
-      isVoteRewardDistributionsEnabled() &&
-      getVoteRewardMode() === "fixed"
-    ) {
-      try {
-        const perVoteUi = getVoteRewardPerVoteUiAmount();
-        const shipMintRaw = String(process.env.CTS_SHIP_TOKEN_MINT ?? "").trim();
-        const faucetOwnerPubkey = String(process.env.CTS_VOTE_REWARD_FAUCET_OWNER_PUBKEY ?? "").trim();
-        if (perVoteUi > 0 && shipMintRaw && faucetOwnerPubkey) {
-          const mintPk = new PublicKey(shipMintRaw);
-          const tokenProgram = await getTokenProgramIdForMint({ connection, mint: mintPk });
-          const mintInfo = await verifyTokenExistsOnChain({ connection, mint: mintPk });
-          const decimals = Number(mintInfo.decimals ?? 0);
-          if (mintInfo.exists && mintInfo.isMintAccount && Number.isFinite(decimals) && decimals >= 0 && decimals <= 18) {
-            const amountRaw = (BigInt(perVoteUi) * 10n ** BigInt(decimals)).toString();
-            const existing = await getVoteRewardDistribution({ commitmentId: id, milestoneId });
+    // Vote rewards are NOT allocated here: they are created once per milestone after the window closes and every
+    // voter's holdings were re-checked (lib/voteRewardDistributions.ts), so nothing is claimable while voting is open.
 
-            const dist =
-              existing ??
-              (
-                await (async () => {
-                  const distribution = {
-                    id: crypto.randomBytes(16).toString("hex"),
-                    commitmentId: id,
-                    milestoneId,
-                    createdAtUnix: nowUnix,
-                    mintPubkey: mintPk.toBase58(),
-                    tokenProgramPubkey: tokenProgram.toBase58(),
-                    poolAmountRaw: "0",
-                    faucetOwnerPubkey: new PublicKey(faucetOwnerPubkey).toBase58(),
-                    status: "open" as const,
-                  };
-                  const acquired = await tryAcquireVoteRewardDistributionCreate({ distribution });
-                  return acquired.acquired ? distribution : acquired.existing;
-                })()
-              );
-
-            if (
-              dist.mintPubkey === mintPk.toBase58() &&
-              dist.tokenProgramPubkey === tokenProgram.toBase58() &&
-              dist.faucetOwnerPubkey === new PublicKey(faucetOwnerPubkey).toBase58()
-            ) {
-              await insertVoteRewardDistributionAllocations({
-                distributionId: dist.id,
-                allocations: [{ distributionId: dist.id, walletPubkey: signerPk.toBase58(), amountRaw, weight: 1 }],
-              });
-            }
-          }
-        }
-      } catch {
-      }
-    }
-
-    if (withinCutoff && record.tokenMint) {
-      await upsertRewardVoterSnapshot({
-        commitmentId: id,
-        milestoneId,
-        signerPubkey: signerPk.toBase58(),
-        createdAtUnix: nowUnix,
-        projectMint: record.tokenMint,
-        projectUiAmount,
-        projectPriceUsd,
-        projectValueUsd,
-        shipUiAmount,
-        shipMultiplierBps,
-      });
-    }
+    await upsertRewardVoterSnapshot({
+      commitmentId: id,
+      milestoneId,
+      signerPubkey: signerPk.toBase58(),
+      createdAtUnix: nowUnix,
+      projectMint: record.tokenMint,
+      projectUiAmount,
+      projectPriceUsd,
+      projectValueUsd,
+      shipUiAmount,
+      shipMultiplierBps,
+    });
 
     const voteCounts = await getRewardMilestoneVoteCounts(id);
     const approvalCounts = voteCounts.approvalCounts;
@@ -593,12 +437,15 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
       approvalCounts,
       rejectCounts: voteCounts.rejectCounts,
       approvalThreshold,
+      pendingCloseRecheck: voteCounts.pendingCloseRecheck,
     });
 
+    // Compare-and-swap on the milestones we read: a concurrent completion/release/vote is never clobbered.
     const updated = normalized.changed
       ? await updateRewardTotalsAndMilestones({
           id,
           milestones: normalized.milestones,
+          expectedMilestones: record.milestones ?? [],
         })
       : record;
 
