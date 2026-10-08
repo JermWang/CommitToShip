@@ -96,7 +96,7 @@ export default function AuditLogsPage() {
               <div className="utilityBreadcrumb">
                 <a href="/" className="utilityBreadcrumbLink">Home</a>
                 <span className="utilityBreadcrumbSep">/</span>
-                <a href="/admin" className="utilityBreadcrumbLink">Admin</a>
+                <span>Admin</span>
                 <span className="utilityBreadcrumbSep">/</span>
                 <span>Audit Logs</span>
               </div>
@@ -218,7 +218,7 @@ export default function AuditLogsPage() {
                         Copy
                       </button>
                     </div>
-                    <pre className="utilityMono" style={{ margin: 0, whiteSpace: "pre-wrap", lineHeight: 1.5, padding: "12px 14px", background: "rgba(0,0,0,0.3)", borderRadius: 8 }}>
+                    <pre className="utilityMono" style={{ margin: 0, whiteSpace: "pre-wrap", lineHeight: 1.5, padding: "12px 14px", background: "var(--fill)", color: "var(--ink)", borderRadius: 8 }}>
                       {json}
                     </pre>
                   </div>

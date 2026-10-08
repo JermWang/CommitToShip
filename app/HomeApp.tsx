@@ -1717,7 +1717,7 @@ export default function Home() {
 
   useEffect(() => {
     if (typeof document === "undefined") return;
-    const skin = tab === "landing" ? "landing" : "app";
+    const skin = "app"; // every view shares the cream glass skin
     document.body.dataset.skin = skin;
     document.documentElement.dataset.skin = skin;
     return () => {
@@ -2055,7 +2055,7 @@ export default function Home() {
                         <div style={{ display: "flex", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
                           <button
                             className="createUploadBtn"
-                            style={{ background: devWalletPubkey ? "rgba(134, 239, 172, 0.2)" : undefined, color: devWalletPubkey ? "rgba(134, 239, 172, 0.9)" : undefined }}
+                            style={{ background: devWalletPubkey ? "var(--successBg)" : undefined, color: devWalletPubkey ? "var(--success)" : undefined }}
                             onClick={connectDevWallet}
                             disabled={busy != null || devVerifyBusy != null}
                           >
@@ -2064,8 +2064,8 @@ export default function Home() {
                           <button
                             className="createUploadBtn"
                             style={{ 
-                              background: devVerify ? "rgba(134, 239, 172, 0.2)" : "rgba(255,255,255,0.1)", 
-                              color: devVerify ? "rgba(134, 239, 172, 0.9)" : "rgba(255,255,255,0.7)" 
+                              background: devVerify ? "var(--successBg)" : "var(--fill-strong)", 
+                              color: devVerify ? "var(--success)" : "var(--ink2)" 
                             }}
                             onClick={verifyDevWallet}
                             disabled={busy != null || devVerifyBusy != null || !devWalletPubkey || !rewardTokenMint.trim().length}
@@ -2096,7 +2096,7 @@ export default function Home() {
 
                         <button
                           className="createUploadBtn"
-                          style={{ background: devWalletPubkey ? "rgba(134, 239, 172, 0.2)" : undefined, color: devWalletPubkey ? "rgba(134, 239, 172, 0.9)" : undefined }}
+                          style={{ background: devWalletPubkey ? "var(--successBg)" : undefined, color: devWalletPubkey ? "var(--success)" : undefined }}
                           onClick={connectDevWallet}
                           disabled={busy != null || devVerifyBusy != null}
                         >
@@ -2128,7 +2128,7 @@ export default function Home() {
                                 if (!enabled) setPostLaunchDevBuySol("0");
                               }}
                             />
-                            <span style={{ color: "rgba(255,255,255,0.75)" }}>Enable dev buy prompt after launch</span>
+                            <span style={{ color: "var(--ink2)" }}>Enable dev buy prompt after launch</span>
                           </label>
                           {postLaunchDevBuyEnabled ? (
                             <>
@@ -2163,21 +2163,21 @@ export default function Home() {
                         {createProgress.map((s) => {
                           const color =
                             s.status === "done"
-                              ? "rgba(134, 239, 172, 0.9)"
+                              ? "var(--success)"
                               : s.status === "error"
-                                ? "rgba(248, 113, 113, 0.9)"
+                                ? "var(--error)"
                                 : s.status === "active"
-                                  ? "rgba(56, 189, 248, 0.9)"
-                                  : "rgba(255, 255, 255, 0.35)";
+                                  ? "var(--ink)"
+                                  : "var(--ink3)";
 
                           const opacity = s.status === "pending" ? 0.65 : 1;
 
                           return (
                             <div key={s.key} style={{ display: "flex", alignItems: "center", gap: 10, opacity }}>
-                              <div style={{ width: 8, height: 8, borderRadius: 999, background: color, boxShadow: `0 0 0 3px rgba(255,255,255,0.05)` }} />
+                              <div style={{ width: 8, height: 8, borderRadius: 999, background: color, boxShadow: "0 0 0 3px var(--fill)" }} />
                               <div className="createInfoText" style={{ margin: 0 }}>
                                 {s.label}
-                                {s.detail && s.status === "error" ? <span style={{ marginLeft: 8, color: "rgba(248, 113, 113, 0.95)" }}>({s.detail})</span> : null}
+                                {s.detail && s.status === "error" ? <span style={{ marginLeft: 8, color: "var(--error)" }}>({s.detail})</span> : null}
                               </div>
                             </div>
                           );
@@ -2191,8 +2191,8 @@ export default function Home() {
 
                   {/* Commit Issues */}
                   {commitIssues.length > 0 ? (
-                    <div className="createInfoBox" style={{ borderColor: "rgba(251, 191, 36, 0.3)", background: "rgba(251, 191, 36, 0.08)" }}>
-                      <div className="createInfoTitle" style={{ color: "rgba(251, 191, 36, 0.9)" }}>Before you can create:</div>
+                    <div className="createInfoBox" style={{ borderColor: "rgba(168, 100, 26, 0.22)", background: "var(--warningBg)" }}>
+                      <div className="createInfoTitle" style={{ color: "var(--warning)" }}>Before you can create:</div>
                       <div className="createInfoText">
                         {commitIssues.map((issue, i) => (
                           <div key={i}>• {issue}</div>
@@ -2652,9 +2652,9 @@ export default function Home() {
             {launchSuccess.postLaunchError ? (
               <div
                 className="createInfoBox"
-                style={{ marginTop: 12, borderColor: "rgba(251, 191, 36, 0.35)", background: "rgba(251, 191, 36, 0.08)" }}
+                style={{ marginTop: 12, borderColor: "rgba(168, 100, 26, 0.24)", background: "var(--warningBg)" }}
               >
-                <div className="createInfoTitle" style={{ color: "rgba(251, 191, 36, 0.9)" }}>Finalization warning</div>
+                <div className="createInfoTitle" style={{ color: "var(--warning)" }}>Finalization warning</div>
                 <div className="createInfoText">
                   Your token is live. We’re finishing a few setup steps in the background.
                   {process.env.NODE_ENV !== "production" ? ` (${launchSuccess.postLaunchError})` : null}

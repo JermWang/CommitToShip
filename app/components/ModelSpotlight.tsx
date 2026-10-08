@@ -26,7 +26,7 @@ export default function ModelSpotlight(props: Props) {
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 2.05;
-    renderer.setClearColor(0xf6f7fb, 1);
+    renderer.setClearColor(0xf6f1e9, 1);
     host.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();

@@ -397,7 +397,7 @@ export default async function CommitDashboardPage({ params }: { params: { id: st
         <div className={styles.wrap}>
           <div className={styles.headerRow}>
             <div className={styles.brand}>
-              <img className={styles.brandMark} src="/branding/white-logo.png" alt="Ship & Commit" />
+              <img className={styles.brandMark} src="/branding/black-logo.png" alt="Ship & Commit" />
               <div className={styles.brandTitle}>Commit Dashboard</div>
             </div>
 
@@ -537,7 +537,7 @@ export default async function CommitDashboardPage({ params }: { params: { id: st
           <div className={styles.wrap}>
             <div className={styles.headerRow}>
               <div className={styles.brand}>
-                <img className={styles.brandMark} src="/branding/white-logo.png" alt="Ship & Commit" />
+                <img className={styles.brandMark} src="/branding/black-logo.png" alt="Ship & Commit" />
                 <div className={styles.brandTitle}>Commit Dashboard</div>
               </div>
 
@@ -618,7 +618,7 @@ export default async function CommitDashboardPage({ params }: { params: { id: st
       <div className={styles.page}>
         <div className={styles.wrap}>
           <section className={`${styles.surface} ${styles.lowerSurface}`}>
-            <div className={styles.smallNote} style={{ color: "rgba(180, 40, 60, 0.86)" }}>
+            <div className={styles.smallNote} style={{ color: "var(--error)" }}>
               {msg}
             </div>
           </section>

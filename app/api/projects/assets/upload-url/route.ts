@@ -51,8 +51,8 @@ export async function POST(req: Request) {
       if (!allowed.has(devWallet.toBase58())) {
         return NextResponse.json(
           {
-            error: "Wallet is not approved for closed beta",
-            hint: "Ask to be added to CTS_CREATOR_WALLET_PUBKEYS.",
+            error: "This wallet is not approved to launch yet",
+            hint: "Launches are currently limited to approved wallets.",
           },
           { status: 403 }
         );

@@ -16,26 +16,26 @@
 .title {
   font-size: 28px;
   font-weight: 800;
-  color: #fff;
+  color: var(--ink);
   margin: 0;
 }
 
 .tabs {
   display: inline-flex;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.85);
   border-radius: 999px;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.25);
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 10px 30px rgba(96, 74, 52, 0.1);
 }
 
 .tabBtn {
   padding: 10px 14px;
   font-size: 13px;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.78);
+  color: var(--ink2);
   border: none;
   background: transparent;
   cursor: pointer;
@@ -43,7 +43,7 @@
 
 .tabBtnActive {
   color: #fff;
-  background: rgba(96, 165, 250, 0.16);
+  background: var(--ink);
 }
 
 .section {
@@ -71,11 +71,11 @@
 .summaryCard {
   padding: 20px;
   border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  background: linear-gradient(135deg, rgba(0, 0, 0, 0.45) 0%, rgba(0, 0, 0, 0.28) 100%);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.32);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow-soft);
 }
 
 .summaryLabel {
@@ -83,61 +83,61 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--ink3);
   margin-bottom: 8px;
 }
 
 .summaryValue {
   font-size: 24px;
   font-weight: 700;
-  color: #fff;
+  color: var(--ink);
 }
 
 .summaryValueGreen {
-  color: rgba(134, 239, 172, 0.95);
+  color: var(--success);
 }
 
 .summaryValueBlue {
-  color: rgba(96, 165, 250, 0.95);
+  color: #2d5b8c;
 }
 
 .summaryValueOrange {
-  color: rgba(251, 146, 60, 0.92);
+  color: var(--warning);
 }
 
 .card {
   margin-top: 14px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  background: rgba(0, 0, 0, 0.30);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.34);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow-soft);
   overflow: hidden;
 }
 
 .cardAccentBlue {
-  border-color: rgba(96, 165, 250, 0.22);
+  border-color: rgba(45, 91, 140, 0.18);
 }
 
 .cardAccentGreen {
-  border-color: rgba(134, 239, 172, 0.22);
+  border-color: rgba(31, 122, 82, 0.18);
 }
 
 .cardAccentOrange {
-  border-color: rgba(251, 146, 60, 0.22);
+  border-color: rgba(168, 100, 26, 0.18);
 }
 
 .cardAccentBlue .cardHeader {
-  background: rgba(96, 165, 250, 0.06);
+  background: rgba(45, 91, 140, 0.06);
 }
 
 .cardAccentGreen .cardHeader {
-  background: rgba(134, 239, 172, 0.05);
+  background: rgba(31, 122, 82, 0.06);
 }
 
 .cardAccentOrange .cardHeader {
-  background: rgba(251, 146, 60, 0.05);
+  background: rgba(168, 100, 26, 0.06);
 }
 
 .cardHeader {
@@ -146,13 +146,13 @@
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+  border-bottom: 1px solid var(--line);
 }
 
 .cardTitle {
   font-size: 14px;
   font-weight: 800;
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
 }
 
 .cardBody {
@@ -161,7 +161,7 @@
 
 .smallNote {
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.60);
+  color: var(--ink2);
 }
 
 .actions {
@@ -174,21 +174,21 @@
 .primaryBtn {
   padding: 10px 14px;
   border-radius: 12px;
-  border: 1px solid rgba(96, 165, 250, 0.25);
-  background: linear-gradient(135deg, rgba(96, 165, 250, 0.22) 0%, rgba(134, 239, 172, 0.12) 100%);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  color: rgba(255, 255, 255, 0.95);
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: #fff;
   font-weight: 800;
   font-size: 13px;
   cursor: pointer;
+  box-shadow: 0 8px 22px rgba(20, 20, 20, 0.14);
   transition: transform 0.22s ease, background 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
 }
 
 .primaryBtn:hover {
   transform: translateY(-1px);
-  border-color: rgba(96, 165, 250, 0.34);
-  box-shadow: 0 16px 46px rgba(0, 0, 0, 0.34);
+  background: #000;
+  border-color: #000;
+  box-shadow: 0 12px 30px rgba(20, 20, 20, 0.2);
 }
 
 .primaryBtn:disabled {
@@ -199,11 +199,11 @@
 .secondaryBtn {
   padding: 10px 14px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  color: rgba(255, 255, 255, 0.90);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  color: var(--ink);
   font-weight: 800;
   font-size: 13px;
   cursor: pointer;
@@ -212,9 +212,9 @@
 
 .secondaryBtn:hover {
   transform: translateY(-1px);
-  background: rgba(255, 255, 255, 0.09);
-  border-color: rgba(255, 255, 255, 0.28);
-  box-shadow: 0 16px 46px rgba(0, 0, 0, 0.28);
+  background: rgba(255, 255, 255, 0.82);
+  border-color: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 12px 30px rgba(96, 74, 52, 0.12);
 }
 
 .list {
@@ -230,10 +230,10 @@
   align-items: center;
   padding: 12px 12px;
   border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  background: rgba(0, 0, 0, 0.24);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .rowMain {
@@ -244,7 +244,7 @@
 .rowTitle {
   font-size: 13px;
   font-weight: 800;
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -253,7 +253,7 @@
 .rowMeta {
   margin-top: 4px;
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--ink2);
 }
 
 .rowRight {
@@ -267,11 +267,11 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 13px;
   font-weight: 800;
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
 }
 
 .error {
   font-size: 12px;
-  color: rgba(251, 146, 60, 0.95);
+  color: var(--error);
   font-weight: 700;
 }

@@ -11,9 +11,7 @@
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background:
-    radial-gradient(1000px 700px at 20% 30%, rgba(134, 239, 172, 0.04), transparent 60%),
-    radial-gradient(800px 600px at 80% 70%, rgba(96, 165, 250, 0.03), transparent 55%);
+  background: none;
   opacity: 0.8;
 }
 
@@ -63,15 +61,15 @@
   width: 4px;
   height: 4px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.28);
+  background: rgba(20, 20, 20, 0.28);
 }
 
 .surface {
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  background: rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow-soft);
   border-radius: 20px;
 }
 
@@ -80,14 +78,15 @@
   position: relative;
   overflow: hidden;
   animation: surfaceIn 600ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  background: linear-gradient(135deg, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0.3) 100%);
+  background: var(--glass-bg);
+  box-shadow: var(--glass-shadow);
 }
 
 .hero::before {
   content: "";
   position: absolute;
   inset: -1px;
-  background: linear-gradient(135deg, rgba(134, 239, 172, 0.06) 0%, transparent 50%, rgba(96, 165, 250, 0.04) 100%);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.4) 0%, transparent 50%, rgba(255, 255, 255, 0.14) 100%);
   pointer-events: none;
   opacity: 0.90;
   border-radius: 20px;
@@ -123,13 +122,13 @@
 }
 
 .modePill {
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.86);
+  background: var(--fill);
+  color: var(--ink);
 }
 
 .modePillManaged {
-  border-color: rgba(255, 255, 255, 0.34);
-  color: #fff;
+  border-color: rgba(20, 20, 20, 0.3);
+  color: var(--ink);
 }
 
 .heroMetaLines {
@@ -154,14 +153,14 @@
   width: min(320px, 100%);
   height: 6px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.10);
+  background: rgba(20, 20, 20, 0.08);
   overflow: hidden;
 }
 
 .complianceFill {
   height: 100%;
   border-radius: 999px;
-  background: #fff;
+  background: var(--ink);
 }
 
 .complianceText {
@@ -182,7 +181,7 @@
   letter-spacing: -0.03em;
   font-weight: 800;
   max-width: 28ch;
-  background: linear-gradient(135deg, #fff 0%, rgba(255, 255, 255, 0.85) 100%);
+  background: linear-gradient(135deg, var(--ink) 0%, rgba(20, 20, 20, 0.82) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -190,7 +189,7 @@
 
 .statementFallback {
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--ink2);
 }
 
 .amountRow {
@@ -205,7 +204,7 @@
   letter-spacing: -0.04em;
   font-weight: 800;
   line-height: 1;
-  background: linear-gradient(135deg, rgba(134, 239, 172, 1) 0%, rgba(96, 165, 250, 0.9) 100%);
+  background: linear-gradient(135deg, #141414 0%, rgba(20, 20, 20, 0.72) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -235,19 +234,19 @@
   gap: 6px;
   padding: 8px 14px;
   border-radius: 999px;
-  border: 1px solid rgba(134, 239, 172, 0.25);
-  background: rgba(134, 239, 172, 0.08);
+  border: 1px solid rgba(31, 122, 82, 0.22);
+  background: var(--successBg);
   font-size: 12px;
   font-weight: 650;
-  color: rgba(134, 239, 172, 0.95);
+  color: var(--success);
 }
 
 .statusDot {
   width: 6px;
   height: 6px;
   border-radius: 999px;
-  background: rgba(134, 239, 172, 0.9);
-  box-shadow: 0 0 8px rgba(134, 239, 172, 0.5);
+  background: var(--success);
+  box-shadow: 0 0 0 3px var(--successBg);
   animation: statusPulse 2s ease-in-out infinite;
 }
 
@@ -264,16 +263,16 @@
 .progressTrack {
   height: 6px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(20, 20, 20, 0.08);
   overflow: hidden;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+  box-shadow: none;
 }
 
 .progressFill {
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, rgba(134, 239, 172, 0.8), rgba(96, 165, 250, 0.6));
-  box-shadow: 0 0 12px rgba(134, 239, 172, 0.4);
+  background: var(--ink);
+  box-shadow: none;
   transition: width 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -319,18 +318,19 @@
 .primarySection {
   padding: 24px 26px 28px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(0, 0, 0, 0.25);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   animation: surfaceIn 700ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
   animation-delay: 120ms;
   transition: border-color 0.2s ease, background 0.2s ease;
+  box-shadow: var(--glass-shadow-soft);
 }
 
 .primarySection:hover {
-  border-color: rgba(255, 255, 255, 0.12);
-  background: rgba(0, 0, 0, 0.3);
+  border-color: var(--glass-border-strong);
+  background: var(--glass-bg-strong);
 }
 
 .primaryTitle {
@@ -348,12 +348,13 @@
   top: 100px;
   padding: 24px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(0, 0, 0, 0.25);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   animation: surfaceIn 750ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
   animation-delay: 160ms;
+  box-shadow: var(--glass-shadow-soft);
 }
 
 .receiptTitle {
@@ -421,9 +422,9 @@
 
 .actionBtn {
   appearance: none;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--fg);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--ink);
   border-radius: 10px;
   padding: 11px 18px;
   font-weight: 600;
@@ -434,6 +435,8 @@
   position: relative;
   overflow: hidden;
   box-shadow: none;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
 .actionBtn::before {
@@ -450,9 +453,9 @@
 }
 
 .actionBtn:hover {
-  border-color: rgba(255, 255, 255, 0.25);
-  background: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  border-color: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 6px 18px rgba(96, 74, 52, 0.12);
   transform: translateY(-1px);
 }
 
@@ -462,18 +465,18 @@
 }
 
 .actionPrimary {
-  border: 1px solid rgba(134, 239, 172, 0.5);
-  background: linear-gradient(135deg, rgba(134, 239, 172, 0.15) 0%, rgba(96, 165, 250, 0.1) 100%);
-  color: rgba(134, 239, 172, 0.95);
-  box-shadow: 0 0 20px rgba(134, 239, 172, 0.1);
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(96, 74, 52, 0.14);
   font-weight: 650;
 }
 
 .actionPrimary:hover {
-  background: linear-gradient(135deg, rgba(134, 239, 172, 0.25) 0%, rgba(96, 165, 250, 0.15) 100%);
-  border-color: rgba(134, 239, 172, 0.6);
-  box-shadow: 0 0 24px rgba(134, 239, 172, 0.2);
-  color: rgba(134, 239, 172, 1);
+  background: #000;
+  border-color: #000;
+  box-shadow: 0 10px 24px rgba(96, 74, 52, 0.18);
+  color: #fff;
 }
 
 @keyframes btnShine {
@@ -500,8 +503,8 @@
   margin-top: 20px;
   padding: 20px 24px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
 }
 
 .adminTitle {
@@ -517,17 +520,21 @@
   width: 100%;
   padding: 12px 14px;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(0, 0, 0, 0.3);
-  color: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--ink);
   font-size: 14px;
   outline: none;
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+.adminInput::placeholder {
+  color: var(--ink3);
+}
+
 .adminInput:focus {
-  border-color: var(--fg);
-  box-shadow: 0 0 0 4px var(--accentGlow);
+  border-color: var(--input-focus);
+  box-shadow: var(--focus-ring);
 }
 
 .rewardWrap {
@@ -555,7 +562,7 @@
   font-size: 16px;
   font-weight: 820;
   letter-spacing: -0.02em;
-  color: rgba(11, 13, 18, 0.86);
+  color: var(--ink);
 }
 
 .milestoneList {
@@ -581,40 +588,40 @@
   width: 10px;
   height: 10px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.20);
-  box-shadow: 0 0 8px rgba(255, 255, 255, 0.1);
+  background: rgba(20, 20, 20, 0.18);
+  box-shadow: none;
   transition: all 0.3s ease;
 }
 
 .dotPending {
-  background: rgba(251, 191, 36, 0.7);
-  box-shadow: 0 0 10px rgba(251, 191, 36, 0.4);
+  background: var(--warning);
+  box-shadow: 0 0 0 3px var(--warningBg);
 }
 
 .dotClaimable {
-  background: rgba(134, 239, 172, 0.9);
-  box-shadow: 0 0 12px rgba(134, 239, 172, 0.5);
+  background: var(--success);
+  box-shadow: 0 0 0 3px var(--successBg);
   animation: claimablePulse 1.5s ease-in-out infinite;
 }
 
 .dotApproved {
-  background: rgba(134, 239, 172, 0.55);
-  box-shadow: 0 0 10px rgba(134, 239, 172, 0.26);
+  background: rgba(31, 122, 82, 0.55);
+  box-shadow: none;
 }
 
 .dotFailed {
-  background: rgba(180, 40, 60, 0.70);
-  box-shadow: 0 0 10px rgba(180, 40, 60, 0.30);
+  background: var(--error);
+  box-shadow: 0 0 0 3px var(--errorBg);
 }
 
 @keyframes claimablePulse {
-  0%, 100% { box-shadow: 0 0 12px rgba(134, 239, 172, 0.5); }
-  50% { box-shadow: 0 0 20px rgba(134, 239, 172, 0.8); }
+  0%, 100% { box-shadow: 0 0 0 3px rgba(31, 122, 82, 0.14); }
+  50% { box-shadow: 0 0 0 6px rgba(31, 122, 82, 0.06); }
 }
 
 .dotReleased {
-  background: rgba(96, 165, 250, 0.7);
-  box-shadow: 0 0 8px rgba(96, 165, 250, 0.4);
+  background: var(--ink);
+  box-shadow: 0 0 0 3px var(--fill-strong);
 }
 
 .milestoneStem {
@@ -660,39 +667,39 @@
 }
 
 .milestonePillLocked {
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.86);
+  border: 1px solid var(--line-strong);
+  background: var(--fill);
+  color: var(--ink2);
 }
 
 .milestonePillPending {
-  border: 1px solid rgba(250, 204, 21, 0.22);
-  background: rgba(250, 204, 21, 0.10);
-  color: rgba(254, 249, 195, 0.95);
+  border: 1px solid rgba(168, 100, 26, 0.22);
+  background: var(--warningBg);
+  color: var(--warning);
 }
 
 .milestonePillApproved {
-  border: 1px solid rgba(167, 139, 250, 0.22);
-  background: rgba(167, 139, 250, 0.10);
-  color: rgba(233, 213, 255, 0.95);
+  border: 1px solid var(--line-strong);
+  background: var(--fill-strong);
+  color: var(--ink);
 }
 
 .milestonePillClaimable {
-  border: 1px solid rgba(96, 165, 250, 0.22);
-  background: rgba(96, 165, 250, 0.10);
-  color: rgba(191, 219, 254, 0.92);
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: #fff;
 }
 
 .milestonePillReleased {
-  border: 1px solid rgba(34, 197, 94, 0.22);
-  background: rgba(34, 197, 94, 0.10);
-  color: rgba(187, 247, 208, 0.95);
+  border: 1px solid rgba(31, 122, 82, 0.22);
+  background: var(--successBg);
+  color: var(--success);
 }
 
 .milestonePillFailed {
-  border: 1px solid rgba(239, 68, 68, 0.22);
-  background: rgba(239, 68, 68, 0.10);
-  color: rgba(254, 202, 202, 0.95);
+  border: 1px solid rgba(179, 54, 31, 0.22);
+  background: var(--errorBg);
+  color: var(--error);
 }
 
 .milestoneMuted {
@@ -706,16 +713,16 @@
   gap: 6px;
   padding: 5px 10px;
   border-radius: 999px;
-  border: 1px solid rgba(96, 165, 250, 0.22);
-  background: rgba(96, 165, 250, 0.10);
-  color: rgba(191, 219, 254, 0.92);
+  border: 1px solid var(--line-strong);
+  background: var(--fill);
+  color: var(--ink);
   font-size: 11px;
   font-weight: 650;
   letter-spacing: -0.005em;
 }
 
 .voteCountdownAt {
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--ink2);
   font-weight: 600;
 }
 
@@ -739,26 +746,26 @@
   margin-top: 14px;
   padding: 16px 18px;
   border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.42);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   transition: border-color 0.2s ease;
 }
 
 .milestoneAction:hover {
-  border-color: rgba(255, 255, 255, 0.12);
+  border-color: var(--line-strong);
 }
 
 .votePanel {
   margin-top: 18px;
   padding: 0;
   border-radius: 16px;
-  border: 1px solid rgba(96, 165, 250, 0.18);
-  background: linear-gradient(145deg, rgba(15, 23, 42, 0.95) 0%, rgba(10, 15, 30, 0.98) 100%);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow-soft);
   overflow: hidden;
 }
 
@@ -773,7 +780,7 @@
   align-items: center;
   gap: 10px;
   padding: 16px 20px 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--line);
 }
 
 .votePanelIcon {
@@ -783,7 +790,7 @@
   width: 32px;
   height: 32px;
   border-radius: 8px;
-  background: linear-gradient(135deg, rgba(96, 165, 250, 0.15) 0%, rgba(134, 239, 172, 0.08) 100%);
+  background: var(--fill-strong);
   font-size: 16px;
 }
 
@@ -802,7 +809,7 @@
 .votePanelSubtitle {
   margin-top: 2px;
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--ink3);
   line-height: 1.4;
 }
 
@@ -812,11 +819,11 @@
   gap: 6px;
   padding: 6px 12px;
   border-radius: 8px;
-  background: rgba(96, 165, 250, 0.08);
-  border: 1px solid rgba(96, 165, 250, 0.12);
+  background: var(--fill);
+  border: 1px solid var(--line);
   font-size: 11px;
   font-weight: 600;
-  color: rgba(96, 165, 250, 0.9);
+  color: var(--ink2);
   white-space: nowrap;
 }
 
@@ -834,8 +841,8 @@
   justify-content: space-between;
   gap: 12px;
   padding: 12px 20px;
-  background: rgba(0, 0, 0, 0.15);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  background: var(--fill);
+  border-bottom: 1px solid var(--line);
   flex-wrap: wrap;
 }
 
@@ -856,9 +863,9 @@
   height: 36px;
   padding: 0 12px;
   border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(0, 0, 0, 0.3);
-  color: var(--fg);
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--ink);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -866,13 +873,14 @@
 }
 
 .voteDirectionSelect:hover {
-  border-color: rgba(255, 255, 255, 0.2);
-  background: rgba(0, 0, 0, 0.4);
+  border-color: var(--line-strong);
+  background: rgba(255, 255, 255, 0.82);
 }
 
 .voteDirectionSelect:focus {
   outline: none;
-  border-color: rgba(96, 165, 250, 0.5);
+  border-color: var(--input-focus);
+  box-shadow: var(--focus-ring);
 }
 
 .voteSelectedPill {
@@ -881,18 +889,18 @@
   height: 36px;
   padding: 0 14px;
   border-radius: 8px;
-  border: 1px solid rgba(134, 239, 172, 0.2);
-  background: rgba(134, 239, 172, 0.08);
+  border: 1px solid rgba(31, 122, 82, 0.22);
+  background: var(--successBg);
   font-size: 13px;
   font-weight: 700;
-  color: rgba(134, 239, 172, 0.9);
+  color: var(--success);
   letter-spacing: -0.01em;
 }
 
 .voteSelectedPill[data-empty="true"] {
-  border-color: rgba(255, 255, 255, 0.08);
-  background: rgba(0, 0, 0, 0.2);
-  color: rgba(255, 255, 255, 0.4);
+  border-color: var(--line);
+  background: var(--fill);
+  color: var(--ink3);
 }
 
 .votePanelBody {
@@ -908,15 +916,15 @@
   padding: 24px 20px;
   text-align: center;
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.45);
+  color: var(--ink3);
 }
 
 .voteNotice {
   margin-top: 12px;
   padding: 12px 14px;
   border-radius: 12px;
-  border: 1px solid rgba(180, 40, 60, 0.20);
-  background: linear-gradient(135deg, rgba(180, 40, 60, 0.08) 0%, rgba(0, 0, 0, 0.16) 100%);
+  border: 1px solid rgba(179, 54, 31, 0.2);
+  background: var(--errorBg);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
 }
@@ -931,14 +939,14 @@
 .voteNoticeTitle {
   font-size: 13px;
   font-weight: 800;
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
   letter-spacing: -0.01em;
 }
 
 .voteNoticeHint {
   margin-top: 6px;
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--ink2);
   line-height: 1.35;
 }
 
@@ -946,16 +954,16 @@
   height: 30px;
   padding: 0 10px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(0, 0, 0, 0.18);
-  color: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--ink2);
   font-size: 12px;
   font-weight: 800;
   cursor: pointer;
 }
 
 .voteNoticeDismiss:hover {
-  background: rgba(0, 0, 0, 0.26);
+  background: rgba(255, 255, 255, 0.85);
 }
 
 .voteRow {
@@ -964,14 +972,14 @@
   gap: 10px;
   padding: 12px 12px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(0, 0, 0, 0.16);
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.42);
   cursor: pointer;
   min-width: 0;
 }
 
 .voteRow:hover {
-  background: rgba(0, 0, 0, 0.22);
+  background: rgba(255, 255, 255, 0.7);
 }
 
 .voteCheckbox {
@@ -1020,15 +1028,15 @@
   margin-top: 8px;
   height: 8px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(20, 20, 20, 0.08);
   overflow: hidden;
 }
 
 .voteProgressFill {
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, rgba(96, 165, 250, 0.8), rgba(134, 239, 172, 0.6));
-  box-shadow: 0 0 8px rgba(96, 165, 250, 0.3);
+  background: var(--ink);
+  box-shadow: none;
   transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -1038,7 +1046,7 @@
   padding: 6px 10px;
   border-radius: 999px;
   border: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.0);
+  background: transparent;
   font-size: 12px;
   font-weight: 700;
   color: var(--fg);
@@ -1050,7 +1058,7 @@
   padding: 6px 10px;
   border-radius: 999px;
   border: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.0);
+  background: transparent;
   font-size: 12px;
   font-weight: 700;
   color: var(--fg);
@@ -1063,17 +1071,17 @@
   gap: 16px;
   margin-bottom: 20px;
   padding-bottom: 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--line);
 }
 
 .projectImage {
   width: 64px;
   height: 64px;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--fill);
   overflow: hidden;
   flex-shrink: 0;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--line);
 }
 
 .projectImage img {
@@ -1090,7 +1098,7 @@
 .projectName {
   font-size: 18px;
   font-weight: 700;
-  color: #fff;
+  color: var(--ink);
   margin: 0;
   display: flex;
   align-items: center;
@@ -1100,7 +1108,7 @@
 .projectSymbol {
   font-size: 13px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--ink3);
 }
 
 .projectSocials {
@@ -1117,17 +1125,17 @@
   width: 32px;
   height: 32px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  color: var(--ink2);
   text-decoration: none;
   transition: all 0.2s ease;
 }
 
 .projectSocialLink:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.15);
-  color: #fff;
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(255, 255, 255, 0.95);
+  color: var(--ink);
   transform: translateY(-1px);
 }
 
@@ -1141,8 +1149,8 @@
   margin-top: 24px;
   padding: 20px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
 }
 
 .chartHeader {
@@ -1162,29 +1170,30 @@
 
 .chartLink {
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--ink2);
   text-decoration: none;
   padding: 6px 12px;
   border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.6);
   transition: all 0.2s ease;
 }
 
 .chartLink:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.18);
-  color: #fff;
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(255, 255, 255, 0.95);
+  color: var(--ink);
 }
 
 /* Holder Voting Section */
 .holderVoteSection {
   padding: 24px;
   border-radius: 16px;
-  border: 1px solid rgba(134, 239, 172, 0.2);
-  background: linear-gradient(135deg, rgba(134, 239, 172, 0.08) 0%, rgba(96, 165, 250, 0.05) 100%);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
   margin-bottom: 20px;
   animation: surfaceIn 600ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  box-shadow: var(--glass-shadow-soft);
 }
 
 .holderVoteHeader {
@@ -1207,13 +1216,13 @@
   margin: 0;
   font-size: 18px;
   font-weight: 700;
-  color: #fff;
+  color: var(--ink);
 }
 
 .holderVoteSubtitle {
   margin: 4px 0 0;
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--ink2);
 }
 
 .shareBtn {
@@ -1222,18 +1231,20 @@
   gap: 6px;
   padding: 10px 16px;
   border-radius: 10px;
-  border: 1px solid rgba(134, 239, 172, 0.3);
-  background: rgba(134, 239, 172, 0.1);
-  color: rgba(134, 239, 172, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--ink);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
 .shareBtn:hover {
-  background: rgba(134, 239, 172, 0.2);
-  border-color: rgba(134, 239, 172, 0.5);
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(255, 255, 255, 0.95);
   transform: translateY(-1px);
 }
 
@@ -1253,7 +1264,7 @@
   gap: 12px;
   padding: 16px;
   border-radius: 12px;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--fill);
 }
 
 .holderVoteStep {
@@ -1266,8 +1277,8 @@
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: rgba(134, 239, 172, 0.2);
-  color: rgba(134, 239, 172, 0.95);
+  background: var(--ink);
+  color: #fff;
   font-size: 12px;
   font-weight: 700;
   display: flex;
@@ -1278,11 +1289,11 @@
 .holderVoteStepText {
   font-size: 13px;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--ink2);
 }
 
 .holderVoteStepArrow {
-  color: rgba(255, 255, 255, 0.3);
+  color: var(--ink3);
   font-size: 14px;
 }
 
@@ -1296,18 +1307,19 @@
   padding: 14px 28px;
   border-radius: 12px;
   border: none;
-  background: linear-gradient(135deg, rgba(134, 239, 172, 0.9) 0%, rgba(96, 165, 250, 0.8) 100%);
-  color: #000;
+  background: var(--ink);
+  color: #fff;
   font-size: 15px;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 4px 16px rgba(134, 239, 172, 0.3);
+  box-shadow: 0 8px 20px rgba(96, 74, 52, 0.14);
 }
 
 .holderVoteConnectBtn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 24px rgba(134, 239, 172, 0.4);
+  box-shadow: 0 10px 24px rgba(96, 74, 52, 0.18);
+  background: #000;
 }
 
 .holderVoteConnectBtn:disabled {
@@ -1322,47 +1334,47 @@
   gap: 8px;
   padding: 12px 20px;
   border-radius: 10px;
-  background: rgba(134, 239, 172, 0.1);
-  border: 1px solid rgba(134, 239, 172, 0.25);
+  background: var(--successBg);
+  border: 1px solid rgba(31, 122, 82, 0.22);
   font-size: 13px;
   font-weight: 500;
-  color: rgba(134, 239, 172, 0.95);
+  color: var(--success);
 }
 
 .holderVoteConnectedDot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: rgba(134, 239, 172, 0.9);
-  box-shadow: 0 0 8px rgba(134, 239, 172, 0.5);
+  background: var(--success);
+  box-shadow: 0 0 0 3px var(--successBg);
 }
 
 .holderVoteNote {
   margin-top: 16px;
   padding: 12px 16px;
   border-radius: 10px;
-  background: rgba(0, 0, 0, 0.15);
+  background: var(--fill);
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--ink2);
   text-align: center;
 }
 
 .holderVoteNote strong {
-  color: rgba(134, 239, 172, 0.9);
+  color: var(--ink);
 }
 
 .holderVoteEmpty {
   margin-top: 16px;
   padding: 20px;
   border-radius: 12px;
-  background: rgba(0, 0, 0, 0.15);
+  background: var(--fill);
   text-align: center;
 }
 
 .holderVoteEmpty p {
   margin: 0;
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--ink3);
 }
 
 @keyframes surfaceIn {

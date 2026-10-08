@@ -1,228 +1,176 @@
 # Ship & Commit
 
-## Protocol Overview
+## Overview
 
-Ship & Commit is a launch accountability layer for the Solana ecosystem.
+Ship & Commit is a launchpad on Solana that ties a creator's pump.fun creator fees to delivery.
 
-We provide the infrastructure for developers to formalize execution commitments, lock capital against delivery milestones, and establish verifiable credibility with market participants before, during, and after token distribution.
+Launching a token is easy; shipping is the hard part. Ship & Commit puts creator fees in an on-chain escrow, has the creator commit to milestones, and lets token holders decide whether each milestone was delivered. Creators get paid for what they ship. When a milestone is missed, the holders who voted get paid instead.
 
-Ship & Commit is accountability infrastructure for post-launch execution. It formalizes commitments, milestone escrow, and verifiable delivery records.
-
----
-
-## Purpose
-
-The accessibility of permissionless token creation has produced an environment where launch is trivial but execution is rare. The result is a market saturated with projects that lack durable intent, transparent timelines, or enforceable accountability.
-
-Ship & Commit exists to address this structural gap.
-
-We provide a neutral commitment registry that enables builders to:
-
-- Bind themselves to explicit delivery timelines
-- Lock capital in escrow against milestone completion
-- Surface their execution record to stakeholders in a standardized, auditable format
-
-The goal is to make developer intent legible and developer accountability enforceable. Token promotion and token filtering remain outside scope.
+Every step is either a signed wallet message or an on-chain transaction, so anyone can check the record.
 
 ---
 
-## Position in the Ecosystem
+## How It Works
 
-Ship & Commit operates downstream of Pump.fun and other token creation venues.
-
-| Layer | Function |
-|-------|----------|
-| **Pump.fun** | Token creation, bonding curve distribution, market discovery |
-| **Ship & Commit** | Commitment formalization, milestone escrow, execution verification |
-
-Ship & Commit extends launch infrastructure with accountability primitives that did not previously exist.
-
-**Pump.fun answers:** Can this token launch and trade?
-
-**Ship & Commit answers:** Is this builder bound to a real execution plan, and what mechanisms exist to enforce it?
+| Step | What happens |
+|------|--------------|
+| **1. Launch** | Launch on pump.fun with Auto-Lock on, or link a token you have already launched. |
+| **2. Lock** | Creator fees go into a dedicated on-chain escrow instead of a personal wallet. |
+| **3. Commit** | The creator sets milestones. Each one unlocks a share of the escrow. |
+| **4. Verify** | Token holders review delivered milestones and vote with signed messages. |
+| **5. Release** | Approved milestones pay the creator. Missed milestones are forfeited to voters and `$SHIP`. |
 
 ---
 
-## What We Are
+## 1. Launch
 
-### Accountability Infrastructure
+### Launch with Auto-Lock
 
-Ship & Commit provides protocol-level primitives for commitment and enforcement:
+Name your token, add an image and approve once.
 
-- **Commitment Objects:** Immutable records of who is responsible, what is promised, and when delivery is expected
-- **Milestone Schedules:** Defined unlock conditions tied to verifiable completion events
-- **Escrow Mechanics:** Capital locked against delivery, released only upon satisfaction of explicit criteria
-- **Audit Trails:** Timestamped, cryptographically signed records of all state transitions
+- Ship & Commit creates a dedicated launch wallet for your token.
+- You send about **0.011 SOL** to that wallet to cover pump.fun account rent and network fees.
+- The token goes live on pump.fun from the launch wallet, with Auto-Lock already on.
 
-### A Credibility Surface
+Notes:
 
-The platform surfaces builders through demonstrated behavior and verifiable execution:
+- Your form is validated, and your wallet's eligibility checked, **before** you are asked to send any SOL.
+- Each wallet can run one Auto-Lock launch.
+- After launch, you can optionally make a dev buy from your own wallet.
+- The token's on-chain description includes a short "Launched with Ship & Commit" attribution.
 
-- Milestone definitions that are specific and measurable
-- Completion events that are timestamped and signed
-- Holder participation that reflects genuine stakeholder engagement
-- Consistent follow-through across commitment lifecycles
+### Manual Lock
 
-The system records execution and makes it visible through public, auditable state transitions.
-
----
-
-## Scope Boundaries
-
-| Boundary | Clarification |
-|----------|---------------|
-| **Launch and distribution mechanics** | Token creation and distribution remains with venues like Pump.fun; Ship & Commit focuses on post-launch commitments and verification |
-| **Listings and discovery** | Discovery remains external; the platform exposes execution records rather than rankings |
-| **Investment recommendations** | Commitments and signals are procedural records; users interpret independently |
-| **Custody** | Users retain full control of their wallets; participation uses signed messages |
+Already launched on pump.fun? Link the existing token and prove that you control its dev wallet by signing a message. The project then gets its own escrow and milestones, the same as an Auto-Lock project. With Manual Lock, you fund the escrow yourself.
 
 ---
 
-## Commitment Lifecycle
+## 2. Lock
 
-### 1. Commitment Creation
+Every project has a **dedicated escrow address** on Solana:
 
-A builder establishes a public commitment containing:
-
-- Authority wallet (the accountable party)
-- Commitment statement (the declared intent)
-- Milestone definitions (deliverables and unlock amounts)
-- Timing constraints (deadlines, claim windows, delay periods)
-
-This record is immutable once created.
-
-### 2. Milestone Completion
-
-Upon completing a milestone, the builder signs a completion attestation. This creates a verifiable record establishing:
-
-- Explicit acknowledgment of completion by the authority
-- Precise timestamp of the completion event
-
-### 3. Holder Signaling
-
-Token holders may signal approval for completed milestones via signed messages.
-
-Signaling can be configured to require token ownership and minimum eligibility thresholds, ensuring that governance reflects genuine stakeholder participation rather than synthetic activity.
-
-### 4. Unlock Conditions
-
-A milestone transitions from locked to claimable only when all defined conditions are satisfied:
-
-- Completion attestation signed
-- Required delay period elapsed
-- Approval threshold met (if configured)
-
-### 5. Release
-
-Fund release is an explicit, auditable action tied to on-chain transactions and server-side audit logs.
-
-The system is intentionally conservative. Clarity and traceability take precedence over automation.
-
-### 6. Failure Distribution
-
-When a creator misses deadlines or fails to deliver on milestones, the escrowed funds are redistributed:
-
-| Allocation | Recipient | Purpose |
-|------------|-----------|---------|
-| **50%** | Token holders who voted | Rewards engaged community members proportionally based on holdings and $SHIP multiplier |
-| **45%** | $SHIP buyback treasury | Fuels protocol sustainability through token buybacks |
-| **5%** | Vote reward treasury | Funds ongoing $SHIP rewards for participating voters |
-
-This mechanism ensures:
-
-- **Holder protection:** Voters who participated in governance receive compensation
-- **Protocol alignment:** Failed commitments strengthen the $SHIP ecosystem
-- **Accountability enforcement:** Creators face real consequences for non-delivery
-
-If no voters participated, the entire escrow balance routes to the buyback treasury.
+- Anyone can see the balance on-chain.
+- Funds leave it only through the release and forfeit rules below, and every movement is an on-chain transfer.
+- With Auto-Lock, the platform-managed launch wallet is both the token's creator on pump.fun and the project's escrow. Creator fees build up in pump.fun's creator vault and are swept into the escrow. The creator can trigger a sweep from the creator dashboard at any time.
 
 ---
 
-## For Builders
+## 3. Commit
 
-Ship & Commit provides a mechanism to communicate seriousness through structure rather than narrative.
+From the creator dashboard, the creator adds milestones. Each milestone unlocks a **percentage of the escrow**, and the total cannot go above 100%. There are two kinds.
 
-- **Formalized Intent:** Milestones and timelines are defined at commitment creation
-- **Verifiable Progress:** Completion events are public, timestamped, and cryptographically signed
-- **Stakeholder Alignment:** Holder signaling creates a feedback loop between execution and community
-- **Credibility Differentiation:** Builders who deliver become distinguishable through verified outcomes
+### Deadline milestones
 
-This is infrastructure for developers who intend to ship and want that intent to be legible.
+A deliverable with a due date. The creator can edit it until it is marked complete.
 
----
+### Market-cap milestones
 
-## For Participants
+A market-cap target (for example `$250k` or `$10m`) that resolves itself, with no voting and no deadline. The platform tracks the token's market price, and the milestone counts as reached only after a **sustained** run above the target:
 
-Ship & Commit provides structured transparency for evaluating projects beyond price action.
+- the price stays above the target for about 15 minutes
+- across a minimum number of consecutive price samples
+- with no large gaps in data
+- above a minimum liquidity floor
 
-- **Accountability Clarity:** Explicit record of who is responsible and what they have committed to deliver
-- **Observable Execution:** Milestone state transitions with precise timestamps
-- **Governance Visibility:** Transparent holder participation in approval processes
-- **Reduced Information Asymmetry:** Clear separation between delivery claims and public execution records
+Only prices observed **after** the milestone was created count, and a single price spike is never enough. Market-cap milestones cannot be edited.
 
 ---
 
-## Design Principles
+## 4. Verify
 
-| Principle | Implementation |
-|-----------|----------------|
-| **Neutrality** | The system is infrastructure and avoids editorialization or promotion. |
-| **Explicitness** | All state transitions are recorded and auditable. Nothing is implicit. |
-| **Verifiability** | Key actions are wallet-signed and/or anchored to on-chain transactions. |
-| **Conservatism** | Enforcement mechanisms are designed to be understandable under adversarial conditions. |
-| **Long-term Alignment** | The system rewards follow-through and sustained delivery behavior. |
+### Completing a milestone
+
+When a deadline milestone ships, the creator signs a completion message. The creator can also ask for an **early review**, which opens voting right away instead of at the due date.
+
+If a milestone is not marked complete within **24 hours after its due date**, it fails.
+
+### Voting
+
+- **Who can vote:** any wallet holding the project token worth **more than $20**. If no price is available, holding at least 1,000 tokens qualifies.
+- **How:** approve or reject, with a signed wallet message. There are no transactions and no gas, and each wallet counts once per milestone.
+- **When:** voting runs for **24 hours**, starting at the due date or when an early review opens. Votes outside that window do not count.
+- **Passing:** a milestone is approved when it gets the minimum number of approving wallets set by the platform **and** more approvals than rejections. Otherwise it fails.
+
+The project page shows the current approval threshold and live vote counts.
+
+### Vote rewards
+
+When enabled, every eligible vote cast inside the voting window earns a fixed `$SHIP` reward. You can claim it from your dashboard.
+
+---
+
+## 5. Release
+
+### Approved: the creator gets paid
+
+An approved milestone becomes **claimable 48 hours after it was completed**. The creator claims it with a signed message, and the milestone's share of the escrow is transferred on-chain to the creator. Market-cap milestones follow the same claim delay once they are reached.
+
+### Missed: holders get paid
+
+A failed milestone forfeits its share of the escrow, which is split as follows:
+
+| Share | Recipient |
+|-------|-----------|
+| **50%** | Holders who voted on that milestone |
+| **45%** | `$SHIP` buyback treasury |
+| **5%** | `$SHIP` vote-reward treasury |
+
+The voter share is split by weight. Each voter's weight is their project-token holdings at the time they voted, multiplied by a `$SHIP` holder multiplier:
+
+| `$SHIP` held | Multiplier |
+|--------------|------------|
+| Under 100,000 | 1x |
+| 100,000 or more | 1.3x |
+| 10,000,000 or more | 2x |
+
+When participation weighting is enabled, wallets that vote consistently across recent milestones get a further bonus, and wallets that skip votes get a penalty.
+
+If no eligible holders voted, the voter share goes to the buyback treasury. Voters claim their share from the project page.
+
+---
+
+## Utilities
+
+- **Creator dashboard** (`/creator`): manage milestones, sweep fees into escrow and claim releases.
+- **Holder dashboard** (`/dashboard`): track and claim vote rewards and see your `$SHIP` balance.
+- **Profiles** (`/u/<wallet>`): public creator and holder profiles.
+- **Discover**: live projects with their escrowed amounts.
+- **ASD**: an opt-in tool for creators. You lock project tokens in a dedicated vault, and a capped daily percentage is sold through Jupiter on a fixed schedule. The creator signs the configuration and can pause it at any time.
+- **Transparent Bundler**: creators declare and verify team wallets, and the platform snapshots their balances daily so holders can see team supply.
 
 ---
 
 ## Security Model
 
-- **Wallet custody:** Users retain full control of their assets at all times
-- **Signed participation:** Completion attestations and governance signals use cryptographic signatures
-- **Dedicated escrows:** Commitment capital is held in purpose-built on-chain addresses
-- **Explicit release:** Fund movements are auditable, rate-limited, and origin-protected
-- **Defense in depth:** Sensitive operations require admin authentication with hardware wallet signing
+- **You keep custody.** Holders and creators use their own wallets. Voting, completing milestones and claiming are all done with signed messages.
+- **Dedicated escrows.** Each project's escrow is a platform-managed server wallet (Privy). It is used only for that project's sweeps, releases and forfeits.
+- **Explicit, audited movements.** Every release, claim and forfeit is an on-chain transfer and is written to an audit log.
+- **Defense in depth.** Rate limiting, origin checks, replay protection on signed messages, and wallet-signed admin sessions.
 
 ---
 
-## Credibility Over Curation
+## Scope
 
-Ship & Commit curates execution signals. Token curation remains outside scope.
+| Ship & Commit does | Ship & Commit does not |
+|--------------------|------------------------|
+| Lock creator fees and release them against milestones | Guarantee that a project will deliver |
+| Record commitments, votes and payouts publicly | Rank or recommend tokens |
+| Let holders decide whether work was delivered | Hold users' personal wallets or funds |
 
-The platform surfaces:
-
-- Commitments that are clearly defined and publicly recorded
-- Milestones that are completed under transparent, enforceable rules
-- Holder signaling patterns that indicate sustained stakeholder engagement
-
-The output is a credibility surface, a mechanism for differentiating builders by behavior and follow-through.
+Nothing on the platform is investment advice.
 
 ---
 
-## Frequently Asked Questions
+## FAQ
 
-**Does Ship & Commit replace Pump.fun?**
+**Does Ship & Commit replace pump.fun?**
+No. Tokens launch and trade on pump.fun. Ship & Commit adds the escrow, milestones and holder verification.
 
-No. We complement Pump.fun by providing accountability infrastructure for post-launch execution. Pump.fun handles creation and distribution. We handle commitment and verification.
+**Is delivery guaranteed?**
+No. The system makes commitments explicit and enforceable: an unshipped milestone costs the creator its share of the escrow.
 
-**Is this a guarantee of delivery?**
+**Do I need `$SHIP` to vote?**
+No. You only need to hold the project's token. Holding `$SHIP` increases your share of forfeited funds.
 
-No. It is a framework for making delivery commitments explicit, trackable, and resistant to quiet abandonment. The system creates accountability, not certainty.
-
-**Does the platform rank tokens by performance?**
-
-No. We surface execution signals and commitment integrity. Market performance is outside our scope.
-
-**Who is this for?**
-
-Builders who intend to ship and want that intent to be credible.
-Participants who want structured transparency and enforceable accountability.
-
----
-
-## Summary
-
-Ship & Commit is accountability infrastructure for the permissionless token economy.
-
-We exist to surface and support developers who commit to execution, transparency, and follow-through. We formalize commitment, make developer intent legible, and create long-term trust between builders and participants.
-
-Ship & Commit operates as the accountability layer for post-launch execution.
+**Can a creator withdraw escrow early?**
+No. Escrow is released only for approved milestones after the claim delay.

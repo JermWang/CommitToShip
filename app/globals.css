@@ -15,8 +15,8 @@ body {
 }
 
 :root {
-  --bg: #ffffff;
-  --fg: #000000;
+  --bg: #f6f1e9;
+  --fg: #141414;
   --muted: rgba(0, 0, 0, 0.62);
   --muted2: rgba(0, 0, 0, 0.44);
   --border: rgba(0, 0, 0, 0.14);
@@ -59,28 +59,6 @@ body {
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-body[data-skin="landing"],
-html[data-skin="landing"] {
-  --bg: #000000;
-  --fg: #ffffff;
-  --muted: rgba(255, 255, 255, 0.68);
-  --muted2: rgba(255, 255, 255, 0.48);
-  --border: rgba(255, 255, 255, 0.18);
-  --card: rgba(0, 0, 0, 0.0);
-  --card2: rgba(0, 0, 0, 0.0);
-  --shadow: none;
-  --accent: #ffffff;
-  --accentHi: #ffffff;
-  --accent2: rgba(255, 255, 255, 0.08);
-  --accentInk: #ffffff;
-  --accentGlow: rgba(255, 255, 255, 0.12);
-  --glass-border: rgba(255, 255, 255, 0.16);
-  --glass-border-strong: rgba(255, 255, 255, 0.18);
-  --glass-divider: rgba(255, 255, 255, 0.14);
-  --glass-bg: rgba(0, 0, 0, 0.0);
-  --glass-bg-strong: rgba(0, 0, 0, 0.0);
-}
-
 .toastViewport {
   position: fixed;
   right: 18px;
@@ -101,25 +79,25 @@ html[data-skin="landing"] {
   gap: 10px;
   padding: 12px 12px;
   border-radius: 14px;
-  border: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.72);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg-strong);
   color: var(--fg);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  box-shadow: none;
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow);
 }
 
 .toastMessage {
   font-size: 13px;
   line-height: 1.35;
-  color: rgba(255, 255, 255, 0.86);
+  color: var(--ink);
 }
 
 .toastClose {
   appearance: none;
   border: none;
   background: transparent;
-  color: rgba(255, 255, 255, 0.70);
+  color: var(--ink2);
   font-size: 18px;
   line-height: 1;
   padding: 4px 8px;
@@ -127,26 +105,26 @@ html[data-skin="landing"] {
 }
 
 .toastClose:hover {
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
 }
 
 .toastSuccess {
-  border-color: rgba(255, 255, 255, 0.22);
+  border-color: rgba(31, 122, 82, 0.28);
 }
 
 .toastError {
-  border-color: rgba(255, 255, 255, 0.22);
+  border-color: rgba(179, 54, 31, 0.28);
 }
 
 .toastInfo {
-  border-color: rgba(255, 255, 255, 0.18);
+  border-color: var(--glass-border);
 }
 
 .skeleton {
   position: relative;
   overflow: hidden;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.10);
+  background: var(--fill-strong);
 }
 
 .skeleton::after {
@@ -157,7 +135,7 @@ html[data-skin="landing"] {
   background: linear-gradient(
     90deg,
     rgba(255, 255, 255, 0) 0%,
-    rgba(255, 255, 255, 0.12) 45%,
+    rgba(255, 255, 255, 0.55) 45%,
     rgba(255, 255, 255, 0) 100%
   );
   animation: skeletonShimmer 1.25s ease-in-out infinite;
@@ -187,26 +165,58 @@ html[data-skin="landing"] {
   border-radius: 999px;
 }
 
+/* Ship & Commit visual language (shared with the story on "/"): cream pastel light, frosted glass, ink type.
+   Every page uses these tokens; prefer them over hard-coded colours. */
 body[data-skin="app"],
-html[data-skin="app"] {
-  --bg: #000000;
-  --fg: #ffffff;
-  --muted: rgba(255, 255, 255, 0.68);
-  --muted2: rgba(255, 255, 255, 0.48);
-  --border: rgba(255, 255, 255, 0.16);
-  --card: rgba(0, 0, 0, 0.0);
-  --card2: rgba(0, 0, 0, 0.0);
-  --shadow: none;
-  --accent: #ffffff;
-  --accentHi: #ffffff;
-  --accent2: rgba(255, 255, 255, 0.08);
-  --accentInk: #ffffff;
-  --accentGlow: rgba(255, 255, 255, 0.12);
-  --glass-border: rgba(255, 255, 255, 0.16);
-  --glass-border-strong: rgba(255, 255, 255, 0.18);
-  --glass-divider: rgba(255, 255, 255, 0.14);
-  --glass-bg: rgba(0, 0, 0, 0.0);
-  --glass-bg-strong: rgba(0, 0, 0, 0.0);
+html[data-skin="app"],
+body[data-skin="story"] {
+  --cream: #f6f1e9;
+  --ink: #141414;
+  --ink2: rgba(20, 20, 20, 0.66);
+  --ink3: rgba(20, 20, 20, 0.46);
+  --line: rgba(20, 20, 20, 0.09);
+  --line-strong: rgba(20, 20, 20, 0.16);
+  --fill: rgba(20, 20, 20, 0.04);
+  --fill-strong: rgba(20, 20, 20, 0.07);
+
+  --bg: var(--cream);
+  --fg: var(--ink);
+  --muted: var(--ink2);
+  --muted2: var(--ink3);
+  --border: var(--line);
+  --card: rgba(255, 255, 255, 0.62);
+  --card2: rgba(255, 255, 255, 0.45);
+  --shadow: 0 24px 60px rgba(96, 74, 52, 0.1), 0 2px 8px rgba(96, 74, 52, 0.05);
+  --accent: var(--ink);
+  --accentHi: #000000;
+  --accent2: rgba(20, 20, 20, 0.06);
+  --accentInk: var(--ink);
+  --accentGlow: rgba(20, 20, 20, 0.1);
+
+  --success: #1f7a52;
+  --successBg: rgba(31, 122, 82, 0.1);
+  --successGlow: rgba(31, 122, 82, 0.16);
+  --warning: #a8641a;
+  --warningBg: rgba(168, 100, 26, 0.1);
+  --warningGlow: rgba(168, 100, 26, 0.16);
+  --error: #b3361f;
+  --errorBg: rgba(179, 54, 31, 0.09);
+  --errorGlow: rgba(179, 54, 31, 0.16);
+
+  /* frosted glass surfaces */
+  --glass-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.42) 62%), rgba(255, 255, 255, 0.16);
+  --glass-bg-strong: linear-gradient(160deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.6) 62%), rgba(255, 255, 255, 0.3);
+  --glass-border: rgba(255, 255, 255, 0.8);
+  --glass-border-strong: rgba(255, 255, 255, 0.92);
+  --glass-divider: var(--line);
+  --glass-blur: blur(22px) saturate(160%);
+  --glass-blur-strong: blur(28px) saturate(170%);
+  --glass-shadow: 0 24px 60px rgba(96, 74, 52, 0.1), 0 2px 8px rgba(96, 74, 52, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  --glass-shadow-soft: 0 10px 30px rgba(96, 74, 52, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --input-bg: rgba(255, 255, 255, 0.66);
+  --input-border: rgba(20, 20, 20, 0.11);
+  --input-focus: rgba(20, 20, 20, 0.34);
+  --focus-ring: 0 0 0 4px rgba(20, 20, 20, 0.07);
 }
 
 body {
@@ -220,10 +230,14 @@ body::before {
   inset: -1px;
   z-index: 0;
   pointer-events: none;
+  /* the story's pastel light, as a still backdrop for every page */
   background:
-    radial-gradient(1200px 900px at 35% 18%, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0) 62%),
-    radial-gradient(1200px 900px at 72% 62%, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0) 65%);
-  opacity: 0.9;
+    radial-gradient(900px 700px at 8% 4%, rgba(251, 218, 201, 0.85), rgba(251, 218, 201, 0) 70%),
+    radial-gradient(900px 760px at 96% 22%, rgba(226, 221, 246, 0.85), rgba(226, 221, 246, 0) 70%),
+    radial-gradient(900px 760px at 86% 96%, rgba(216, 239, 228, 0.8), rgba(216, 239, 228, 0) 70%),
+    radial-gradient(800px 700px at 6% 92%, rgba(217, 231, 247, 0.75), rgba(217, 231, 247, 0) 70%),
+    var(--cream, #f6f1e9);
+  opacity: 1;
   mix-blend-mode: normal;
   animation: auraDrift 28s ease-in-out infinite;
 }
@@ -236,8 +250,8 @@ body::after {
   pointer-events: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.95' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)' opacity='.32'/%3E%3C/svg%3E");
   background-size: 240px 240px;
-  mix-blend-mode: normal;
-  opacity: 0.10;
+  mix-blend-mode: multiply;
+  opacity: 0.05;
   animation: grainShift 14s steps(12) infinite;
 }
 
@@ -283,8 +297,8 @@ body > * {
   top: 0;
   z-index: 50;
   width: 100%;
-  background: rgba(0, 0, 0, 0.92);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(246, 241, 233, 0.72);
+  border-bottom: 1px solid var(--line);
 }
 
 .globalNavInner {
@@ -331,7 +345,7 @@ body > * {
   font-weight: 900;
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.82);
+  color: var(--ink2);
   opacity: 0.95;
   pointer-events: none;
 }
@@ -359,7 +373,7 @@ body > * {
   font-weight: 800;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.78);
+  color: var(--ink2);
 }
 
 .globalNavLinks {
@@ -397,7 +411,7 @@ body > * {
   appearance: none;
   border: none;
   background: transparent;
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--ink2);
   padding: 10px 12px;
   border-radius: 14px;
   display: inline-flex;
@@ -408,8 +422,8 @@ body > * {
 }
 
 .globalNavIconBtn:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink);
+  background: var(--fill-strong);
   transform: translateY(-1px);
 }
 
@@ -418,8 +432,8 @@ body > * {
 }
 
 .globalNavIconBtnActive {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.12);
+  color: var(--ink);
+  background: var(--fill-strong);
 }
 
 .globalNavToken {
@@ -429,10 +443,10 @@ body > * {
   padding: 9px 12px;
   border-radius: 14px;
   border: none;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--fill-strong);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  color: rgba(255, 255, 255, 0.78);
+  color: var(--ink2);
   font-size: 12px;
   font-weight: 600;
 }
@@ -440,10 +454,10 @@ body > * {
 .globalNavTokenCopy {
   appearance: none;
   border: none;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--fill-strong);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  color: rgba(255, 255, 255, 0.90);
+  color: var(--ink);
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -458,7 +472,7 @@ body > * {
 
 .globalNavTokenCopy:hover {
   transform: translateY(-1px);
-  background: rgba(255, 255, 255, 0.09);
+  background: var(--fill-strong);
   box-shadow: none;
 }
 
@@ -498,7 +512,7 @@ body > * {
 }
 
 .globalNavTokenValue {
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
   text-decoration: none;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   max-width: 240px;
@@ -514,8 +528,8 @@ body > * {
 .globalNavTokenBtn {
   appearance: none;
   border: none;
-  background: rgba(0, 0, 0, 0.12);
-  color: rgba(255, 255, 255, 0.86);
+  background: var(--fill-strong);
+  color: var(--ink);
   border-radius: 14px;
   padding: 6px 10px;
   font-size: 12px;
@@ -525,7 +539,7 @@ body > * {
 }
 
 .globalNavTokenBtn:hover {
-  background: rgba(255, 255, 255, 0.10);
+  background: var(--fill-strong);
   transform: translateY(-1px);
 }
 
@@ -536,13 +550,13 @@ body > * {
 }
 
 .globalNavTokenBtn:disabled:hover {
-  background: rgba(0, 0, 0, 0.12);
+  background: var(--fill-strong);
   transform: none;
 }
 
 .globalNavLink {
   text-decoration: none;
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--ink2);
   font-size: 13px;
   font-weight: 600;
   padding: 10px 16px;
@@ -558,7 +572,7 @@ body > * {
   position: absolute;
   inset: 0;
   border-radius: 14px;
-  background: #fff;
+  background: var(--ink);
   opacity: 0;
   transform: scale(0.92);
   transition: all 0.25s var(--ease-out);
@@ -566,16 +580,16 @@ body > * {
 }
 
 .globalNavLink:hover {
-  color: #fff;
+  color: var(--ink);
 }
 
 .globalNavLink:hover::after {
-  opacity: 0.12;
+  opacity: 0.06;
   transform: scale(1);
 }
 
 .globalNavLinkPrimary {
-  background: #000;
+  background: var(--ink);
   color: #fff;
   font-weight: 650;
   box-shadow: none;
@@ -586,37 +600,16 @@ body > * {
   color: #fff;
   transform: translateY(-1px);
   box-shadow: none;
+  background: #000;
 }
 
 .globalNavLinkPrimary::after {
   display: none;
 }
 
-body[data-skin="landing"] .globalNav {
-  position: sticky;
-  top: 0;
-  background: rgba(0, 0, 0, 0.22);
-  border-bottom-color: transparent;
-}
-
-body[data-skin="landing"] .globalNavInner {
-  justify-content: space-between;
-  padding: 16px 22px;
-}
-
-body[data-skin="landing"] .globalNavLink::after {
-  display: none;
-}
-
-body[data-skin="landing"] .globalNavLinkPrimary {
-  background: transparent;
-  border-color: transparent;
-}
-
-
 .docPage {
   min-height: calc(100vh - 68px);
-  background: #0a0a0a;
+  background: transparent;
   padding: 48px var(--layout-gutter) 80px;
 }
 
@@ -639,9 +632,12 @@ body[data-skin="landing"] .globalNavLinkPrimary {
   top: 92px;
   align-self: start;
   padding: 14px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--glass-border);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow-soft);
 }
 
 .docTocTitle {
@@ -649,7 +645,7 @@ body[data-skin="landing"] .globalNavLinkPrimary {
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--ink2);
   margin-bottom: 10px;
 }
 
@@ -661,7 +657,7 @@ body[data-skin="landing"] .globalNavLinkPrimary {
 
 .docTocLink {
   text-decoration: none;
-  color: rgba(255, 255, 255, 0.68);
+  color: var(--ink2);
   font-size: 12px;
   line-height: 1.35;
   padding: 6px 8px;
@@ -675,7 +671,7 @@ body[data-skin="landing"] .globalNavLinkPrimary {
 .docTocNumber {
   font-variant-numeric: tabular-nums;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.44);
+  color: var(--ink3);
 }
 
 .docTocLabel {
@@ -683,18 +679,18 @@ body[data-skin="landing"] .globalNavLinkPrimary {
 }
 
 .docTocLink:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.06);
+  color: var(--ink);
+  background: var(--fill-strong);
 }
 
 .docTocLinkActive {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.10);
+  color: var(--ink);
+  background: var(--fill-strong);
 }
 
 .docTocLinkL3 {
   padding-left: 18px;
-  color: rgba(255, 255, 255, 0.56);
+  color: var(--ink2);
 }
 
 .docContent {
@@ -710,7 +706,7 @@ body[data-skin="landing"] .globalNavLinkPrimary {
   margin-right: 10px;
   border-radius: 6px;
   text-decoration: none;
-  color: rgba(255, 255, 255, 0.30);
+  color: var(--ink3);
   background: transparent;
   transform: translateY(1px);
   opacity: 0;
@@ -726,8 +722,8 @@ body[data-skin="landing"] .globalNavLinkPrimary {
 
 .docHeadingAnchor:hover {
   opacity: 1;
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.70);
+  background: var(--fill-strong);
+  color: var(--ink2);
 }
 
 .docH1,
@@ -770,10 +766,10 @@ body[data-skin="landing"] .globalNavLinkPrimary {
   font-weight: 800;
   letter-spacing: -0.03em;
   line-height: 1.15;
-  color: #fff;
+  color: var(--ink);
   margin: 0 0 24px;
   padding-bottom: 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid var(--line);
 }
 
 .docH2 {
@@ -781,7 +777,7 @@ body[data-skin="landing"] .globalNavLinkPrimary {
   font-weight: 700;
   letter-spacing: -0.02em;
   line-height: 1.25;
-  color: #fff;
+  color: var(--ink);
   margin: 48px 0 16px;
   padding-top: 24px;
 }
@@ -796,7 +792,7 @@ body[data-skin="landing"] .globalNavLinkPrimary {
   font-weight: 650;
   letter-spacing: -0.01em;
   line-height: 1.35;
-  color: rgba(255, 255, 255, 0.95);
+  color: var(--ink);
   margin: 32px 0 12px;
 }
 
@@ -805,7 +801,7 @@ body[data-skin="landing"] .globalNavLinkPrimary {
   font-weight: 600;
   letter-spacing: 0;
   line-height: 1.4;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--ink);
   margin: 24px 0 10px;
 }
 
@@ -813,7 +809,7 @@ body[data-skin="landing"] .globalNavLinkPrimary {
   font-size: 15px;
   font-weight: 400;
   line-height: 1.7;
-  color: rgba(255, 255, 255, 0.75);
+  color: var(--ink2);
   margin: 0 0 16px;
 }
 
@@ -827,7 +823,7 @@ body[data-skin="landing"] .globalNavLinkPrimary {
   font-size: 15px;
   font-weight: 400;
   line-height: 1.65;
-  color: rgba(255, 255, 255, 0.75);
+  color: var(--ink2);
   margin-bottom: 8px;
 }
 
@@ -836,20 +832,20 @@ body[data-skin="landing"] .globalNavLinkPrimary {
 }
 
 .docA {
-  color: #fff;
+  color: var(--ink);
   text-decoration: underline;
   text-underline-offset: 2px;
-  text-decoration-color: rgba(255, 255, 255, 0.4);
+  text-decoration-color: var(--ink3);
   transition: text-decoration-color 0.15s ease;
 }
 
 .docA:hover {
-  text-decoration-color: #fff;
+  text-decoration-color: var(--ink);
 }
 
 .docStrong {
   font-weight: 650;
-  color: rgba(255, 255, 255, 0.95);
+  color: var(--ink);
 }
 
 .docEm {
@@ -859,15 +855,19 @@ body[data-skin="landing"] .globalNavLinkPrimary {
 .docHr {
   border: none;
   height: 1px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--fill-strong);
   margin: 40px 0;
 }
 
 .docTableWrap {
   overflow-x: auto;
   margin: 24px 0;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--glass-border);
   border-radius: 8px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow-soft);
 }
 
 .docTable {
@@ -877,21 +877,21 @@ body[data-skin="landing"] .globalNavLinkPrimary {
 }
 
 .docThead {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--fill);
 }
 
 .docTh {
   text-align: left;
   font-weight: 650;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--ink);
   padding: 12px 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid var(--line);
 }
 
 .docTd {
   padding: 12px 16px;
-  color: rgba(255, 255, 255, 0.75);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: var(--ink2);
+  border-bottom: 1px solid var(--line);
   vertical-align: top;
 }
 
@@ -902,30 +902,30 @@ body[data-skin="landing"] .globalNavLinkPrimary {
 .docBlockquote {
   margin: 24px 0;
   padding: 16px 20px;
-  border-left: 3px solid rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.02);
+  border-left: 3px solid var(--line-strong);
+  background: var(--fill);
   border-radius: 0 6px 6px 0;
 }
 
 .docBlockquote .docP {
   margin: 0;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--ink2);
 }
 
 .docCodeInline {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 13px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--fill-strong);
   padding: 2px 6px;
   border-radius: 4px;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--ink);
 }
 
 .docPre {
   margin: 24px 0;
   padding: 16px 20px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid var(--line);
   border-radius: 8px;
   overflow-x: auto;
 }
@@ -934,7 +934,7 @@ body[data-skin="landing"] .globalNavLinkPrimary {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 13px;
   line-height: 1.6;
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--ink);
 }
 
 .appShell {
@@ -951,12 +951,12 @@ body[data-skin="landing"] .globalNavLinkPrimary {
 
 .appShellNav {
   display: none;
-  border: 1px solid var(--border);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
-  background: #fff;
-  box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+  background: var(--glass-bg);
+  box-shadow: var(--glass-shadow-soft);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   padding: 16px;
   position: sticky;
   top: 88px;
@@ -990,9 +990,7 @@ body[data-skin="landing"] .globalNavLinkPrimary {
 }
 
 body[data-skin="app"] .appShellBrandMark,
-html[data-skin="app"] .appShellBrandMark,
-body[data-skin="landing"] .appShellBrandMark,
-html[data-skin="landing"] .appShellBrandMark {
+html[data-skin="app"] .appShellBrandMark {
   filter: invert(1);
 }
 
@@ -1037,12 +1035,12 @@ html[data-skin="landing"] .appShellBrandMark {
 
 .appShellNavItem:hover {
   color: var(--fg);
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--fill);
 }
 
 .appShellNavItemActive {
   color: var(--fg);
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--fill-strong);
   font-weight: 650;
 }
 
@@ -1068,12 +1066,12 @@ html[data-skin="landing"] .appShellBrandMark {
   position: sticky;
   top: 68px;
   z-index: 20;
-  border: 1px solid var(--border);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
-  background: #fff;
-  box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+  background: var(--glass-bg);
+  box-shadow: var(--glass-shadow-soft);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   padding: 14px 18px;
   display: flex;
   align-items: center;
@@ -1096,9 +1094,9 @@ html[data-skin="landing"] .appShellBrandMark {
 
 .appShellTopbarBtn {
   appearance: none;
-  border: 1px solid var(--border);
-  background: #fff;
-  color: rgba(0, 0, 0, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--ink2);
   border-radius: 999px;
   padding: 9px 16px;
   font-size: 13px;
@@ -1108,9 +1106,9 @@ html[data-skin="landing"] .appShellBrandMark {
 }
 
 .appShellTopbarBtn:hover {
-  background: #fff;
-  border-color: #000;
-  color: #000;
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(255, 255, 255, 0.95);
+  color: var(--ink);
   box-shadow: none;
 }
 
@@ -1162,301 +1160,6 @@ html[data-skin="landing"] .appShellBrandMark {
   z-index: 2;
 }
 
-.landingContent {
-  width: 100%;
-  min-height: 520px;
-  position: relative;
-  display: block;
-}
-
-body[data-skin="landing"] .appShell {
-  max-width: none;
-  padding: 0;
-  grid-template-columns: 1fr;
-  gap: 0;
-}
-
-body[data-skin="landing"] .appShellNav,
-body[data-skin="landing"] .appShellTopbar {
-  display: none;
-}
-
-body[data-skin="landing"] .appShellBody {
-  padding: 0;
-}
-
-body[data-skin="landing"] .commitStage {
-  padding: 0;
-}
-
-body[data-skin="landing"] .commitWrap {
-  max-width: none;
-  gap: 0;
-}
-
-body[data-skin="landing"] .commitSurface.landingSurface {
-  border: none;
-  background: transparent;
-  padding: 0;
-}
-
-body[data-skin="landing"] .landingContent {
-  min-height: 100vh;
-}
-
-body[data-skin="landing"] .landingRight {
-  background:
-    linear-gradient(#000, #000),
-    radial-gradient(1200px 900px at 50% 46%, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0) 62%),
-    radial-gradient(900px 700px at 50% 78%, rgba(255, 255, 255, 0.03), rgba(0, 0, 0, 0) 70%);
-  perspective: none;
-  transform-style: flat;
-}
-
-.landingContent::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: none;
-  pointer-events: none;
-  z-index: 2;
-}
-
-.landingLeft {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding: calc(var(--rhythm-5) + var(--rhythm-2)) calc(var(--rhythm-5) + var(--rhythm-2));
-  position: relative;
-  z-index: 3;
-  isolation: isolate;
-  max-width: 720px;
-}
-
-body[data-skin="landing"] .landingLeft {
-  position: absolute;
-  inset: 0;
-  max-width: none;
-  padding: 0;
-  justify-content: flex-start;
-  padding-top: clamp(64px, 8vh, 96px);
-  align-items: center;
-  text-align: center;
-  gap: 0;
-}
-
-body[data-skin="landing"] .wordmark {
-  display: none;
-}
-
-body[data-skin="landing"] .heroMark {
-  margin: 0;
-}
-
-body[data-skin="landing"] .landingCtas {
-  margin-top: clamp(6px, 1vw, 10px);
-  padding: 0 var(--layout-gutter);
-  position: relative;
-  z-index: 2;
-}
-
-body[data-skin="landing"] .brandLockup {
-  display: none;
-}
-
-body[data-skin="landing"] .heroMark {
-  margin: 0 0 2px 0;
-  overflow: visible;
-  flex-shrink: 0;
-}
-
-body[data-skin="landing"] .heroMarkImage {
-  width: min(760px, 92vw);
-  height: auto;
-  opacity: 1;
-  transform: scale(1.5);
-  transform-origin: center;
-  display: block;
-  flex-shrink: 0;
-}
-
-body[data-skin="landing"] .heroMarkImageSvg {
-  filter: invert(1);
-}
-
-body[data-skin="landing"] .landingHeroMarkWrap,
-html[data-skin="landing"] .landingHeroMarkWrap {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-body[data-skin="landing"] .heroMark,
-body[data-skin="landing"] .heroMarkImage,
-body[data-skin="landing"] .heroMarkImageSvg {
-  pointer-events: none;
-}
-
-body[data-skin="landing"] .heroLead {
-  color: rgba(255, 255, 255, 0.74);
-  margin: 0;
-  margin-top: clamp(-80px, -8vw, -48px);
-  padding: 0 var(--layout-gutter);
-  position: relative;
-  z-index: 2;
-}
-
-body[data-skin="landing"] .landingCtas {
-  justify-content: center;
-}
-
-body[data-skin="landing"] .landingCtas .btn,
-body[data-skin="landing"] .landingCtas .btnPrimary {
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  background: rgba(255, 255, 255, 0.07);
-  border-radius: 999px;
-  padding: 12px 18px;
-  box-shadow: none;
-  color: #fff;
-  text-decoration: none;
-  position: relative;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-}
-
-body[data-skin="landing"] .landingCtas .btn::before,
-body[data-skin="landing"] .landingCtas .btnPrimary::before {
-  display: none;
-}
-
-body[data-skin="landing"] .landingCtas .btn::after,
-body[data-skin="landing"] .landingCtas .btnPrimary::after {
-  display: none;
-}
-
-body[data-skin="landing"] .landingCtas .btn:hover,
-body[data-skin="landing"] .landingCtas .btnPrimary:hover {
-  transform: translateY(-1px);
-  background: rgba(255, 255, 255, 0.11);
-  border-color: rgba(255, 255, 255, 0.30);
-}
-
-body[data-skin="landing"] .landingCtas .btn,
-body[data-skin="landing"] .landingCtas .btnPrimary,
-body[data-skin="landing"] .appShellNavItem,
-html[data-skin="landing"] .landingCtas .btn,
-html[data-skin="landing"] .landingCtas .btnPrimary,
-html[data-skin="landing"] .appShellNavItem {
-  transition: transform 0.22s var(--ease-out), background 0.22s var(--ease-out), border-color 0.22s var(--ease-out), box-shadow 0.22s var(--ease-out);
-  will-change: transform;
-}
-
-body[data-skin="landing"] .landingCtas .btn:hover,
-body[data-skin="landing"] .landingCtas .btnPrimary:hover,
-html[data-skin="landing"] .landingCtas .btn:hover,
-html[data-skin="landing"] .landingCtas .btnPrimary:hover {
-  transform: translateY(-2px) scale(1.01);
-  box-shadow: 0 16px 46px rgba(0, 0, 0, 0.38);
-}
-
-body[data-skin="landing"] .landingCtas .btn:active,
-body[data-skin="landing"] .landingCtas .btnPrimary:active,
-html[data-skin="landing"] .landingCtas .btn:active,
-html[data-skin="landing"] .landingCtas .btnPrimary:active {
-  transform: translateY(0) scale(0.98);
-}
-
-body[data-skin="landing"] .appShellNavItem:hover,
-html[data-skin="landing"] .appShellNavItem:hover {
-  transform: translateY(-1px);
-}
-
-body[data-skin="landing"] .appShellNavItem:active,
-html[data-skin="landing"] .appShellNavItem:active {
-  transform: translateY(0) scale(0.99);
-}
-
-body[data-skin="landing"] .landingCtas .btn,
-body[data-skin="landing"] .landingCtas .btnPrimary,
-html[data-skin="landing"] .landingCtas .btn,
-html[data-skin="landing"] .landingCtas .btnPrimary {
-  pointer-events: auto;
-  cursor: pointer;
-}
-
-body[data-skin="landing"] .landingCtas .btn:hover::after,
-body[data-skin="landing"] .landingCtas .btnPrimary:hover::after {
-  display: none;
-}
-
-.landingSurface {
-  position: relative;
-  overflow: hidden;
-  border: none;
-}
-
-body[data-skin="landing"] .landingSurface {
-  background: transparent;
-}
-
-.commitSurface.landingSurface {
-  background: #000;
-  color: #fff;
-  border: none;
-}
-
-.landingRight {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  z-index: 1;
-  opacity: 1;
-  background:
-    linear-gradient(#000, #000),
-    radial-gradient(1200px 900px at 50% 46%, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0) 62%),
-    radial-gradient(900px 700px at 50% 78%, rgba(255, 255, 255, 0.03), rgba(0, 0, 0, 0) 70%);
-}
-
-body[data-skin="landing"] .landingRight {
-  display: none;
-}
-
-.landingTopNav {
-  position: absolute;
-  top: 22px;
-  left: 22px;
-  right: 22px;
-  z-index: 4;
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
-.landingTopNavBtn {
-  appearance: none;
-  border: 1px solid var(--border);
-  background: #fff;
-  color: #000;
-  border-radius: 999px;
-  padding: 10px 16px;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  cursor: pointer;
-  box-shadow: none;
-  backdrop-filter: none;
-  transition: all 0.25s var(--ease-out);
-}
-
-.landingTopNavBtn:hover {
-  transform: translateY(-1px);
-  border-color: #000;
-  box-shadow: none;
-}
-
 .ascii-waves {
   position: fixed;
   inset: 0;
@@ -1473,44 +1176,6 @@ body[data-skin="landing"] .landingRight {
   pointer-events: none;
 }
 
-.landingCtas {
-  margin-top: 22px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.landingCtas .btnPrimary {
-  margin-top: 0;
-}
-
-.landingCtaPrimary {
-  padding: 16px 26px;
-}
-
-.landingCtaSecondary {
-  background: #fff;
-}
-
- body[data-skin="landing"] .landingCtas .landingCtaSecondary {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.07);
-  border-color: rgba(255, 255, 255, 0.22);
- }
-
-@media (max-width: 520px) {
-  .landingCtas {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .landingCtas .btn {
-    width: 100%;
-    justify-content: center;
-  }
-}
-
 .tabs {
   position: fixed;
   top: 20px;
@@ -1521,18 +1186,18 @@ body[data-skin="landing"] .landingRight {
   gap: 4px;
   padding: 5px;
   border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  background: #fff;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  box-shadow: none;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow-soft);
 }
 
 .tabBtn {
   appearance: none;
   border: none;
   background: transparent;
-  color: rgba(0, 0, 0, 0.62);
+  color: var(--ink2);
   border-radius: var(--radius-sm);
   padding: 10px 16px;
   font-weight: 600;
@@ -1545,8 +1210,8 @@ body[data-skin="landing"] .landingRight {
 }
 
 .tabBtn:hover {
-  color: #000;
-  background: rgba(0, 0, 0, 0.04);
+  color: var(--ink);
+  background: var(--fill);
 }
 
 .tabBtn:active {
@@ -1554,7 +1219,7 @@ body[data-skin="landing"] .landingRight {
 }
 
 .tabActive {
-  background: #000;
+  background: var(--ink);
   color: #fff;
   box-shadow: none;
 }
@@ -1565,19 +1230,6 @@ body[data-skin="landing"] .landingRight {
   display: flex;
   flex-direction: column;
   gap: 18px;
-}
-
-.wordmark {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 14px;
-}
-
-.brandLockup {
-  display: flex;
-  align-items: center;
-  min-height: 44px;
 }
 
 .brandImage {
@@ -1616,8 +1268,8 @@ body[data-skin="landing"] .landingRight {
   font-weight: 700;
   padding: 9px 12px;
   border-radius: 999px;
-  border: 1px solid var(--border);
-  background: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.6);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
@@ -1638,84 +1290,6 @@ body[data-skin="landing"] .landingRight {
 @media (max-width: 899px) {
   .heroTitle {
     font-size: 56px;
-  }
-}
-
-.heroLead {
-  margin: 18px 0 0 0;
-  color: var(--muted);
-  font-size: 16px;
-  line-height: 1.65;
-  max-width: 52ch;
-  font-weight: 450;
-  /* keep the copy legible when the animated ASCII waves drift behind it */
-  text-shadow: 0 0 14px rgba(0, 0, 0, 0.95), 0 0 3px rgba(0, 0, 0, 0.9);
-}
-
-.landingMobileTitle {
-  display: none;
-}
-
-.landingTokenBar {
-  display: none;
-}
-
-.pumpfunLink,
-.pumpfunLink:visited,
-.pumpfunLink:hover,
-.pumpfunLink:active {
-  color: #b7ff3c;
-  text-decoration: none;
-}
-
-.heroLead .pumpfunLink,
-.heroLead .pumpfunLink:visited,
-.heroLead .pumpfunLink:hover,
-.heroLead .pumpfunLink:active {
-  color: #fff;
-}
-
-.heroLead .pumpfunLink {
-  cursor: pointer;
-  pointer-events: auto;
-  text-decoration: none;
-  display: inline-block;
-  position: relative;
-  z-index: 10;
-  opacity: 0.96;
-  transition: opacity 0.15s ease, text-shadow 0.15s ease;
-}
-
-.heroLead .pumpfunLink:hover {
-  opacity: 1;
-  text-shadow: 0 0 14px rgba(255, 255, 255, 0.22);
-}
-
-.heroMark {
-  margin-top: 22px;
-  margin-bottom: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.heroMarkImage {
-  width: clamp(720px, 92vw, 1040px);
-  height: auto;
-  opacity: 0.95;
-  filter: none;
-  margin-left: 0;
-  margin-right: 0;
-}
-
-@media (max-width: 520px) {
-  .heroMark {
-    margin-top: 18px;
-    margin-bottom: 12px;
-  }
-
-  .heroMarkImage {
-    width: clamp(560px, 96vw, 880px);
   }
 }
 
@@ -1756,11 +1330,11 @@ body[data-skin="landing"] .landingRight {
 }
 
 .panel {
-  border: 1px solid var(--border);
-  background: #fff;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  box-shadow: none;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow);
   border-radius: 20px;
   padding: 28px;
 }
@@ -1811,9 +1385,9 @@ body[data-skin="landing"] .landingRight {
   width: 100%;
   padding: 14px 16px;
   border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  background: #fff;
-  color: #000;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--ink);
   outline: none;
   font-size: 14px;
   transition: all 0.25s var(--ease-out);
@@ -1821,18 +1395,17 @@ body[data-skin="landing"] .landingRight {
 }
 
 .input::placeholder {
-  color: rgba(0, 0, 0, 0.44);
+  color: var(--ink3);
 }
 
 .input:hover {
-  border-color: rgba(0, 0, 0, 0.22);
+  border-color: var(--line-strong);
 }
 
 .input:focus {
-  border-color: #000;
-  background: #fff;
-  box-shadow:
-    0 0 0 4px var(--accentGlow);
+  border-color: var(--input-focus);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: var(--focus-ring);
 }
 
 .row {
@@ -1844,9 +1417,9 @@ body[data-skin="landing"] .landingRight {
 
 .btn {
   appearance: none;
-  border: 1px solid var(--border);
-  background: #fff;
-  color: #000;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--ink);
   border-radius: var(--radius-md);
   padding: 14px 22px;
   font-weight: 600;
@@ -1854,9 +1427,11 @@ body[data-skin="landing"] .landingRight {
   font-size: 14px;
   cursor: pointer;
   transition: all 0.25s var(--ease-out);
-  box-shadow: none;
+  box-shadow: 0 4px 14px rgba(96, 74, 52, 0.08);
   position: relative;
   overflow: hidden;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
 .btn::before {
@@ -1869,9 +1444,10 @@ body[data-skin="landing"] .landingRight {
 }
 
 .btn:hover {
-  border-color: #000;
-  box-shadow: none;
+  border-color: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 6px 18px rgba(96, 74, 52, 0.1);
   transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.85);
 }
 
 .btn:active {
@@ -1880,10 +1456,10 @@ body[data-skin="landing"] .landingRight {
 }
 
 .btnPrimary {
-  background: #000;
+  background: var(--ink);
   color: #fff;
-  border: 1px solid #000;
-  box-shadow: none;
+  border: 1px solid transparent;
+  box-shadow: 0 10px 28px rgba(20, 20, 20, 0.18);
   font-weight: 650;
   margin-top: 32px;
   padding: 16px 32px;
@@ -1895,20 +1471,22 @@ body[data-skin="landing"] .landingRight {
 }
 
 .btnPrimary:hover {
-  box-shadow: none;
+  box-shadow: 0 14px 34px rgba(20, 20, 20, 0.22);
   transform: translateY(-1px);
+  background: #000;
+  border-color: transparent;
 }
 
 .btnMuted {
-  background: #fff;
-  color: #000;
-  border-color: var(--border);
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--ink);
+  border-color: rgba(255, 255, 255, 0.85);
   box-shadow: none;
 }
 
 .btnMuted:hover {
-  background: #fff;
-  border-color: #000;
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(255, 255, 255, 0.95);
 }
 
 .divider {
@@ -1931,11 +1509,11 @@ body[data-skin="landing"] .landingRight {
 }
 
 .error {
-  border: 1px dashed var(--fg);
-  background: #fff;
+  border: 1px dashed rgba(179, 54, 31, 0.35);
+  background: var(--errorBg);
   border-radius: var(--radius-md);
   padding: 14px 16px;
-  color: var(--fg);
+  color: var(--error);
 }
 
 /* ========================================
@@ -1980,10 +1558,13 @@ body[data-skin="landing"] .landingRight {
 
  .commitLayout {
    gap: 0;
-   border: 1px solid var(--border);
+   border: 1px solid var(--glass-border);
    border-radius: 18px;
    overflow: hidden;
-   background: #fff;
+   background: var(--glass-bg);
+   backdrop-filter: var(--glass-blur);
+   -webkit-backdrop-filter: var(--glass-blur);
+   box-shadow: var(--glass-shadow);
  }
 
  .commitLayout > .commitSurface {
@@ -2014,57 +1595,13 @@ body[data-skin="landing"] .landingRight {
  }
 
 .commitSurface {
-  border: 1px solid var(--border);
-  background: #fff;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
   border-radius: 18px;
   padding: 14px;
-  box-shadow: none;
-  backdrop-filter: none;
-}
-
-body[data-skin="landing"] .globalNav {
-  background: rgba(0, 0, 0, 0.92);
-  border-bottom-color: rgba(255, 255, 255, 0.16);
-}
-
-body[data-skin="landing"] .globalNavLink::after {
-  background: #fff;
-}
-
-body[data-skin="landing"] .globalNavLinkPrimary {
-  background: #fff;
-  color: #000;
-  border-color: #fff;
-}
-
-body[data-skin="landing"] .appShellNav,
-body[data-skin="landing"] .appShellTopbar {
-  background: rgba(0, 0, 0, 0.72);
-  border-color: rgba(255, 255, 255, 0.16);
-}
-
-body[data-skin="landing"] .appShellTopbarBtn,
-body[data-skin="landing"] .appShellTopbarBtn:hover {
-  background: rgba(0, 0, 0, 0.0);
-  border-color: rgba(255, 255, 255, 0.22);
-  color: rgba(255, 255, 255, 0.74);
-}
-
-body[data-skin="landing"] .btn {
-  background: rgba(0, 0, 0, 0.0);
-  border-color: rgba(255, 255, 255, 0.26);
-  color: #fff;
-}
-
-body[data-skin="landing"] .btnPrimary {
-  background: #fff;
-  border-color: #fff;
-  color: #000;
-}
-
-body[data-skin="landing"] .commitSurface {
-  background: rgba(0, 0, 0, 0.0);
-  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: var(--glass-shadow-soft);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
 }
 
 .commitSurfaceMain {
@@ -2080,8 +1617,8 @@ body[data-skin="landing"] .commitSurface {
   margin: 0 0 14px;
   border-radius: 12px;
   border: 1px solid var(--glass-divider);
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.78);
+  background: var(--fill-strong);
+  color: var(--ink2);
 }
 
 .closedBetaNoticeText {
@@ -2090,7 +1627,7 @@ body[data-skin="landing"] .commitSurface {
 }
 
 .closedBetaNoticeEm {
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
   font-weight: 750;
 }
 
@@ -2098,7 +1635,7 @@ body[data-skin="landing"] .commitSurface {
   appearance: none;
   border: 0;
   background: transparent;
-  color: rgba(255, 255, 255, 0.70);
+  color: var(--ink2);
   width: 28px;
   height: 28px;
   border-radius: 999px;
@@ -2108,8 +1645,8 @@ body[data-skin="landing"] .commitSurface {
 }
 
 .closedBetaNoticeClose:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.92);
+  background: var(--fill-strong);
+  color: var(--ink);
 }
 
 /* Beta Notice Card (dismissible) */
@@ -2121,8 +1658,8 @@ body[data-skin="landing"] .commitSurface {
   padding: 16px 20px;
   margin-bottom: 20px;
   border-radius: 14px;
-  border: 1px solid rgba(96, 165, 250, 0.25);
-  background: rgba(96, 165, 250, 0.08);
+  border: 1px solid rgba(47, 95, 179, 0.26);
+  background: rgba(47, 95, 179, 0.09);
 }
 
 .betaNoticeClose {
@@ -2136,15 +1673,15 @@ body[data-skin="landing"] .commitSurface {
   justify-content: center;
   border: none;
   background: transparent;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--ink3);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .betaNoticeClose:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.9);
+  background: var(--fill-strong);
+  color: var(--ink);
 }
 
 .betaNoticeClose svg {
@@ -2160,13 +1697,13 @@ body[data-skin="landing"] .commitSurface {
   align-items: center;
   justify-content: center;
   border-radius: 10px;
-  background: rgba(96, 165, 250, 0.15);
+  background: rgba(47, 95, 179, 0.09);
 }
 
 .betaNoticeIcon svg {
   width: 22px;
   height: 22px;
-  stroke: rgba(96, 165, 250, 0.9);
+  stroke: #2f5fb3;
 }
 
 .betaNoticeContent {
@@ -2178,19 +1715,19 @@ body[data-skin="landing"] .commitSurface {
 .betaNoticeTitle {
   font-size: 15px;
   font-weight: 650;
-  color: rgba(255, 255, 255, 0.95);
+  color: var(--ink);
   margin: 0 0 6px;
 }
 
 .betaNoticeText {
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--ink2);
   margin: 0;
   line-height: 1.5;
 }
 
 .betaNoticeText strong {
-  color: rgba(96, 165, 250, 0.95);
+  color: #2f5fb3;
   font-weight: 600;
 }
 
@@ -2223,8 +1760,8 @@ body[data-skin="landing"] .commitSurface {
 
 .commitWizardStep {
   appearance: none;
-  border: 1px solid var(--border);
-  background: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.6);
   border-radius: 999px;
   padding: 8px 10px;
   cursor: pointer;
@@ -2236,7 +1773,7 @@ body[data-skin="landing"] .commitSurface {
 
 .commitWizardStep:hover {
   transform: translateY(-1px);
-  border-color: var(--fg);
+  border-color: var(--line-strong);
 }
 
 .commitWizardStep:active {
@@ -2296,9 +1833,9 @@ body[data-skin="landing"] .commitSurface {
 
 .commitQuick {
   appearance: none;
-  border: 1px solid var(--border);
-  background: #fff;
-  color: #000;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--ink);
   border-radius: 999px;
   padding: 8px 10px;
   font-size: 12px;
@@ -2309,7 +1846,8 @@ body[data-skin="landing"] .commitSurface {
 
 .commitQuick:hover {
   transform: translateY(-1px);
-  border-color: #000;
+  border-color: rgba(20, 20, 20, 0.3);
+  background: rgba(255, 255, 255, 0.85);
 }
 
 .commitQuick:active {
@@ -2320,7 +1858,7 @@ body[data-skin="landing"] .commitSurface {
   border: 1px dashed var(--border);
   border-radius: var(--radius-md);
   padding: 14px 16px;
-  background: rgba(0, 0, 0, 0.02);
+  background: var(--fill);
 }
 
 .commitIssue {
@@ -2360,18 +1898,18 @@ body[data-skin="landing"] .commitSurface {
   padding: 8px 10px;
   border-radius: 999px;
   border: 1px solid var(--border);
-  color: rgba(0, 0, 0, 0.62);
-  background: #fff;
+  color: var(--ink2);
+  background: rgba(255, 255, 255, 0.6);
 }
 
 .commitPreviewChipReward {
-  border-color: #000;
-  color: #000;
+  border-color: rgba(20, 20, 20, 0.3);
+  color: var(--ink);
 }
 
 .commitPreviewChipReady {
-  background: #000;
-  border-color: #000;
+  background: var(--ink);
+  border-color: var(--ink);
   color: #fff;
 }
 
@@ -2415,7 +1953,7 @@ body[data-skin="landing"] .commitSurface {
 .commitPreviewIssues {
   margin-top: 14px;
   border: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.03);
+  background: var(--fill);
   border-radius: var(--radius-md);
   padding: 12px 12px;
 }
@@ -2479,9 +2017,9 @@ body[data-skin="landing"] .commitSurface {
 .commitError {
   padding: 16px 20px;
   border-radius: 16px;
-  background: #fff;
-  border: 1px dashed var(--fg);
-  color: var(--fg);
+  background: var(--errorBg);
+  border: 1px dashed rgba(179, 54, 31, 0.35);
+  color: var(--error);
   font-size: 14px;
   font-weight: 500;
   backdrop-filter: none;
@@ -2535,14 +2073,8 @@ body[data-skin="landing"] .commitSurface {
   gap: 24px;
 }
 
- body[data-skin="app"] .commitLayout,
- body[data-skin="app"] .timelineWrap {
-   background: rgba(0, 0, 0, 0.88);
-   border-color: rgba(255, 255, 255, 0.12);
- }
-
  body[data-skin="app"] .commitSide {
-   border-left-color: rgba(255, 255, 255, 0.14);
+   border-left-color: var(--line);
  }
 
  body[data-skin="app"] .commitSide .commitSurface + .commitSurface,
@@ -2550,81 +2082,93 @@ body[data-skin="landing"] .commitSurface {
  body[data-skin="app"] .timelineControls,
  body[data-skin="app"] .timelineEmpty,
  body[data-skin="app"] .timelineRail > .timelineReceipt {
-   border-color: rgba(255, 255, 255, 0.14);
+   border-color: var(--line);
  }
 
  body[data-skin="app"] .timelineReceipt:hover {
-   background: rgba(255, 255, 255, 0.03);
+   background: var(--glass-bg-strong);
  }
 
 body[data-skin="app"] .appShellNav,
 body[data-skin="app"] .appShellTopbar {
-  background: rgba(0, 0, 0, 0.72);
-  border-color: rgba(255, 255, 255, 0.16);
+  background: var(--glass-bg);
+  border-color: var(--glass-border);
 }
 
 body[data-skin="app"] .panel {
-  background: rgba(0, 0, 0, 0.88);
-  border-color: rgba(255, 255, 255, 0.12);
+  background: var(--glass-bg);
+  border-color: var(--glass-border);
 }
 
 body[data-skin="app"] .btn {
-  background: rgba(0, 0, 0, 0.0);
-  border-color: rgba(255, 255, 255, 0.18);
-  color: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.6);
+  border-color: rgba(255, 255, 255, 0.85);
+  color: var(--ink);
 }
 
 body[data-skin="app"] .btn:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.26);
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(255, 255, 255, 0.95);
+  color: var(--ink);
+}
+
+body[data-skin="app"] .btnPrimary {
+  background: var(--ink);
+  border-color: transparent;
+  color: #fff;
+}
+
+body[data-skin="app"] .btnPrimary:hover {
+  background: #000;
+  border-color: transparent;
   color: #fff;
 }
 
 body[data-skin="app"] .input {
-  background: rgba(0, 0, 0, 0.72);
-  border-color: rgba(255, 255, 255, 0.16);
-  color: #fff;
+  background: var(--input-bg);
+  border-color: var(--input-border);
+  color: var(--ink);
 }
 
 body[data-skin="app"] .input:hover {
-  border-color: rgba(255, 255, 255, 0.22);
+  border-color: var(--line-strong);
 }
 
 body[data-skin="app"] .input:focus {
-  border-color: rgba(255, 255, 255, 0.38);
-  background: rgba(0, 0, 0, 0.72);
-  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.10);
+  border-color: var(--input-focus);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: var(--focus-ring);
 }
 
 body[data-skin="app"] .appShellBrandText,
 body[data-skin="app"] .appShellNavFoot {
-  color: rgba(255, 255, 255, 0.68);
+  color: var(--ink2);
 }
 
 body[data-skin="app"] .appShellNavItem {
-  color: rgba(255, 255, 255, 0.68);
+  color: var(--ink2);
 }
 
 body[data-skin="app"] .appShellNavItem:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.06);
+  color: var(--ink);
+  background: var(--fill-strong);
 }
 
 body[data-skin="app"] .appShellNavItemActive {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink);
+  background: var(--fill-strong);
 }
 
 body[data-skin="app"] .appShellTopbarBtn {
-  background: rgba(0, 0, 0, 0.0);
-  border-color: rgba(255, 255, 255, 0.18);
-  color: rgba(255, 255, 255, 0.74);
+  background: rgba(255, 255, 255, 0.6);
+  border-color: rgba(255, 255, 255, 0.85);
+  color: var(--ink2);
 }
 
 body[data-skin="app"] .appShellTopbarBtn:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.26);
-  color: #fff;
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(255, 255, 255, 0.95);
+  color: var(--ink);
 }
 
 body[data-skin="app"] .commitBrandMark,
@@ -2635,22 +2179,20 @@ body[data-skin="app"] .timelineHeroMarkImg {
 body[data-skin="app"] .commitSurface,
 body[data-skin="app"] .timelineControls,
 body[data-skin="app"] .timelineReceipt,
-body[data-skin="app"] .timelineError,
 body[data-skin="app"] .timelineEmpty,
-body[data-skin="app"] .commitError,
 body[data-skin="app"] .commitMilestone,
 body[data-skin="app"] .commitCard,
 body[data-skin="app"] .commitListItem,
 body[data-skin="app"] .commitListItemDetail {
-  background: rgba(0, 0, 0, 0.88);
-  border-color: rgba(255, 255, 255, 0.12);
+  background: var(--glass-bg);
+  border-color: var(--glass-border);
 }
 
 body[data-skin="app"] .commitInput,
 body[data-skin="app"] .timelineSearch,
 body[data-skin="app"] .timelineSelect {
-  background: rgba(0, 0, 0, 0.35);
-  border-color: rgba(255, 255, 255, 0.12);
+  background: var(--input-bg);
+  border-color: var(--input-border);
   color: var(--fg);
   border-radius: 10px;
   font-size: 14px;
@@ -2658,14 +2200,15 @@ body[data-skin="app"] .timelineSelect {
 }
 
 body[data-skin="app"] .timelineSearch::placeholder {
-  color: rgba(255, 255, 255, 0.40);
+  color: var(--ink3);
 }
 
 body[data-skin="app"] .commitInput:focus,
 body[data-skin="app"] .timelineSearch:focus {
-  border-color: rgba(255, 255, 255, 0.25);
-  box-shadow: none;
+  border-color: var(--input-focus);
+  box-shadow: var(--focus-ring);
   outline: none;
+  background: rgba(255, 255, 255, 0.82);
 }
 
 body[data-skin="app"] .commitWizardStep,
@@ -2674,20 +2217,21 @@ body[data-skin="app"] .commitBtnSecondary,
 body[data-skin="app"] .commitBtnTertiary,
 body[data-skin="app"] .timelineActionBtn,
 body[data-skin="app"] .timelineRefresh {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.80);
+  background: rgba(255, 255, 255, 0.6);
+  border-color: rgba(255, 255, 255, 0.85);
+  color: var(--ink);
   border-radius: 8px;
   padding: 8px 14px;
   font-size: 13px;
   font-weight: 500;
+  box-shadow: 0 2px 10px rgba(96, 74, 52, 0.06);
 }
 
 body[data-skin="app"] .timelineActionBtn:hover,
 body[data-skin="app"] .timelineRefresh:hover {
-  background: rgba(255, 255, 255, 0.10);
-  border-color: rgba(255, 255, 255, 0.18);
-  color: #fff;
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(255, 255, 255, 0.95);
+  color: var(--ink);
 }
 
 body[data-skin="app"] .timelineActionBtn:disabled,
@@ -2697,25 +2241,25 @@ body[data-skin="app"] .timelineRefresh:disabled {
 }
 
 body[data-skin="app"] .commitWizardStepIndex {
-  border-color: rgba(255, 255, 255, 0.18);
-  color: rgba(255, 255, 255, 0.72);
+  border-color: var(--line);
+  color: var(--ink2);
 }
 
 body[data-skin="app"] .commitWizardStepLabel {
-  color: rgba(255, 255, 255, 0.62);
+  color: var(--ink2);
 }
 
 body[data-skin="app"] .commitWizardStepActive {
-  border-color: rgba(255, 255, 255, 0.38);
+  border-color: var(--ink);
 }
 
 body[data-skin="app"] .commitWizardStepActive .commitWizardStepIndex {
-  border-color: rgba(255, 255, 255, 0.38);
-  color: #fff;
+  border-color: var(--ink);
+  color: var(--ink);
 }
 
 body[data-skin="app"] .commitWizardStepActive .commitWizardStepLabel {
-  color: #fff;
+  color: var(--ink);
 }
 
  .tokenBadge {
@@ -2723,9 +2267,9 @@ body[data-skin="app"] .commitWizardStepActive .commitWizardStepLabel {
    align-items: center;
    gap: 10px;
    padding: 10px 12px;
-   border: 1px solid rgba(255, 255, 255, 0.14);
+   border: 1px solid var(--line);
    border-radius: 14px;
-   background: rgba(255, 255, 255, 0.06);
+   background: var(--fill-strong);
  }
 
  .tokenBadgeIcon {
@@ -2741,7 +2285,7 @@ body[data-skin="app"] .commitWizardStepActive .commitWizardStepLabel {
    position: absolute;
    inset: 0;
    border-radius: 12px;
-   background: linear-gradient(135deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.06));
+   background: linear-gradient(135deg, rgba(20, 20, 20, 0.1), rgba(20, 20, 20, 0.04));
  }
 
  .tokenBadgeImg {
@@ -2763,7 +2307,7 @@ body[data-skin="app"] .commitWizardStepActive .commitWizardStepLabel {
    font-size: 13px;
    font-weight: 750;
    letter-spacing: -0.01em;
-   color: rgba(255, 255, 255, 0.92);
+   color: var(--ink);
    white-space: nowrap;
    overflow: hidden;
    text-overflow: ellipsis;
@@ -2772,7 +2316,7 @@ body[data-skin="app"] .commitWizardStepActive .commitWizardStepLabel {
  .tokenBadgeSubtitle {
    font-size: 12px;
    font-weight: 650;
-   color: rgba(255, 255, 255, 0.62);
+   color: var(--ink2);
    white-space: nowrap;
    overflow: hidden;
    text-overflow: ellipsis;
@@ -2780,18 +2324,18 @@ body[data-skin="app"] .commitWizardStepActive .commitWizardStepLabel {
 
  .commitInlineNotice {
    border: 1px solid var(--glass-divider);
-   background: rgba(255, 255, 255, 0.04);
+   background: var(--fill);
    border-radius: 14px;
    padding: 10px 12px;
    font-size: 12px;
    line-height: 1.45;
-   color: rgba(255, 255, 255, 0.72);
+   color: var(--ink2);
  }
 
 body[data-skin="app"] .timelineFilter {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.10);
-  color: rgba(255, 255, 255, 0.60);
+  background: var(--fill);
+  border-color: var(--line);
+  color: var(--ink2);
   border-radius: 8px;
   padding: 8px 14px;
   font-size: 13px;
@@ -2799,28 +2343,28 @@ body[data-skin="app"] .timelineFilter {
 }
 
 body[data-skin="app"] .timelineFilterActive {
-  background: #fff;
-  border-color: #fff;
-  color: #000;
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #fff;
 }
 
 body[data-skin="app"] .timelineFilter:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.16);
-  color: rgba(255, 255, 255, 0.85);
+  background: var(--fill-strong);
+  border-color: var(--line);
+  color: var(--ink);
 }
 
 body[data-skin="app"] .timelineFilterActive {
-  background: rgba(255, 255, 255, 0.95);
-  border-color: rgba(255, 255, 255, 0.95);
-  color: #000;
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #fff;
   font-weight: 600;
 }
 
 body[data-skin="app"] .timelineFilterActive:hover {
-  background: #fff;
-  border-color: #fff;
-  color: #000;
+  background: #000;
+  border-color: #000;
+  color: #fff;
 }
 
 body[data-skin="app"] .timelineFilter:disabled {
@@ -2831,34 +2375,35 @@ body[data-skin="app"] .timelineFilter:disabled {
 
 body[data-skin="app"] .timelineChip {
   background: transparent;
-  border-color: rgba(255, 255, 255, 0.14);
-  color: rgba(255, 255, 255, 0.60);
+  border-color: var(--line);
+  color: var(--ink2);
 }
 
 body[data-skin="app"] .timelineChipReward {
-  border-color: rgba(255, 255, 255, 0.40);
-  color: rgba(255, 255, 255, 0.92);
+  border-color: rgba(20, 20, 20, 0.28);
+  color: var(--ink);
 }
 
 body[data-skin="app"] .commitTypeCard {
-  background: rgba(0, 0, 0, 0.0);
-  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.5);
+  border-color: rgba(255, 255, 255, 0.85);
 }
 
 body[data-skin="app"] .commitTypeCard:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.75);
 }
 
 body[data-skin="app"] .commitTypeCardActive {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.92);
+  border-color: var(--ink);
 }
 
 .timelineError {
   padding: 16px 20px;
   border-radius: 16px;
-  background: #fff;
-  border: 1px dashed var(--fg);
-  color: var(--fg);
+  background: var(--errorBg);
+  border: 1px dashed rgba(179, 54, 31, 0.35);
+  color: var(--error);
   font-size: 14px;
   font-weight: 500;
 }
@@ -2871,8 +2416,8 @@ body[data-skin="app"] .commitTypeCardActive {
   align-items: center;
   gap: 14px;
   overflow: visible;
-  background: linear-gradient(180deg, rgba(255,255,255,0.03) 0%, transparent 100%);
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.35) 0%, transparent 100%);
+  border-bottom: 1px solid var(--line);
   margin-bottom: 8px;
 }
 
@@ -2882,9 +2427,9 @@ body[data-skin="app"] .commitTypeCardActive {
   overflow: visible;
   opacity: 1;
   padding: 12px;
-  background: rgba(255,255,255,0.04);
+  background: var(--fill);
   border-radius: 16px;
-  border: 1px solid rgba(255,255,255,0.08);
+  border: 1px solid var(--line);
 }
 
 .timelineHeroTitle {
@@ -2894,7 +2439,7 @@ body[data-skin="app"] .commitTypeCardActive {
   letter-spacing: -0.035em;
   line-height: 1.05;
   color: var(--fg);
-  background: linear-gradient(180deg, #fff 20%, rgba(255,255,255,0.75) 100%);
+  background: linear-gradient(180deg, #141414 20%, rgba(20, 20, 20, 0.72) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -2904,20 +2449,23 @@ body[data-skin="app"] .commitTypeCardActive {
   margin: 0;
   font-size: 15px;
   line-height: 1.55;
-  color: rgba(255,255,255,0.6);
+  color: var(--ink2);
   max-width: 52ch;
   font-weight: 450;
 }
 
 .timelineControls {
-  border: 1px solid var(--border);
+  border: 1px solid var(--glass-border);
   border-radius: 16px;
-  background: #fff;
+  background: var(--glass-bg);
   padding: 14px 16px;
   display: flex;
   flex-direction: column;
   gap: 12px;
   margin-top: 8px;
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow-soft);
 }
 
 .timelineFilterRow {
@@ -2942,7 +2490,7 @@ body[data-skin="app"] .commitTypeCardActive {
 }
 
 .timelineFilter:hover {
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--fill);
   border-color: var(--border);
   color: var(--fg);
 }
@@ -2964,47 +2512,49 @@ body[data-skin="app"] .commitTypeCardActive {
 .timelineSearch {
   width: 100%;
   appearance: none;
-  border: 1px solid var(--border);
+  border: 1px solid var(--input-border);
   border-radius: 12px;
   padding: 12px 12px;
   font-size: 14px;
   font-weight: 550;
-  background: #fff;
-  color: #000;
+  background: var(--input-bg);
+  color: var(--ink);
   outline: none;
 }
 
 .timelineSearch:focus {
-  border-color: #000;
+  border-color: var(--input-focus);
+  box-shadow: var(--focus-ring);
 }
 
 .timelineSelect {
   appearance: none;
-  border: 1px solid var(--border);
+  border: 1px solid var(--input-border);
   border-radius: 12px;
   padding: 12px 12px;
   font-size: 13px;
   font-weight: 650;
-  background: #fff;
-  color: #000;
+  background: var(--input-bg);
+  color: var(--ink);
 }
 
 .timelineRefresh {
   appearance: none;
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.85);
   border-radius: 12px;
   padding: 12px 14px;
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
-  background: #fff;
-  color: #000;
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--ink);
   transition: transform 0.2s var(--ease-out), border-color 0.2s var(--ease-out);
 }
 
 .timelineRefresh:hover {
   transform: translateY(-1px);
-  border-color: #000;
+  border-color: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.85);
 }
 
 .timelineEmpty {
@@ -3012,7 +2562,7 @@ body[data-skin="app"] .commitTypeCardActive {
   border-radius: 18px;
   border: 1px dashed var(--border);
   color: var(--muted);
-  background: rgba(0, 0, 0, 0.02);
+  background: var(--fill);
   text-align: center;
 }
 
@@ -3026,21 +2576,21 @@ body[data-skin="app"] .commitTypeCardActive {
 .timelineReceipt {
   border: 1px solid var(--border);
   border-radius: 16px;
-  background: rgba(255,255,255,0.02);
+  background: var(--fill);
   overflow: hidden;
   transition: all 0.18s var(--ease-out);
   position: relative;
 }
 
 .timelineReceipt:hover {
-  border-color: rgba(0, 0, 0, 0.28);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  border-color: var(--line-strong);
+  box-shadow: 0 2px 8px rgba(96, 74, 52, 0.06);
 }
 
 body[data-skin="app"] .timelineReceipt:hover {
-  border-color: rgba(255, 255, 255, 0.28);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
-  background: rgba(255,255,255,0.04);
+  border-color: var(--line-strong);
+  box-shadow: 0 4px 20px rgba(96, 74, 52, 0.07);
+  background: var(--glass-bg-strong);
   transform: translateY(-1px);
 }
 
@@ -3058,7 +2608,7 @@ body[data-skin="app"] .timelineReceipt:hover {
 }
 
 .timelineReceiptTop:focus-visible {
-  outline: 2px solid rgba(255, 255, 255, 0.34);
+  outline: 2px solid var(--line-strong);
   outline-offset: 3px;
   border-radius: 16px;
 }
@@ -3093,8 +2643,8 @@ body[data-skin="app"] .timelineReceipt:hover {
 }
 
 .timelineActorAvatarFallback {
-  background: linear-gradient(135deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.04) 100%);
-  border: 1px solid rgba(255,255,255,0.12);
+  background: linear-gradient(135deg, rgba(20, 20, 20, 0.08) 0%, rgba(20, 20, 20, 0.03) 100%);
+  border: 1px solid var(--line);
 }
 
 .timelineActorName {
@@ -3125,8 +2675,8 @@ body[data-skin="app"] .timelineReceipt:hover {
 .timelineQuickLinkBtn {
   appearance: none;
   border: 1px solid var(--glass-divider);
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.78);
+  background: var(--fill);
+  color: var(--ink2);
   padding: 6px 12px;
   border-radius: 6px;
   font-size: 11px;
@@ -3137,9 +2687,9 @@ body[data-skin="app"] .timelineReceipt:hover {
 }
 
 .timelineQuickLinkBtn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.24);
-  color: #fff;
+  background: var(--fill-strong);
+  border-color: var(--line-strong);
+  color: var(--ink);
 }
 
 .timelineQuickLinkAnchor {
@@ -3147,8 +2697,8 @@ body[data-skin="app"] .timelineReceipt:hover {
   align-items: center;
   gap: 6px;
   border: 1px solid var(--glass-divider);
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.78);
+  background: var(--fill);
+  color: var(--ink2);
   padding: 6px 12px;
   border-radius: 6px;
   font-size: 11px;
@@ -3160,9 +2710,9 @@ body[data-skin="app"] .timelineReceipt:hover {
 }
 
 .timelineQuickLinkAnchor:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.24);
-  color: #fff;
+  background: var(--fill-strong);
+  border-color: var(--line-strong);
+  color: var(--ink);
 }
 
 .timelineProjectMeta {
@@ -3171,8 +2721,8 @@ body[data-skin="app"] .timelineReceipt:hover {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.08);
+  background: var(--fill);
+  border: 1px solid var(--line);
   border-radius: 12px;
 }
 
@@ -3188,8 +2738,8 @@ body[data-skin="app"] .timelineReceipt:hover {
   height: 34px;
   border-radius: 10px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--line);
+  background: var(--fill-strong);
   position: relative;
   flex-shrink: 0;
 }
@@ -3197,9 +2747,7 @@ body[data-skin="app"] .timelineReceipt:hover {
 .tokenBadgeFallback {
   position: absolute;
   inset: 0;
-  background:
-    radial-gradient(18px 18px at 30% 30%, rgba(255,255,255,0.18), rgba(255,255,255,0) 65%),
-    radial-gradient(18px 18px at 70% 70%, rgba(255,255,255,0.14), rgba(255,255,255,0) 65%);
+  background: linear-gradient(135deg, rgba(20, 20, 20, 0.1), rgba(20, 20, 20, 0.04));
   opacity: 1;
 }
 
@@ -3222,7 +2770,7 @@ body[data-skin="app"] .timelineReceipt:hover {
   font-size: 14px;
   font-weight: 750;
   letter-spacing: -0.01em;
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3231,20 +2779,20 @@ body[data-skin="app"] .timelineReceipt:hover {
 .tokenBadgeSubtitle {
   font-size: 12px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.62);
+  color: var(--ink2);
 }
 
 .timelineProjectName {
   font-size: 15px;
   font-weight: 700;
   letter-spacing: -0.015em;
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
 }
 
 .timelineProjectWebsite {
   font-size: 12px;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.60);
+  color: var(--ink2);
   text-decoration: none;
   word-break: break-all;
 }
@@ -3255,7 +2803,7 @@ body[data-skin="app"] .timelineReceipt:hover {
 
 .timelineProjectDesc {
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.68);
+  color: var(--ink2);
   line-height: 1.45;
   margin-top: 4px;
 }
@@ -3275,16 +2823,16 @@ body[data-skin="app"] .timelineReceipt:hover {
   width: 30px;
   height: 30px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.70);
+  background: var(--fill-strong);
+  border: 1px solid var(--line);
+  color: var(--ink2);
   transition: all 0.15s ease;
 }
 
 .timelineSocialLink:hover {
-  background: rgba(255, 255, 255, 0.15);
-  border-color: rgba(255, 255, 255, 0.25);
-  color: #fff;
+  background: rgba(20, 20, 20, 0.08);
+  border-color: var(--line-strong);
+  color: var(--ink);
   transform: scale(1.05);
 }
 
@@ -3305,14 +2853,16 @@ body[data-skin="app"] .timelineReceipt:hover {
   max-width: 360px;
   padding: 10px 12px;
   border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(0, 0, 0, 0.92);
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg-strong);
+  box-shadow: var(--glass-shadow);
   opacity: 0;
   transform: translateY(-4px);
   pointer-events: none;
   transition: opacity 0.16s var(--ease-out), transform 0.16s var(--ease-out);
   z-index: 40;
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
 }
 
 .timelineQuickLink:hover .timelineQuickHover,
@@ -3327,13 +2877,13 @@ body[data-skin="app"] .timelineReceipt:hover {
   font-weight: 850;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.64);
+  color: var(--ink2);
   margin-bottom: 6px;
 }
 
 .timelineQuickHoverValue {
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.86);
+  color: var(--ink);
   word-break: break-all;
 }
 
@@ -3375,7 +2925,7 @@ body[data-skin="app"] .timelineReceipt:hover {
   font-size: 22px;
   font-weight: 700;
   letter-spacing: -0.02em;
-  color: rgba(255,255,255,0.95);
+  color: var(--ink);
 }
 
 .discoverHeaderRight {
@@ -3390,7 +2940,7 @@ body[data-skin="app"] .timelineReceipt:hover {
   gap: 16px;
   margin-top: 10px;
   font-size: 13px;
-  color: rgba(255,255,255,0.5);
+  color: var(--ink3);
 }
 
 .discoverHeaderStat {
@@ -3398,15 +2948,15 @@ body[data-skin="app"] .timelineReceipt:hover {
 }
 
 .discoverHeaderStat strong {
-  color: rgba(255,255,255,0.9);
+  color: var(--ink);
   font-weight: 700;
 }
 
 .discoverSearch {
   appearance: none;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(0,0,0,0.3);
-  color: #fff;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--ink);
   border-radius: 8px;
   padding: 9px 14px;
   font-size: 13px;
@@ -3416,19 +2966,20 @@ body[data-skin="app"] .timelineReceipt:hover {
 
 .discoverSearch:focus {
   outline: none;
-  border-color: rgba(255,255,255,0.25);
-  background: rgba(0,0,0,0.4);
+  border-color: var(--input-focus);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: var(--focus-ring);
 }
 
 .discoverSearch::placeholder {
-  color: rgba(255,255,255,0.35);
+  color: var(--ink3);
 }
 
 .discoverRefreshBtn {
   appearance: none;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(0,0,0,0.3);
-  color: rgba(255,255,255,0.7);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--ink2);
   border-radius: 8px;
   width: 38px;
   height: 38px;
@@ -3441,8 +2992,8 @@ body[data-skin="app"] .timelineReceipt:hover {
 }
 
 .discoverRefreshBtn:hover {
-  background: rgba(255,255,255,0.08);
-  color: #fff;
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--ink);
 }
 
 .discoverRefreshBtn:disabled {
@@ -3455,14 +3006,14 @@ body[data-skin="app"] .timelineReceipt:hover {
   align-items: center;
   gap: 4px;
   padding: 12px 0;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
+  border-bottom: 1px solid var(--line);
 }
 
 .discoverTab {
   appearance: none;
   border: none;
   background: transparent;
-  color: rgba(255,255,255,0.5);
+  color: var(--ink3);
   font-size: 13px;
   font-weight: 600;
   padding: 8px 14px;
@@ -3472,13 +3023,13 @@ body[data-skin="app"] .timelineReceipt:hover {
 }
 
 .discoverTab:hover {
-  color: rgba(255,255,255,0.8);
-  background: rgba(255,255,255,0.05);
+  color: var(--ink2);
+  background: var(--fill);
 }
 
 .discoverTabActive {
-  color: #fff;
-  background: rgba(255,255,255,0.1);
+  color: var(--ink);
+  background: var(--fill-strong);
 }
 
 .discoverTabSpacer {
@@ -3487,9 +3038,9 @@ body[data-skin="app"] .timelineReceipt:hover {
 
 .discoverSortSelect {
   appearance: none;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(0,0,0,0.3);
-  color: rgba(255,255,255,0.7);
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--ink2);
   border-radius: 6px;
   padding: 8px 12px;
   font-size: 12px;
@@ -3504,21 +3055,24 @@ body[data-skin="app"] .timelineReceipt:hover {
 }
 
 .discoverCard {
-  border: 1px solid rgba(255,255,255,0.10);
-  background: rgba(0,0,0,0.25);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
   border-radius: 14px;
   padding: 16px;
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
   flex-direction: column;
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow-soft);
 }
 
 .discoverCard:hover {
-  border-color: rgba(255,255,255,0.18);
-  background: rgba(0,0,0,0.35);
+  border-color: var(--glass-border-strong);
+  background: var(--glass-bg-strong);
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  box-shadow: var(--glass-shadow);
 }
 
 .discoverCardDisabled {
@@ -3553,10 +3107,10 @@ body[data-skin="app"] .timelineReceipt:hover {
   width: 52px;
   height: 52px;
   border-radius: 12px;
-  background: linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.05));
+  background: linear-gradient(135deg, rgba(20, 20, 20, 0.07), rgba(20, 20, 20, 0.03));
   flex-shrink: 0;
   overflow: hidden;
-  border: 1px solid rgba(255,255,255,0.08);
+  border: 1px solid var(--line);
 }
 
 .discoverCardImg img {
@@ -3576,7 +3130,7 @@ body[data-skin="app"] .timelineReceipt:hover {
   gap: 6px;
   font-size: 15px;
   font-weight: 600;
-  color: rgba(255,255,255,0.95);
+  color: var(--ink);
   min-width: 0;
 }
 
@@ -3592,7 +3146,7 @@ body[data-skin="app"] .timelineReceipt:hover {
   flex-shrink: 0;
   font-size: 12px;
   font-weight: 500;
-  color: rgba(255,255,255,0.45);
+  color: var(--ink3);
 }
 
 .discoverCardMeta {
@@ -3600,7 +3154,7 @@ body[data-skin="app"] .timelineReceipt:hover {
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: rgba(255,255,255,0.45);
+  color: var(--ink3);
   margin-top: 3px;
 }
 
@@ -3614,22 +3168,22 @@ body[data-skin="app"] .timelineReceipt:hover {
 }
 
 .discoverCardStatus--active {
-  color: rgba(96, 165, 250, 0.9);
+  color: #2f5fb3;
 }
 
 .discoverCardStatus--shipped {
-  color: rgba(134, 239, 172, 0.9);
+  color: var(--success);
 }
 
 .discoverCardStatus--failed {
-  color: rgba(251, 146, 60, 0.9);
+  color: var(--warning);
 }
 
 .discoverCardBadge {
   flex-shrink: 0;
   text-align: right;
   padding: 6px 10px;
-  background: rgba(34, 197, 94, 0.12);
+  background: var(--successBg);
   border-radius: 8px;
 }
 
@@ -3641,21 +3195,21 @@ body[data-skin="app"] .timelineReceipt:hover {
 .discoverCardEscrowVal {
   font-size: 15px;
   font-weight: 700;
-  color: rgba(134, 239, 172, 0.95);
+  color: var(--success);
 }
 
 .discoverCardEscrowUnit {
   margin-left: 3px;
   font-size: 11px;
   font-weight: 600;
-  color: rgba(134, 239, 172, 0.6);
+  color: rgba(31, 122, 82, 0.72);
 }
 
 .discoverCardDesc {
   margin-top: 12px;
   font-size: 13px;
   line-height: 1.5;
-  color: rgba(255,255,255,0.6);
+  color: var(--ink2);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   line-clamp: 2;
@@ -3689,17 +3243,17 @@ body[data-skin="app"] .timelineReceipt:hover {
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: rgba(255,255,255,0.4);
+  color: var(--ink3);
 }
 
 .discoverCardStatValue {
   font-size: 14px;
   font-weight: 700;
-  color: rgba(255,255,255,0.9);
+  color: var(--ink);
 }
 
 .discoverCardStatValueGreen {
-  color: rgba(134, 239, 172, 0.95);
+  color: var(--success);
 }
 
 .discoverCardProgress {
@@ -3713,28 +3267,28 @@ body[data-skin="app"] .timelineReceipt:hover {
   flex: 1;
   height: 5px;
   border-radius: 999px;
-  background: rgba(255,255,255,0.08);
+  background: var(--fill-strong);
   overflow: hidden;
 }
 
 .discoverCardProgressFill {
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, rgba(134, 239, 172, 0.8), rgba(96, 165, 250, 0.6));
+  background: linear-gradient(90deg, rgba(31, 122, 82, 0.8), rgba(47, 95, 179, 0.6));
   transition: width 0.3s ease;
 }
 
 .discoverCardProgressLabel {
   font-size: 11px;
   font-weight: 600;
-  color: rgba(255,255,255,0.45);
+  color: var(--ink3);
   white-space: nowrap;
 }
 
 .discoverCardFoot {
   margin-top: 12px;
   padding-top: 10px;
-  border-top: 1px solid rgba(255,255,255,0.06);
+  border-top: 1px solid var(--line);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -3748,9 +3302,9 @@ body[data-skin="app"] .timelineReceipt:hover {
 
 .discoverCardCopy {
   appearance: none;
-  border: 1px solid rgba(255,255,255,0.10);
-  background: rgba(255,255,255,0.04);
-  color: rgba(255,255,255,0.7);
+  border: 1px solid var(--line);
+  background: var(--fill);
+  color: var(--ink2);
   border-radius: 6px;
   padding: 5px 8px;
   display: inline-flex;
@@ -3762,8 +3316,8 @@ body[data-skin="app"] .timelineReceipt:hover {
 }
 
 .discoverCardCopy:hover {
-  background: rgba(255,255,255,0.08);
-  border-color: rgba(255,255,255,0.18);
+  background: var(--fill-strong);
+  border-color: var(--line);
 }
 
 .discoverCardCopyLabel {
@@ -3771,16 +3325,16 @@ body[data-skin="app"] .timelineReceipt:hover {
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: rgba(255,255,255,0.45);
+  color: var(--ink3);
 }
 
 .discoverCardCopyVal {
   font-size: 11px;
-  color: rgba(255,255,255,0.75);
+  color: var(--ink2);
 }
 
 .discoverCardCopyCheck {
-  color: rgba(134, 239, 172, 0.9);
+  color: var(--success);
   font-weight: 700;
 }
 
@@ -3797,14 +3351,14 @@ body[data-skin="app"] .timelineReceipt:hover {
   width: 28px;
   height: 28px;
   border-radius: 6px;
-  background: rgba(255,255,255,0.05);
-  color: rgba(255,255,255,0.5);
+  background: var(--fill);
+  color: var(--ink3);
   transition: all 0.15s ease;
 }
 
 .discoverCardSocial:hover {
-  background: rgba(255,255,255,0.1);
-  color: rgba(255,255,255,0.9);
+  background: var(--fill-strong);
+  color: var(--ink);
 }
 
 .discoverCardSocialMuted {
@@ -3813,8 +3367,8 @@ body[data-skin="app"] .timelineReceipt:hover {
 }
 
 .discoverCardSocialMuted:hover {
-  background: rgba(255,255,255,0.05);
-  color: rgba(255,255,255,0.5);
+  background: var(--fill);
+  color: var(--ink3);
 }
 
 .discoverCardSocial svg {
@@ -3829,19 +3383,22 @@ body[data-skin="app"] .timelineReceipt:hover {
 }
 
 .spotlightCard {
-  border: 1px solid rgba(255,255,255,0.10);
-  background: rgba(0,0,0,0.25);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
   border-radius: 16px;
   overflow: hidden;
   cursor: pointer;
   transition: all 0.2s ease;
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow-soft);
 }
 
 .spotlightCard:hover {
-  border-color: rgba(255,255,255,0.18);
-  background: rgba(0,0,0,0.35);
+  border-color: var(--glass-border-strong);
+  background: var(--glass-bg-strong);
   transform: translateY(-2px);
-  box-shadow: 0 10px 28px rgba(0,0,0,0.34);
+  box-shadow: var(--glass-shadow);
 }
 
 .spotlightCardDisabled {
@@ -3857,7 +3414,7 @@ body[data-skin="app"] .timelineReceipt:hover {
 .spotlightBanner {
   position: relative;
   height: 140px;
-  background: linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
+  background: linear-gradient(135deg, rgba(20, 20, 20, 0.06), rgba(20, 20, 20, 0.02));
 }
 
 .spotlightBanner img {
@@ -3881,10 +3438,10 @@ body[data-skin="app"] .timelineReceipt:hover {
   width: 46px;
   height: 46px;
   border-radius: 12px;
-  background: linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.05));
+  background: linear-gradient(135deg, rgba(20, 20, 20, 0.07), rgba(20, 20, 20, 0.03));
   flex-shrink: 0;
   overflow: hidden;
-  border: 1px solid rgba(255,255,255,0.08);
+  border: 1px solid var(--line);
 }
 
 .spotlightPfp img {
@@ -3908,7 +3465,7 @@ body[data-skin="app"] .timelineReceipt:hover {
 .spotlightName {
   font-size: 16px;
   font-weight: 700;
-  color: rgba(255,255,255,0.96);
+  color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3919,7 +3476,7 @@ body[data-skin="app"] .timelineReceipt:hover {
   flex-shrink: 0;
   font-size: 12px;
   font-weight: 600;
-  color: rgba(255,255,255,0.55);
+  color: var(--ink2);
 }
 
 .spotlightMeta {
@@ -3927,7 +3484,7 @@ body[data-skin="app"] .timelineReceipt:hover {
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: rgba(255,255,255,0.45);
+  color: var(--ink3);
   margin-top: 3px;
 }
 
@@ -3941,43 +3498,43 @@ body[data-skin="app"] .timelineReceipt:hover {
 }
 
 .spotlightStatus--active {
-  color: rgba(96, 165, 250, 0.9);
+  color: #2f5fb3;
 }
 
 .spotlightStatus--shipped {
-  color: rgba(134, 239, 172, 0.9);
+  color: var(--success);
 }
 
 .spotlightStatus--failed {
-  color: rgba(251, 146, 60, 0.9);
+  color: var(--warning);
 }
 
 .spotlightBadge {
   flex-shrink: 0;
   text-align: right;
   padding: 6px 10px;
-  background: rgba(34, 197, 94, 0.12);
+  background: var(--successBg);
   border-radius: 10px;
 }
 
 .spotlightBadgeVal {
   font-size: 15px;
   font-weight: 800;
-  color: rgba(134, 239, 172, 0.95);
+  color: var(--success);
 }
 
 .spotlightBadgeUnit {
   margin-left: 3px;
   font-size: 11px;
   font-weight: 700;
-  color: rgba(134, 239, 172, 0.6);
+  color: rgba(31, 122, 82, 0.72);
 }
 
 .spotlightDesc {
   margin-top: 10px;
   font-size: 13px;
   line-height: 1.5;
-  color: rgba(255,255,255,0.6);
+  color: var(--ink2);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   line-clamp: 2;
@@ -4003,13 +3560,13 @@ body[data-skin="app"] .timelineReceipt:hover {
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: rgba(255,255,255,0.4);
+  color: var(--ink3);
 }
 
 .spotlightStatValue {
   font-size: 14px;
   font-weight: 800;
-  color: rgba(255,255,255,0.9);
+  color: var(--ink);
 }
 
 .spotlightProgress {
@@ -4020,26 +3577,26 @@ body[data-skin="app"] .timelineReceipt:hover {
   width: 100%;
   height: 6px;
   border-radius: 999px;
-  background: rgba(255,255,255,0.08);
+  background: var(--fill-strong);
   overflow: hidden;
 }
 
 .spotlightProgressFill {
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, rgba(134, 239, 172, 0.8), rgba(96, 165, 250, 0.6));
+  background: linear-gradient(90deg, rgba(31, 122, 82, 0.8), rgba(47, 95, 179, 0.6));
   transition: width 0.3s ease;
 }
 
 .discoverEmpty {
   padding: 60px 20px;
   text-align: center;
-  color: rgba(255,255,255,0.45);
+  color: var(--ink3);
   font-size: 14px;
 }
 
 .discoverEmptyTitle {
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--ink);
   font-size: 18px;
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -4047,7 +3604,7 @@ body[data-skin="app"] .timelineReceipt:hover {
 
 .discoverEmptySub {
   margin-top: 6px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--ink3);
 }
 
 .discoverEmptyCta {
@@ -4088,7 +3645,7 @@ body[data-skin="app"] .timelineReceipt:hover {
 .timelineQuickHoverLink {
   font-size: 12px;
   font-weight: 800;
-  color: rgba(255, 255, 255, 0.86);
+  color: var(--ink);
   text-decoration: none;
 }
 
@@ -4112,7 +3669,7 @@ body[data-skin="app"] .timelineReceipt:hover {
   border-radius: 5px;
   border: 1px solid var(--border);
   color: var(--muted);
-  background: rgba(255,255,255,0.03);
+  background: var(--fill);
 }
 
 .timelineChipReward {
@@ -4122,8 +3679,8 @@ body[data-skin="app"] .timelineReceipt:hover {
 }
 
 .timelineChipModeManaged {
-  border-color: #000;
-  color: #000;
+  border-color: rgba(20, 20, 20, 0.3);
+  color: var(--ink);
 }
 
 .timelineChipModeAssisted {
@@ -4131,18 +3688,18 @@ body[data-skin="app"] .timelineReceipt:hover {
 }
 
 body[data-skin="app"] .timelineChipModeManaged {
-  border-color: rgba(255, 255, 255, 0.30);
-  color: #fff;
+  border-color: var(--line-strong);
+  color: var(--ink);
 }
 
 .timelineChipType {
-  background: rgba(255,255,255,0.05);
-  border-color: rgba(255,255,255,0.12);
+  background: var(--fill);
+  border-color: var(--line);
 }
 
 .timelineChipStatus {
-  background: rgba(255,255,255,0.05);
-  border-color: rgba(255,255,255,0.12);
+  background: var(--fill);
+  border-color: var(--line);
 }
 
 .timelineReceiptTitle {
@@ -4172,21 +3729,21 @@ body[data-skin="app"] .timelineChipModeManaged {
   height: 4px;
   border-radius: 999px;
   overflow: hidden;
-  background: rgba(0, 0, 0, 0.08);
+  background: var(--fill-strong);
 }
 
 body[data-skin="app"] .timelineComplianceBar {
-  background: rgba(255, 255, 255, 0.10);
+  background: var(--fill-strong);
 }
 
 .timelineComplianceFill {
   height: 100%;
   border-radius: 999px;
-  background: #000;
+  background: var(--ink);
 }
 
 body[data-skin="app"] .timelineComplianceFill {
-  background: #fff;
+  background: var(--ink);
 }
 
 .timelineComplianceText {
@@ -4221,11 +3778,11 @@ body[data-skin="app"] .timelineComplianceFill {
 .timelineReceiptBody {
   border-top: 1px solid var(--glass-divider);
   padding: 16px 20px 20px;
-  background: rgba(0, 0, 0, 0.01);
+  background: var(--fill);
 }
 
 body[data-skin="app"] .timelineReceiptBody {
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--fill);
 }
 
 .timelineReceiptActions {
@@ -4249,12 +3806,12 @@ body[data-skin="app"] .timelineReceiptBody {
 }
 
 .timelineActionBtn:hover {
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--fill);
   border-color: var(--fg);
 }
 
 body[data-skin="app"] .timelineActionBtn:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--fill-strong);
 }
 
 .timelineReceiptGrid {
@@ -4305,21 +3862,21 @@ body[data-skin="app"] .timelineActionBtn:hover {
 
 .timelineProfileAvatar {
   object-fit: cover;
-  border: 1px solid rgba(0, 0, 0, 0.14);
+  border: 1px solid var(--line);
 }
 
 .timelineProfileAvatarFallback {
-  background: rgba(0, 0, 0, 0.10);
-  border: 1px solid rgba(0, 0, 0, 0.14);
+  background: var(--fill-strong);
+  border: 1px solid var(--line);
 }
 
 body[data-skin="app"] .timelineProfileAvatar {
-  border-color: rgba(255, 255, 255, 0.22);
+  border-color: var(--line-strong);
 }
 
 body[data-skin="app"] .timelineProfileAvatarFallback {
-  background: rgba(255, 255, 255, 0.10);
-  border-color: rgba(255, 255, 255, 0.22);
+  background: var(--fill-strong);
+  border-color: var(--line-strong);
 }
 
 @media (max-width: 980px) {
@@ -4373,32 +3930,32 @@ body[data-skin="app"] .timelineProfileAvatarFallback {
 .commitCard {
   padding: 32px;
   border-radius: var(--radius-lg);
-  border: 1px solid var(--border);
-  background: #fff;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  box-shadow: none;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow-soft);
   transition: all 0.3s var(--ease-out);
 }
 
 .commitCard:hover {
-  border-color: var(--fg);
-  box-shadow: none;
+  border-color: var(--glass-border-strong);
+  box-shadow: var(--glass-shadow);
   transform: translateY(-1px);
 }
 
 .commitCardPrimary {
-  background: #fff;
-  border-color: var(--border);
+  background: var(--glass-bg);
+  border-color: var(--glass-border);
 }
 
 .commitCardAdmin {
-  background: #fff;
-  border-color: var(--border);
+  background: var(--glass-bg);
+  border-color: var(--glass-border);
 }
 
 .commitCardList {
-  background: #fff;
+  background: var(--glass-bg);
 }
 
 .commitCardLabel {
@@ -4434,7 +3991,7 @@ body[data-skin="app"] .timelineProfileAvatarFallback {
 .commitTypeCard {
   appearance: none;
   border: 2px solid var(--border);
-  background: #fff;
+  background: rgba(255, 255, 255, 0.5);
   border-radius: var(--radius-lg);
   padding: 32px 28px;
   cursor: pointer;
@@ -4459,14 +4016,14 @@ body[data-skin="app"] .timelineProfileAvatarFallback {
 
 .commitTypeCard:hover {
   border-color: var(--fg);
-  background: #fff;
+  background: rgba(255, 255, 255, 0.75);
   transform: translateY(-1px);
   box-shadow: none;
 }
 
 .commitTypeCardActive {
   border-color: var(--fg);
-  background: #fff;
+  background: rgba(255, 255, 255, 0.92);
   box-shadow: none;
 }
 
@@ -4529,8 +4086,8 @@ body[data-skin="app"] .timelineProfileAvatarFallback {
   width: 100%;
   padding: 16px 18px;
   border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  background: #fff;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
   color: var(--fg);
   font-size: 15px;
   font-weight: 500;
@@ -4549,9 +4106,9 @@ body[data-skin="app"] .timelineProfileAvatarFallback {
 }
 
 .commitInput:focus {
-  border-color: var(--fg);
-  background: #fff;
-  box-shadow: 0 0 0 4px var(--accentGlow);
+  border-color: var(--input-focus);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: var(--focus-ring);
 }
 
 .commitInputWithUnit {
@@ -4575,7 +4132,7 @@ body[data-skin="app"] .timelineProfileAvatarFallback {
   color: var(--muted);
   padding: 15px 20px;
   border-radius: 14px;
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--fill);
   border: 1px solid var(--border);
 }
 
@@ -4593,21 +4150,21 @@ body[data-skin="app"] .timelineProfileAvatarFallback {
   gap: 14px;
   padding: 18px;
   border-radius: 16px;
-  background: #fff;
-  border: 1px solid var(--border);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
   transition: all 0.22s ease;
 }
 
 .commitMilestone:hover {
   background: rgba(255, 255, 255, 0.85);
-  border-color: var(--fg);
+  border-color: var(--line-strong);
 }
 
 .commitMilestoneNumber {
   width: 36px;
   height: 36px;
   border-radius: 10px;
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--fill-strong);
   border: 1px solid var(--border);
   display: flex;
   align-items: center;
@@ -4636,7 +4193,7 @@ body[data-skin="app"] .timelineProfileAvatarFallback {
 .commitMilestoneRemove {
   appearance: none;
   border: none;
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--fill-strong);
   color: var(--fg);
   width: 36px;
   height: 36px;
@@ -4649,7 +4206,7 @@ body[data-skin="app"] .timelineProfileAvatarFallback {
 }
 
 .commitMilestoneRemove:hover {
-  background: rgba(0, 0, 0, 0.10);
+  background: var(--fill-strong);
   color: var(--fg);
 }
 
@@ -4668,7 +4225,7 @@ body[data-skin="app"] .timelineProfileAvatarFallback {
 .commitBtnPrimary {
   appearance: none;
   border: none;
-  background: #000;
+  background: var(--ink);
   color: #fff;
   border-radius: var(--radius-md);
   padding: 18px 44px;
@@ -4677,7 +4234,7 @@ body[data-skin="app"] .timelineProfileAvatarFallback {
   letter-spacing: 0.01em;
   cursor: pointer;
   transition: all 0.3s var(--ease-out);
-  box-shadow: none;
+  box-shadow: 0 10px 28px rgba(20, 20, 20, 0.18);
   position: relative;
   overflow: hidden;
   display: flex;
@@ -4696,7 +4253,8 @@ body[data-skin="app"] .timelineProfileAvatarFallback {
 
 .commitBtnPrimary:hover {
   transform: translateY(-1px);
-  box-shadow: none;
+  box-shadow: 0 14px 34px rgba(20, 20, 20, 0.22);
+  background: #000;
 }
 
 .commitBtnPrimary:active {
@@ -4711,9 +4269,9 @@ body[data-skin="app"] .timelineProfileAvatarFallback {
 
 .commitBtnSecondary {
   appearance: none;
-  border: 1px solid var(--border);
-  background: #fff;
-  color: #000;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--ink);
   border-radius: var(--radius-md);
   padding: 14px 24px;
   font-size: 14px;
@@ -4725,9 +4283,10 @@ body[data-skin="app"] .timelineProfileAvatarFallback {
 }
 
 .commitBtnSecondary:hover {
-  border-color: #000;
+  border-color: rgba(255, 255, 255, 0.95);
   box-shadow: none;
   transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.85);
 }
 
 .commitBtnSecondary:disabled {
@@ -4743,9 +4302,9 @@ body[data-skin="app"] .timelineProfileAvatarFallback {
 
 .commitBtnTertiary {
   appearance: none;
-  border: 1px solid var(--border);
-  background: #fff;
-  color: #000;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--ink);
   border-radius: var(--radius-sm);
   padding: 10px 16px;
   font-size: 13px;
@@ -4755,8 +4314,8 @@ body[data-skin="app"] .timelineProfileAvatarFallback {
 }
 
 .commitBtnTertiary:hover {
-  background: #fff;
-  border-color: #000;
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(255, 255, 255, 0.95);
 }
 
 .commitBtnTertiary:disabled {
@@ -4767,8 +4326,8 @@ body[data-skin="app"] .timelineProfileAvatarFallback {
 .commitBtnSpinner {
   width: 16px;
   height: 16px;
-  border: 2px solid rgba(0, 0, 0, 0.18);
-  border-top-color: rgba(0, 0, 0, 0.78);
+  border: 2px solid var(--line-strong);
+  border-top-color: rgba(20, 20, 20, 0.7);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
@@ -4809,16 +4368,16 @@ body[data-skin="app"] .timelineProfileAvatarFallback {
 }
 
 .commitListItem {
-  border: 1px solid var(--border);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
-  background: #fff;
+  background: var(--glass-bg);
   overflow: hidden;
   transition: all 0.3s var(--ease-out);
 }
 
 .commitListItem:hover {
-  border-color: var(--fg);
-  box-shadow: none;
+  border-color: var(--glass-border-strong);
+  box-shadow: var(--glass-shadow-soft);
   transform: translateY(-1px);
 }
 
@@ -4894,25 +4453,25 @@ body[data-skin="app"] .timelineProfileAvatarFallback {
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  background: rgba(0, 0, 0, 0.02);
-  color: rgba(0, 0, 0, 0.72);
+  background: var(--fill);
+  color: var(--ink2);
 }
 
 body[data-skin="app"] .commitListItemBadge {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.18);
-  color: rgba(255, 255, 255, 0.78);
+  background: var(--fill-strong);
+  border-color: var(--line);
+  color: var(--ink2);
 }
 
 .commitListItemBadgeManaged {
-  border-color: #000;
-  color: #000;
-  background: rgba(0, 0, 0, 0.0);
+  border-color: rgba(20, 20, 20, 0.3);
+  color: var(--ink);
+  background: transparent;
 }
 
 body[data-skin="app"] .commitListItemBadgeManaged {
-  border-color: rgba(255, 255, 255, 0.30);
-  color: #fff;
+  border-color: var(--line-strong);
+  color: var(--ink);
 }
 
 .commitCompliance {
@@ -4928,21 +4487,21 @@ body[data-skin="app"] .commitListItemBadgeManaged {
   height: 6px;
   border-radius: 999px;
   overflow: hidden;
-  background: rgba(0, 0, 0, 0.10);
+  background: var(--fill-strong);
 }
 
 body[data-skin="app"] .commitComplianceBar {
-  background: rgba(255, 255, 255, 0.10);
+  background: var(--fill-strong);
 }
 
 .commitComplianceFill {
   height: 100%;
   border-radius: 999px;
-  background: #000;
+  background: var(--ink);
 }
 
 body[data-skin="app"] .commitComplianceFill {
-  background: #fff;
+  background: var(--ink);
 }
 
 .commitComplianceText {
@@ -4954,7 +4513,7 @@ body[data-skin="app"] .commitComplianceFill {
 .commitListItemStatus {
   padding: 4px 10px;
   border-radius: 8px;
-  background: #000;
+  background: var(--ink);
   color: #fff;
   font-weight: 650;
   font-size: 11px;
@@ -4971,7 +4530,7 @@ body[data-skin="app"] .commitComplianceFill {
 .commitListItemDetail {
   padding: 20px 24px;
   border-top: 1px solid var(--border);
-  background: #fff;
+  background: rgba(255, 255, 255, 0.4);
   display: grid;
   gap: 12px;
 }
@@ -5069,7 +4628,7 @@ body[data-skin="app"] .commitComplianceFill {
 .utilityHeader {
   margin-bottom: 32px;
   padding-bottom: 24px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--line);
 }
 
 .utilityHeaderTop {
@@ -5099,21 +4658,21 @@ body[data-skin="app"] .commitComplianceFill {
   margin-bottom: 8px;
   font-size: 12px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--ink3);
 }
 
 .utilityBreadcrumbLink {
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--ink3);
   text-decoration: none;
   transition: color 0.15s ease;
 }
 
 .utilityBreadcrumbLink:hover {
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--ink2);
 }
 
 .utilityBreadcrumbSep {
-  color: rgba(255, 255, 255, 0.3);
+  color: var(--ink3);
 }
 
 .utilityTitle {
@@ -5122,7 +4681,7 @@ body[data-skin="app"] .commitComplianceFill {
   font-weight: 800;
   letter-spacing: -0.03em;
   line-height: 1.15;
-  color: rgba(255, 255, 255, 0.95);
+  color: var(--ink);
 }
 
 .utilityLead {
@@ -5130,7 +4689,7 @@ body[data-skin="app"] .commitComplianceFill {
   font-size: 15px;
   font-weight: 450;
   line-height: 1.6;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--ink2);
   max-width: 60ch;
 }
 
@@ -5138,29 +4697,32 @@ body[data-skin="app"] .commitComplianceFill {
   margin-top: 16px;
   padding: 14px 16px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line);
+  background: var(--fill);
   font-size: 13px;
   line-height: 1.55;
-  color: rgba(255, 255, 255, 0.65);
+  color: var(--ink2);
 }
 
 .utilityGuidance strong {
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--ink);
   font-weight: 650;
 }
 
 .utilityCard {
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
   border-radius: 16px;
   overflow: hidden;
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow-soft);
 }
 
 .utilityCardHeader {
   padding: 20px 24px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid var(--line);
+  background: var(--fill);
 }
 
 .utilityCardTitle {
@@ -5168,13 +4730,13 @@ body[data-skin="app"] .commitComplianceFill {
   font-size: 16px;
   font-weight: 700;
   letter-spacing: -0.01em;
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
 }
 
 .utilityCardSub {
   margin: 6px 0 0;
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--ink2);
   line-height: 1.5;
 }
 
@@ -5184,8 +4746,8 @@ body[data-skin="app"] .commitComplianceFill {
 
 .utilityCardFooter {
   padding: 16px 24px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.02);
+  border-top: 1px solid var(--line);
+  background: var(--fill);
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -5206,7 +4768,7 @@ body[data-skin="app"] .commitComplianceFill {
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.45);
+  color: var(--ink3);
 }
 
 .utilityGrid {
@@ -5239,16 +4801,16 @@ body[data-skin="app"] .commitComplianceFill {
   font-size: 12px;
   font-weight: 650;
   letter-spacing: 0.02em;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--ink2);
 }
 
 .utilityInput {
   width: 100%;
   padding: 12px 14px;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(0, 0, 0, 0.3);
-  color: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--ink);
   font-size: 14px;
   font-weight: 500;
   outline: none;
@@ -5256,16 +4818,16 @@ body[data-skin="app"] .commitComplianceFill {
 }
 
 .utilityInput::placeholder {
-  color: rgba(255, 255, 255, 0.35);
+  color: var(--ink3);
 }
 
 .utilityInput:hover {
-  border-color: rgba(255, 255, 255, 0.18);
+  border-color: var(--line-strong);
 }
 
 .utilityInput:focus {
-  border-color: rgba(255, 255, 255, 0.3);
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
+  border-color: var(--input-focus);
+  box-shadow: var(--focus-ring);
 }
 
 .utilityTextarea {
@@ -5275,9 +4837,9 @@ body[data-skin="app"] .commitComplianceFill {
 
 .utilityBtn {
   appearance: none;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--ink);
   border-radius: 10px;
   padding: 10px 18px;
   font-size: 13px;
@@ -5287,9 +4849,9 @@ body[data-skin="app"] .commitComplianceFill {
 }
 
 .utilityBtn:hover {
-  background: rgba(255, 255, 255, 0.10);
-  border-color: rgba(255, 255, 255, 0.22);
-  color: #fff;
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(255, 255, 255, 0.95);
+  color: var(--ink);
   transform: translateY(-1px);
 }
 
@@ -5304,16 +4866,16 @@ body[data-skin="app"] .commitComplianceFill {
 }
 
 .utilityBtnPrimary {
-  background: rgba(255, 255, 255, 0.92);
-  border-color: rgba(255, 255, 255, 0.92);
-  color: #000;
+  background: var(--ink);
+  border-color: transparent;
+  color: #fff;
   font-weight: 650;
 }
 
 .utilityBtnPrimary:hover {
-  background: #fff;
-  border-color: #fff;
-  color: #000;
+  background: #000;
+  border-color: transparent;
+  color: #fff;
 }
 
 .utilityBtnSmall {
@@ -5330,9 +4892,9 @@ body[data-skin="app"] .commitComplianceFill {
 .utilityEmpty {
   padding: 48px 24px;
   text-align: center;
-  border: 1px dashed rgba(255, 255, 255, 0.12);
+  border: 1px dashed var(--line);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--fill);
 }
 
 .utilityEmptyIcon {
@@ -5346,13 +4908,13 @@ body[data-skin="app"] .commitComplianceFill {
   margin: 0;
   font-size: 16px;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--ink2);
 }
 
 .utilityEmptyText {
   margin: 8px 0 0;
   font-size: 14px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--ink3);
   max-width: 40ch;
   margin-left: auto;
   margin-right: auto;
@@ -5373,23 +4935,23 @@ body[data-skin="app"] .commitComplianceFill {
   align-items: center;
   gap: 14px;
   padding: 14px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--line);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--fill);
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .utilityListItem:hover {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.12);
+  background: var(--fill-strong);
+  border-color: var(--line);
 }
 
 .utilityListItemIcon {
   width: 40px;
   height: 40px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--fill-strong);
+  border: 1px solid var(--line);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5404,13 +4966,13 @@ body[data-skin="app"] .commitComplianceFill {
 .utilityListItemTitle {
   font-size: 14px;
   font-weight: 650;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--ink);
 }
 
 .utilityListItemSub {
   margin-top: 2px;
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--ink3);
 }
 
 .utilityListItemActions {
@@ -5432,28 +4994,28 @@ body[data-skin="app"] .commitComplianceFill {
 }
 
 .utilityStatusDefault {
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.6);
+  background: var(--fill-strong);
+  color: var(--ink2);
 }
 
 .utilityStatusActive {
-  background: rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.9);
+  background: var(--fill-strong);
+  color: var(--ink);
 }
 
 .utilityStatusSuccess {
-  background: rgba(34, 197, 94, 0.15);
-  color: rgba(134, 239, 172, 0.95);
+  background: var(--successBg);
+  color: var(--success);
 }
 
 .utilityStatusWarning {
-  background: rgba(234, 179, 8, 0.15);
-  color: rgba(253, 224, 71, 0.95);
+  background: var(--warningBg);
+  color: var(--warning);
 }
 
 .utilityStatusError {
-  background: rgba(239, 68, 68, 0.15);
-  color: rgba(252, 165, 165, 0.95);
+  background: var(--errorBg);
+  color: var(--error);
 }
 
 .utilityStatusDot {
@@ -5469,7 +5031,7 @@ body[data-skin="app"] .commitComplianceFill {
 }
 
 .utilityTableHead {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+  border-bottom: 1px solid var(--line);
 }
 
 .utilityTableTh {
@@ -5479,15 +5041,15 @@ body[data-skin="app"] .commitComplianceFill {
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.45);
-  background: rgba(255, 255, 255, 0.02);
+  color: var(--ink3);
+  background: var(--fill);
 }
 
 .utilityTableTd {
   padding: 14px 16px;
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.8);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: var(--ink2);
+  border-bottom: 1px solid var(--line);
   vertical-align: middle;
 }
 
@@ -5496,19 +5058,19 @@ body[data-skin="app"] .commitComplianceFill {
 }
 
 .utilityTableTr:hover .utilityTableTd {
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--fill);
 }
 
 .utilityMono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--ink2);
   word-break: break-all;
 }
 
 .utilityDivider {
   height: 1px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--fill-strong);
   margin: 24px 0;
 }
 
@@ -5520,27 +5082,27 @@ body[data-skin="app"] .commitComplianceFill {
 }
 
 .utilityAlertInfo {
-  background: rgba(59, 130, 246, 0.12);
-  border: 1px solid rgba(59, 130, 246, 0.2);
-  color: rgba(147, 197, 253, 0.95);
+  background: rgba(47, 95, 179, 0.09);
+  border: 1px solid rgba(47, 95, 179, 0.26);
+  color: #2f5fb3;
 }
 
 .utilityAlertSuccess {
-  background: rgba(34, 197, 94, 0.12);
-  border: 1px solid rgba(34, 197, 94, 0.2);
-  color: rgba(134, 239, 172, 0.95);
+  background: var(--successBg);
+  border: 1px solid rgba(31, 122, 82, 0.26);
+  color: var(--success);
 }
 
 .utilityAlertWarning {
-  background: rgba(234, 179, 8, 0.12);
-  border: 1px solid rgba(234, 179, 8, 0.2);
-  color: rgba(253, 224, 71, 0.95);
+  background: var(--warningBg);
+  border: 1px solid rgba(168, 100, 26, 0.26);
+  color: var(--warning);
 }
 
 .utilityAlertError {
-  background: rgba(239, 68, 68, 0.12);
-  border: 1px solid rgba(239, 68, 68, 0.2);
-  color: rgba(252, 165, 165, 0.95);
+  background: var(--errorBg);
+  border: 1px solid rgba(179, 54, 31, 0.26);
+  color: var(--error);
 }
 
 .utilityAvatar {
@@ -5548,8 +5110,8 @@ body[data-skin="app"] .commitComplianceFill {
   height: 80px;
   border-radius: 16px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+  background: var(--fill);
   flex-shrink: 0;
 }
 
@@ -5567,8 +5129,8 @@ body[data-skin="app"] .commitComplianceFill {
   justify-content: center;
   font-size: 14px;
   font-weight: 800;
-  color: rgba(255, 255, 255, 0.6);
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+  color: var(--ink2);
+  background: linear-gradient(135deg, rgba(20, 20, 20, 0.07), rgba(20, 20, 20, 0.02));
 }
 
 .utilityAvatarSmall {
@@ -5600,20 +5162,20 @@ body[data-skin="app"] .commitComplianceFill {
   font-size: 24px;
   font-weight: 800;
   letter-spacing: -0.02em;
-  color: rgba(255, 255, 255, 0.95);
+  color: var(--ink);
 }
 
 .utilityProfileMeta {
   margin-top: 6px;
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--ink3);
 }
 
 .utilityProfileBio {
   margin-top: 12px;
   font-size: 14px;
   line-height: 1.6;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--ink2);
   max-width: 50ch;
 }
 
@@ -5629,15 +5191,15 @@ body[data-skin="app"] .commitComplianceFill {
   gap: 4px;
   padding: 4px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--fill);
+  border: 1px solid var(--line);
 }
 
 .utilityTab {
   appearance: none;
   border: none;
   background: transparent;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--ink2);
   padding: 10px 16px;
   border-radius: 8px;
   font-size: 13px;
@@ -5647,13 +5209,13 @@ body[data-skin="app"] .commitComplianceFill {
 }
 
 .utilityTab:hover {
-  color: rgba(255, 255, 255, 0.8);
-  background: rgba(255, 255, 255, 0.04);
+  color: var(--ink2);
+  background: var(--fill);
 }
 
 .utilityTabActive {
-  background: rgba(255, 255, 255, 0.10);
-  color: #fff;
+  background: var(--fill-strong);
+  color: var(--ink);
 }
 
 .utilityStats {
@@ -5665,8 +5227,8 @@ body[data-skin="app"] .commitComplianceFill {
 .utilityStat {
   padding: 16px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--line);
+  background: var(--fill);
 }
 
 .utilityStatLabel {
@@ -5674,7 +5236,7 @@ body[data-skin="app"] .commitComplianceFill {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.45);
+  color: var(--ink3);
 }
 
 .utilityStatValue {
@@ -5682,7 +5244,7 @@ body[data-skin="app"] .commitComplianceFill {
   font-size: 22px;
   font-weight: 800;
   letter-spacing: -0.02em;
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
 }
 
 .utilityStatChange {
@@ -5692,11 +5254,11 @@ body[data-skin="app"] .commitComplianceFill {
 }
 
 .utilityStatChangeUp {
-  color: rgba(134, 239, 172, 0.9);
+  color: var(--success);
 }
 
 .utilityStatChangeDown {
-  color: rgba(252, 165, 165, 0.9);
+  color: var(--error);
 }
 
 @media (max-width: 640px) {
@@ -5756,26 +5318,26 @@ body[data-skin="app"] .commitComplianceFill {
   gap: 12px;
   padding: 16px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(0, 0, 0, 0.25);
-  color: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.5);
+  color: var(--ink2);
   text-align: left;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .createModeBtn:hover {
-  border-color: rgba(255, 255, 255, 0.20);
-  background: rgba(0, 0, 0, 0.35);
+  border-color: var(--line-strong);
+  background: rgba(255, 255, 255, 0.75);
 }
 
 .createModeBtnActive {
-  border-color: rgba(34, 197, 94, 0.5);
-  background: rgba(34, 197, 94, 0.08);
+  border-color: rgba(31, 122, 82, 0.45);
+  background: var(--successBg);
 }
 
 .createModeBtnActive .createModeName {
-  color: rgba(134, 239, 172, 0.95);
+  color: var(--success);
 }
 
 .createModeIcon {
@@ -5787,7 +5349,7 @@ body[data-skin="app"] .commitComplianceFill {
 
 .createModeBtnActive .createModeIcon {
   opacity: 1;
-  color: rgba(134, 239, 172, 0.9);
+  color: var(--success);
 }
 
 .createModeInfo {
@@ -5798,13 +5360,13 @@ body[data-skin="app"] .commitComplianceFill {
 .createModeName {
   font-size: 14px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--ink);
   margin-bottom: 4px;
 }
 
 .createModeDesc {
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.45);
+  color: var(--ink3);
   line-height: 1.4;
 }
 
@@ -5822,13 +5384,13 @@ body[data-skin="app"] .commitComplianceFill {
   font-size: 20px;
   font-weight: 700;
   letter-spacing: -0.01em;
-  color: rgba(255, 255, 255, 0.95);
+  color: var(--ink);
   margin: 0 0 6px;
 }
 
 .createSub {
   font-size: 14px;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--ink2);
   margin: 0;
   line-height: 1.5;
 }
@@ -5840,20 +5402,20 @@ body[data-skin="app"] .commitComplianceFill {
 .createSectionTitle {
   font-size: 15px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
   margin: 0 0 6px;
 }
 
 .createSectionSub {
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.50);
+  color: var(--ink3);
   margin: 0 0 16px;
 }
 
 .createUploadZone {
-  border: 1px dashed rgba(255, 255, 255, 0.18);
+  border: 1px dashed var(--line-strong);
   border-radius: 16px;
-  background: rgba(0, 0, 0, 0.25);
+  background: rgba(255, 255, 255, 0.45);
   padding: 48px 24px;
   position: relative;
   display: flex;
@@ -5881,13 +5443,13 @@ body[data-skin="app"] .commitComplianceFill {
 }
 
 .createUploadZone:hover {
-  border-color: rgba(255, 255, 255, 0.30);
-  background: rgba(0, 0, 0, 0.35);
+  border-color: rgba(20, 20, 20, 0.28);
+  background: rgba(255, 255, 255, 0.7);
 }
 
 .createUploadZoneActive {
-  border-color: rgba(134, 239, 172, 0.5);
-  background: rgba(134, 239, 172, 0.05);
+  border-color: rgba(31, 122, 82, 0.45);
+  background: var(--successBg);
 }
 
 .createUploadIcon {
@@ -5895,19 +5457,19 @@ body[data-skin="app"] .commitComplianceFill {
   height: 48px;
   margin: 0 auto 16px;
   opacity: 0.5;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--ink2);
 }
 
 .createUploadText {
   font-size: 15px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--ink);
   margin: 0 0 4px;
 }
 
 .createUploadHint {
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.45);
+  color: var(--ink3);
   margin: 0 0 16px;
 }
 
@@ -5917,8 +5479,8 @@ body[data-skin="app"] .commitComplianceFill {
   justify-content: center;
   padding: 10px 20px;
   border-radius: 8px;
-  background: #22c55e;
-  color: #000;
+  background: var(--ink);
+  color: #fff;
   font-size: 14px;
   font-weight: 600;
   border: none;
@@ -5927,7 +5489,7 @@ body[data-skin="app"] .commitComplianceFill {
 }
 
 .createUploadBtn:hover {
-  background: #16a34a;
+  background: #000;
 }
 
 /* Small upload zone for banner */
@@ -5936,21 +5498,21 @@ body[data-skin="app"] .commitComplianceFill {
   align-items: center;
   gap: 16px;
   padding: 16px;
-  border: 1px dashed rgba(255, 255, 255, 0.18);
+  border: 1px dashed var(--line-strong);
   border-radius: 12px;
-  background: rgba(0, 0, 0, 0.25);
+  background: rgba(255, 255, 255, 0.45);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .createUploadZoneSmall:hover {
-  border-color: rgba(255, 255, 255, 0.30);
-  background: rgba(0, 0, 0, 0.35);
+  border-color: rgba(20, 20, 20, 0.28);
+  background: rgba(255, 255, 255, 0.7);
 }
 
 .createUploadZoneSmall.createUploadZoneActive {
-  border-color: rgba(134, 239, 172, 0.5);
-  background: rgba(134, 239, 172, 0.05);
+  border-color: rgba(31, 122, 82, 0.45);
+  background: var(--successBg);
 }
 
 .createUploadZoneSmall input[type="file"] {
@@ -5962,13 +5524,13 @@ body[data-skin="app"] .commitComplianceFill {
   height: 32px;
   flex-shrink: 0;
   opacity: 0.5;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--ink2);
 }
 
 .createUploadSmallText {
   font-size: 14px;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--ink2);
 }
 
 .createPreviewBanner {
@@ -5981,7 +5543,7 @@ body[data-skin="app"] .commitComplianceFill {
 .createFieldHint {
   margin-top: 6px;
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.40);
+  color: var(--ink3);
 }
 
 .createUploadSpecs {
@@ -5990,7 +5552,7 @@ body[data-skin="app"] .commitComplianceFill {
   gap: 24px;
   margin-top: 24px;
   padding-top: 24px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--line);
 }
 
 .createUploadSpec {
@@ -6002,13 +5564,13 @@ body[data-skin="app"] .commitComplianceFill {
   height: 20px;
   margin-bottom: 8px;
   opacity: 0.5;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--ink3);
 }
 
 .createUploadSpecTitle {
   font-size: 13px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.75);
+  color: var(--ink2);
   margin: 0 0 6px;
 }
 
@@ -6016,7 +5578,7 @@ body[data-skin="app"] .commitComplianceFill {
   margin: 0;
   padding: 0 0 0 16px;
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.45);
+  color: var(--ink3);
   line-height: 1.6;
 }
 
@@ -6031,7 +5593,7 @@ body[data-skin="app"] .commitComplianceFill {
   padding: 0;
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--ink2);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -6039,7 +5601,7 @@ body[data-skin="app"] .commitComplianceFill {
 }
 
 .createExpandBtn:hover {
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--ink);
 }
 
 .createExpandIcon {
@@ -6076,13 +5638,13 @@ body[data-skin="app"] .commitComplianceFill {
   display: block;
   font-size: 13px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--ink);
   margin-bottom: 8px;
 }
 
 .createLabelOptional {
   font-weight: 400;
-  color: rgba(255, 255, 255, 0.40);
+  color: var(--ink3);
   margin-left: 4px;
 }
 
@@ -6090,25 +5652,26 @@ body[data-skin="app"] .commitComplianceFill {
   width: 100%;
   padding: 12px 14px;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(0, 0, 0, 0.35);
-  color: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--ink);
   font-size: 14px;
   outline: none;
   transition: all 0.2s ease;
 }
 
 .createInput::placeholder {
-  color: rgba(255, 255, 255, 0.35);
+  color: var(--ink3);
 }
 
 .createInput:hover {
-  border-color: rgba(255, 255, 255, 0.20);
+  border-color: var(--line-strong);
 }
 
 .createInput:focus {
-  border-color: rgba(255, 255, 255, 0.35);
-  background: rgba(0, 0, 0, 0.45);
+  border-color: var(--input-focus);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: var(--focus-ring);
 }
 
 .tickerInputWrap {
@@ -6121,7 +5684,7 @@ body[data-skin="app"] .commitComplianceFill {
   top: 50%;
   transform: translateY(-50%);
   pointer-events: none;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--ink2);
   font-size: 14px;
   font-weight: 650;
 }
@@ -6134,9 +5697,9 @@ body[data-skin="app"] .commitComplianceFill {
   width: 100%;
   padding: 12px 14px;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(0, 0, 0, 0.35);
-  color: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--ink);
   font-size: 14px;
   outline: none;
   resize: vertical;
@@ -6146,16 +5709,17 @@ body[data-skin="app"] .commitComplianceFill {
 }
 
 .createTextarea::placeholder {
-  color: rgba(255, 255, 255, 0.35);
+  color: var(--ink3);
 }
 
 .createTextarea:hover {
-  border-color: rgba(255, 255, 255, 0.20);
+  border-color: var(--line-strong);
 }
 
 .createTextarea:focus {
-  border-color: rgba(255, 255, 255, 0.35);
-  background: rgba(0, 0, 0, 0.45);
+  border-color: var(--input-focus);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: var(--focus-ring);
 }
 
 .createToggleRow {
@@ -6165,8 +5729,8 @@ body[data-skin="app"] .commitComplianceFill {
   gap: 16px;
   padding: 16px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.5);
   margin-bottom: 12px;
 }
 
@@ -6185,7 +5749,7 @@ body[data-skin="app"] .commitComplianceFill {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--fill-strong);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -6195,7 +5759,7 @@ body[data-skin="app"] .commitComplianceFill {
 .createToggleIconSvg {
   width: 18px;
   height: 18px;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--ink2);
 }
 
 .createToggleInfo {
@@ -6205,7 +5769,7 @@ body[data-skin="app"] .commitComplianceFill {
 .createToggleName {
   font-size: 14px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.90);
+  color: var(--ink);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -6218,19 +5782,19 @@ body[data-skin="app"] .commitComplianceFill {
   letter-spacing: 0.05em;
   padding: 3px 6px;
   border-radius: 4px;
-  background: #22c55e;
-  color: #000;
+  background: var(--successBg);
+  color: var(--success);
 }
 
 .createToggleDesc {
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.45);
+  color: var(--ink3);
   margin-top: 2px;
 }
 
 .createToggleHint {
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.40);
+  color: var(--ink3);
   margin-top: 8px;
   display: flex;
   align-items: center;
@@ -6238,7 +5802,7 @@ body[data-skin="app"] .commitComplianceFill {
 }
 
 .createToggleHintLink {
-  color: #60a5fa;
+  color: #2f5fb3;
   text-decoration: none;
 }
 
@@ -6263,7 +5827,7 @@ body[data-skin="app"] .commitComplianceFill {
   position: absolute;
   cursor: pointer;
   inset: 0;
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(20, 20, 20, 0.14);
   border-radius: 24px;
   transition: all 0.2s ease;
 }
@@ -6275,13 +5839,14 @@ body[data-skin="app"] .commitComplianceFill {
   width: 18px;
   left: 3px;
   bottom: 3px;
-  background: rgba(255, 255, 255, 0.85);
+  background: #fff;
   border-radius: 50%;
   transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(20, 20, 20, 0.22);
 }
 
 .createSwitchInput:checked + .createSwitchTrack {
-  background: #22c55e;
+  background: var(--ink);
 }
 
 .createSwitchInput:checked + .createSwitchTrack::before {
@@ -6301,21 +5866,21 @@ body[data-skin="app"] .commitComplianceFill {
   gap: 12px;
   padding: 14px 16px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.5);
 }
 
 .createMilestoneNum {
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.10);
+  background: var(--fill-strong);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 12px;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.70);
+  color: var(--ink2);
   flex-shrink: 0;
 }
 
@@ -6337,20 +5902,21 @@ body[data-skin="app"] .commitComplianceFill {
   width: 100%;
   padding: 10px 12px;
   border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  background: rgba(0, 0, 0, 0.30);
-  color: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--ink);
   font-size: 13px;
   outline: none;
   transition: all 0.2s ease;
 }
 
 .createMilestoneInput::placeholder {
-  color: rgba(255, 255, 255, 0.35);
+  color: var(--ink3);
 }
 
 .createMilestoneInput:focus {
-  border-color: rgba(255, 255, 255, 0.25);
+  border-color: var(--input-focus);
+  box-shadow: var(--focus-ring);
 }
 
 .createMilestoneRemove {
@@ -6358,8 +5924,8 @@ body[data-skin="app"] .commitComplianceFill {
   height: 28px;
   border-radius: 6px;
   border: none;
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.45);
+  background: var(--fill-strong);
+  color: var(--ink3);
   font-size: 18px;
   cursor: pointer;
   display: flex;
@@ -6370,8 +5936,8 @@ body[data-skin="app"] .commitComplianceFill {
 }
 
 .createMilestoneRemove:hover {
-  background: rgba(239, 68, 68, 0.15);
-  color: rgba(239, 68, 68, 0.9);
+  background: var(--errorBg);
+  color: var(--error);
 }
 
 .createMilestoneInfo {
@@ -6379,8 +5945,8 @@ body[data-skin="app"] .commitComplianceFill {
   gap: 12px;
   padding: 14px 16px;
   border-radius: 12px;
-  background: rgba(96, 165, 250, 0.08);
-  border: 1px solid rgba(96, 165, 250, 0.15);
+  background: rgba(47, 95, 179, 0.09);
+  border: 1px solid rgba(47, 95, 179, 0.26);
   margin-bottom: 16px;
 }
 
@@ -6388,18 +5954,18 @@ body[data-skin="app"] .commitComplianceFill {
   width: 20px;
   height: 20px;
   flex-shrink: 0;
-  color: rgba(96, 165, 250, 0.7);
+  color: rgba(47, 95, 179, 0.72);
   margin-top: 1px;
 }
 
 .createMilestoneInfoText {
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.65);
+  color: var(--ink2);
   line-height: 1.5;
 }
 
 .createMilestoneInfoText strong {
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--ink);
   font-weight: 600;
 }
 
@@ -6424,11 +5990,12 @@ body[data-skin="app"] .commitComplianceFill {
   left: 10px;
   font-size: 10px;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.4);
-  background: #1a1a1a;
+  color: var(--ink3);
+  background: #fbf8f3;
   padding: 0 4px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  border-radius: 4px;
 }
 
 .createMilestoneFieldUnit {
@@ -6437,7 +6004,7 @@ body[data-skin="app"] .commitComplianceFill {
   top: 50%;
   transform: translateY(-50%);
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--ink3);
   pointer-events: none;
 }
 
@@ -6458,15 +6025,15 @@ body[data-skin="app"] .commitComplianceFill {
 }
 
 .createMilestoneTotalValid {
-  background: rgba(134, 239, 172, 0.1);
-  color: rgba(134, 239, 172, 0.9);
-  border: 1px solid rgba(134, 239, 172, 0.2);
+  background: var(--successBg);
+  color: var(--success);
+  border: 1px solid rgba(31, 122, 82, 0.26);
 }
 
 .createMilestoneTotalInvalid {
-  background: rgba(251, 146, 60, 0.1);
-  color: rgba(251, 146, 60, 0.9);
-  border: 1px solid rgba(251, 146, 60, 0.2);
+  background: var(--warningBg);
+  color: var(--warning);
+  border: 1px solid rgba(168, 100, 26, 0.26);
 }
 
 .createMilestoneTotalHint {
@@ -6486,9 +6053,9 @@ body[data-skin="app"] .commitComplianceFill {
   width: 100%;
   padding: 12px;
   border-radius: 10px;
-  border: 1px dashed rgba(255, 255, 255, 0.15);
+  border: 1px dashed var(--line);
   background: transparent;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--ink2);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -6497,29 +6064,29 @@ body[data-skin="app"] .commitComplianceFill {
 }
 
 .createAddBtn:hover {
-  border-color: rgba(255, 255, 255, 0.25);
-  color: rgba(255, 255, 255, 0.85);
-  background: rgba(255, 255, 255, 0.03);
+  border-color: var(--line-strong);
+  color: var(--ink);
+  background: var(--fill);
 }
 
 .createInfoBox {
   padding: 14px 16px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.5);
   margin-bottom: 24px;
 }
 
 .createInfoTitle {
   font-size: 13px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--ink);
   margin: 0 0 6px;
 }
 
 .createInfoText {
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.50);
+  color: var(--ink3);
   margin: 0;
   line-height: 1.5;
 }
@@ -6529,17 +6096,19 @@ body[data-skin="app"] .commitComplianceFill {
   padding: 16px 24px;
   border-radius: 12px;
   border: none;
-  background: #22c55e;
-  color: #000;
+  background: var(--ink);
+  color: #fff;
   font-size: 15px;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.2s ease;
   margin-top: 8px;
+  box-shadow: 0 10px 28px rgba(20, 20, 20, 0.18);
 }
 
 .createSubmitBtn:hover:not(:disabled) {
-  background: #16a34a;
+  background: #000;
+  transform: translateY(-1px);
 }
 
 .createSubmitBtn:disabled {
@@ -6554,7 +6123,7 @@ body[data-skin="app"] .commitComplianceFill {
   padding: 8px 0;
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--ink2);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -6563,7 +6132,7 @@ body[data-skin="app"] .commitComplianceFill {
 }
 
 .createBackBtn:hover {
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--ink);
 }
 
 .createPreviewImg {
@@ -6578,16 +6147,16 @@ body[data-skin="app"] .commitComplianceFill {
 
 .createDivider {
   height: 1px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--fill-strong);
   margin: 24px 0;
 }
 
 .createError {
   padding: 12px 14px;
   border-radius: 10px;
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  background: rgba(239, 68, 68, 0.08);
-  color: rgba(239, 68, 68, 0.9);
+  border: 1px solid rgba(179, 54, 31, 0.26);
+  background: var(--errorBg);
+  color: var(--error);
   font-size: 13px;
   margin-bottom: 16px;
 }
@@ -6595,9 +6164,9 @@ body[data-skin="app"] .commitComplianceFill {
 .createSuccess {
   padding: 12px 14px;
   border-radius: 10px;
-  border: 1px solid rgba(134, 239, 172, 0.3);
-  background: rgba(134, 239, 172, 0.08);
-  color: rgba(134, 239, 172, 0.9);
+  border: 1px solid rgba(31, 122, 82, 0.26);
+  background: var(--successBg);
+  color: var(--success);
   font-size: 13px;
   margin-bottom: 16px;
 }
@@ -6609,8 +6178,8 @@ body[data-skin="app"] .commitComplianceFill {
   min-height: 300px;
   border-radius: 14px;
   overflow: hidden;
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid var(--line);
 }
 
 .birdeyeChartLoading,
@@ -6622,7 +6191,7 @@ body[data-skin="app"] .commitComplianceFill {
   align-items: center;
   justify-content: center;
   gap: 12px;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--ink2);
   font-size: 13px;
   font-weight: 500;
 }
@@ -6630,8 +6199,8 @@ body[data-skin="app"] .commitComplianceFill {
 .birdeyeChartSpinner {
   width: 28px;
   height: 28px;
-  border: 2px solid rgba(255, 255, 255, 0.12);
-  border-top-color: rgba(255, 255, 255, 0.6);
+  border: 2px solid var(--line);
+  border-top-color: var(--ink);
   border-radius: 50%;
   animation: birdeyeSpin 0.8s linear infinite;
 }
@@ -6643,20 +6212,20 @@ body[data-skin="app"] .commitComplianceFill {
 }
 
 .birdeyeChartLink {
-  color: rgba(255, 255, 255, 0.75);
+  color: var(--ink2);
   text-decoration: none;
   font-size: 12px;
   padding: 8px 14px;
   border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+  background: var(--fill);
   transition: all 0.2s ease;
 }
 
 .birdeyeChartLink:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.2);
-  color: #fff;
+  background: var(--fill-strong);
+  border-color: var(--line-strong);
+  color: var(--ink);
 }
 
 /* ========================================
@@ -6713,9 +6282,11 @@ body[data-skin="app"] .commitComplianceFill {
     min-width: min(320px, calc(100vw - 24px));
     padding: 10px;
     border-radius: 16px;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    background: rgba(0, 0, 0, 0.92);
-    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+    border: 1px solid var(--glass-border);
+    background: var(--glass-bg-strong);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+    box-shadow: var(--glass-shadow);
     opacity: 0;
     transform: translateY(-6px);
     pointer-events: none;
@@ -6737,13 +6308,13 @@ body[data-skin="app"] .commitComplianceFill {
     padding: 10px 12px;
     border-radius: 14px;
     text-decoration: none;
-    color: rgba(255, 255, 255, 0.78);
+    color: var(--ink2);
     transition: background 0.18s var(--ease-out), color 0.18s var(--ease-out), transform 0.18s var(--ease-out);
   }
 
   .globalNavMenuItem:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.08);
+    color: var(--ink);
+    background: var(--fill-strong);
     transform: translateY(-1px);
   }
 
@@ -6752,8 +6323,8 @@ body[data-skin="app"] .commitComplianceFill {
   }
 
   .globalNavMenuItemActive {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.12);
+    color: var(--ink);
+    background: var(--fill-strong);
   }
 
   .globalNavLink {
@@ -6867,17 +6438,17 @@ body[data-skin="app"] .commitComplianceFill {
     min-height: 38px;
     padding: 8px 10px;
     border-radius: 14px;
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.16);
-    color: rgba(255, 255, 255, 0.88);
+    background: var(--fill-strong);
+    border: 1px solid var(--line);
+    color: var(--ink);
     font-size: 12px;
     line-height: 1;
     transition: transform 0.18s var(--ease-out), background 0.18s var(--ease-out), border-color 0.18s var(--ease-out);
   }
 
   .globalNavLinks .wallet-adapter-button:hover {
-    background: rgba(255, 255, 255, 0.11);
-    border-color: rgba(255, 255, 255, 0.22);
+    background: var(--fill-strong);
+    border-color: var(--line-strong);
     transform: translateY(-1px);
   }
 
@@ -6900,120 +6471,6 @@ body[data-skin="app"] .commitComplianceFill {
     font-size: 9px;
     text-align: center;
     justify-content: center;
-  }
-}
-
-/* --- Landing Page Mobile --- */
-@media (max-width: 768px) {
-  body[data-skin="landing"] .landingLeft {
-    padding-top: clamp(48px, 6vh, 72px);
-    padding-bottom: clamp(22px, 4vh, 44px);
-  }
-
-  body[data-skin="landing"] .landingMobileTitle {
-    display: block;
-    margin: 10px 0 0 0;
-    font-size: 12px;
-    font-weight: 900;
-    letter-spacing: 0.22em;
-    text-transform: uppercase;
-    color: rgba(255, 255, 255, 0.86);
-  }
-
-  body[data-skin="landing"] .heroMarkImage {
-    width: min(600px, 88vw);
-    transform: scale(1.3);
-  }
-
-  body[data-skin="landing"] .heroLead {
-    font-size: 14px;
-    line-height: 1.6;
-    padding: 0 20px;
-    margin-top: 12px;
-    max-width: 46ch;
-  }
-
-  body[data-skin="landing"] .landingCtas {
-    padding: 0 20px;
-    margin-top: clamp(8px, 1.2vw, 12px);
-  }
-
-  body[data-skin="landing"] .landingTokenBar {
-    display: block;
-    margin-bottom: 10px;
-  }
-
-  body[data-skin="landing"] .landingSocials {
-    display: flex;
-    justify-content: center;
-    margin-top: 10px;
-  }
-
-  body[data-skin="landing"] .landingSocialBtn {
-    width: 44px;
-    height: 44px;
-    border-radius: 999px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    background: rgba(255, 255, 255, 0.06);
-    color: rgba(255, 255, 255, 0.88);
-    transition: transform 0.18s var(--ease-out), background 0.18s var(--ease-out), border-color 0.18s var(--ease-out);
-  }
-
-  body[data-skin="landing"] .landingSocialBtn:hover {
-    transform: translateY(-1px);
-    background: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.28);
-  }
-
-  body[data-skin="landing"] .landingSocialBtn:active {
-    transform: translateY(0) scale(0.98);
-  }
-
-  body[data-skin="landing"] .landingCtas .btn,
-  body[data-skin="landing"] .landingCtas .btnPrimary {
-    padding: 12px 16px;
-    font-size: 13px;
-  }
-}
-
-@media (max-width: 520px) {
-  body[data-skin="landing"] .landingLeft {
-    padding-top: clamp(40px, 5vh, 56px);
-  }
-
-  body[data-skin="landing"] .heroMarkImage {
-    width: min(480px, 85vw);
-    transform: scale(1.2);
-  }
-
-  body[data-skin="landing"] .heroLead {
-    font-size: 13px;
-    padding: 0 16px;
-  }
-
-  body[data-skin="landing"] .landingCtas {
-    padding: 0 16px;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 10px;
-  }
-
-  body[data-skin="landing"] .landingTokenBar {
-    width: 100%;
-  }
-
-  body[data-skin="landing"] .landingTokenBar .globalNavTokenCopy {
-    width: 100%;
-    justify-content: center;
-  }
-
-  body[data-skin="landing"] .landingCtas .btn {
-    width: 100%;
-    justify-content: center;
-    text-align: center;
   }
 }
 
@@ -8085,7 +7542,7 @@ body[data-skin="app"] .commitComplianceFill {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(0, 0, 0, 0.85);
+  background: rgba(246, 241, 233, 0.55);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
@@ -8095,10 +7552,14 @@ body[data-skin="app"] .commitComplianceFill {
   width: 100%;
   padding: 32px;
   border-radius: 20px;
-  border: 1px solid rgba(134, 239, 172, 0.25);
-  background: rgba(20, 20, 25, 0.98);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg-strong);
   text-align: center;
   animation: launchSuccessFadeIn 0.35s ease;
+  backdrop-filter: var(--glass-blur-strong);
+  -webkit-backdrop-filter: var(--glass-blur-strong);
+  box-shadow: var(--glass-shadow);
+  color: var(--ink);
 }
 
 @keyframes launchSuccessFadeIn {
@@ -8120,14 +7581,14 @@ body[data-skin="app"] .commitComplianceFill {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: linear-gradient(135deg, rgba(134, 239, 172, 0.2) 0%, rgba(96, 165, 250, 0.15) 100%);
-  border: 2px solid rgba(134, 239, 172, 0.4);
+  background: linear-gradient(135deg, rgba(31, 122, 82, 0.14) 0%, rgba(47, 95, 179, 0.1) 100%);
+  border: 2px solid rgba(31, 122, 82, 0.35);
 }
 
 .launchSuccessIcon svg {
   width: 32px;
   height: 32px;
-  stroke: rgba(134, 239, 172, 1);
+  stroke: var(--success);
 }
 
 .launchSuccessImage {
@@ -8136,19 +7597,19 @@ body[data-skin="app"] .commitComplianceFill {
   border-radius: 16px;
   object-fit: cover;
   margin: 0 auto 16px;
-  border: 2px solid rgba(255, 255, 255, 0.1);
+  border: 2px solid var(--line);
 }
 
 .launchSuccessTitle {
   font-size: 24px;
   font-weight: 700;
-  color: #fff;
+  color: var(--ink);
   margin: 0 0 8px;
 }
 
 .launchSuccessSubtitle {
   font-size: 14px;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--ink2);
   margin: 0 0 24px;
   line-height: 1.5;
 }
@@ -8163,8 +7624,8 @@ body[data-skin="app"] .commitComplianceFill {
 .launchSuccessDetail {
   padding: 14px 16px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--fill);
+  border: 1px solid var(--line);
   text-align: left;
 }
 
@@ -8172,7 +7633,7 @@ body[data-skin="app"] .commitComplianceFill {
   display: block;
   font-size: 11px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--ink3);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 6px;
@@ -8183,7 +7644,7 @@ body[data-skin="app"] .commitComplianceFill {
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--ink);
   word-break: break-all;
 }
 
@@ -8193,13 +7654,13 @@ body[data-skin="app"] .commitComplianceFill {
 }
 
 .launchSuccessDetailLink {
-  color: rgba(96, 165, 250, 0.95);
+  color: #2f5fb3;
   text-decoration: none;
   transition: color 0.15s ease;
 }
 
 .launchSuccessDetailLink:hover {
-  color: rgba(134, 239, 172, 1);
+  color: var(--ink);
 }
 
 .launchSuccessDetailLink svg {
@@ -8216,8 +7677,8 @@ body[data-skin="app"] .commitComplianceFill {
   align-items: center;
   justify-content: center;
   border: none;
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.6);
+  background: var(--fill-strong);
+  color: var(--ink2);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -8225,8 +7686,8 @@ body[data-skin="app"] .commitComplianceFill {
 }
 
 .launchSuccessCopyBtn:hover {
-  background: rgba(255, 255, 255, 0.15);
-  color: rgba(255, 255, 255, 0.95);
+  background: rgba(20, 20, 20, 0.08);
+  color: var(--ink);
 }
 
 .launchSuccessCopyBtn svg {
@@ -8256,13 +7717,14 @@ body[data-skin="app"] .commitComplianceFill {
 }
 
 .launchSuccessBtnPrimary {
-  background: linear-gradient(135deg, rgba(134, 239, 172, 0.9) 0%, rgba(96, 165, 250, 0.8) 100%);
-  color: #000;
+  background: var(--ink);
+  color: #fff;
 }
 
 .launchSuccessBtnPrimary:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 32px rgba(134, 239, 172, 0.3);
+  box-shadow: 0 12px 32px rgba(20, 20, 20, 0.22);
+  background: #000;
 }
 
 .launchSuccessBtnPrimary svg {
@@ -8271,14 +7733,14 @@ body[data-skin="app"] .commitComplianceFill {
 }
 
 .launchSuccessBtnSecondary {
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: #fff;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  color: var(--ink);
 }
 
 .launchSuccessBtnSecondary:hover {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(255, 255, 255, 0.95);
 }
 
 @media (max-width: 480px) {
@@ -8390,8 +7852,135 @@ body[data-skin="app"] .commitComplianceFill {
   }
 }
 
+/* Ink type on cream even where a framework page (e.g. the default 404) injects dark-mode body colours */
+body[data-skin="app"] {
+  color: var(--ink);
+}
+
+body[data-skin="app"] .next-error-h1 {
+  border-right-color: var(--line-strong) !important;
+}
+
+/* Wallet adapter: cream glass modal + dropdown, ink type (the library CSS loads after this file, hence the body prefix) */
+body .wallet-adapter-button {
+  font-family: inherit;
+}
+
+body .wallet-adapter-button-trigger {
+  background-color: var(--ink);
+  color: #fff;
+  border-radius: 999px;
+}
+
+body .wallet-adapter-button:not([disabled]):hover {
+  background-color: #000;
+}
+
+body .wallet-adapter-button:not([disabled]):focus-visible {
+  outline-color: var(--ink);
+}
+
+body .wallet-adapter-button[disabled] {
+  background: var(--fill-strong);
+  color: var(--ink3);
+}
+
+body .wallet-adapter-dropdown-list {
+  background: var(--glass-bg-strong);
+  border: 1px solid var(--glass-border);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow);
+  border-radius: 16px;
+  font-family: inherit;
+}
+
+body .wallet-adapter-dropdown-list-item {
+  color: var(--ink);
+  border-radius: 10px;
+}
+
+body .wallet-adapter-dropdown-list-item:not([disabled]):hover {
+  background-color: var(--fill-strong);
+}
+
+body .wallet-adapter-modal,
+body .wallet-adapter-modal-overlay {
+  background: rgba(246, 241, 233, 0.55);
+}
+
+body .wallet-adapter-modal-overlay {
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+body .wallet-adapter-modal-wrapper {
+  background: var(--glass-bg-strong);
+  border: 1px solid var(--glass-border);
+  -webkit-backdrop-filter: var(--glass-blur-strong);
+  backdrop-filter: var(--glass-blur-strong);
+  box-shadow: var(--glass-shadow);
+  border-radius: 24px;
+  color: var(--ink);
+  font-family: inherit;
+}
+
+body .wallet-adapter-modal-title {
+  color: var(--ink);
+}
+
+body .wallet-adapter-modal-button-close {
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+}
+
+body .wallet-adapter-modal-button-close:focus-visible {
+  outline-color: var(--ink);
+}
+
+body .wallet-adapter-modal-button-close svg {
+  fill: var(--ink3);
+}
+
+body .wallet-adapter-modal-button-close:hover svg {
+  fill: var(--ink);
+}
+
+body .wallet-adapter-modal-wrapper .wallet-adapter-button {
+  color: var(--ink);
+  background-color: transparent;
+}
+
+body .wallet-adapter-modal-wrapper .wallet-adapter-button:not([disabled]):hover {
+  background-color: var(--fill-strong);
+}
+
+body .wallet-adapter-modal-list .wallet-adapter-button span {
+  color: var(--ink3);
+  opacity: 1;
+}
+
+body .wallet-adapter-modal-list-more {
+  color: var(--ink2);
+}
+
+body .wallet-adapter-modal-list-more svg,
+body .wallet-adapter-modal-collapse-button svg {
+  fill: var(--ink2);
+}
+
+body .wallet-adapter-modal-middle-button {
+  background-color: var(--ink);
+  color: #fff;
+  border-radius: 999px;
+}
+
+body .wallet-adapter-modal-middle-button:hover {
+  background-color: #000;
+}
+
 /* Cinematic story page: it draws its own ASCII world, so hide the global ASCII particle layer there. */
-body:has(.story-root) .ascii-particles {
+body[data-skin="story"] .ascii-particles {
   display: none;
 }
 
@@ -8402,12 +7991,14 @@ body:has(.story-root) .ascii-particles {
 
 
 /* ---------------------------------------------------------------------------------------------- */
-/* "How it works" story: cream glass nav to match the pastel stage                                */
-body[data-skin="story"] {
+/* Cream glass nav, shared by the story and every app page                                       */
+body[data-skin="story"],
+body[data-skin="app"] {
   background: #f6f1e9;
 }
 
-body[data-skin="story"] .globalNav {
+body[data-skin="story"] .globalNav,
+body[data-skin="app"] .globalNav {
   background: rgba(246, 241, 233, 0.72);
   -webkit-backdrop-filter: blur(18px) saturate(160%);
   backdrop-filter: blur(18px) saturate(160%);
@@ -8415,31 +8006,38 @@ body[data-skin="story"] .globalNav {
 }
 
 body[data-skin="story"] .globalNavBrandText,
-body[data-skin="story"] .globalNavIconBtn {
+body[data-skin="app"] .globalNavBrandText,
+body[data-skin="story"] .globalNavIconBtn,
+body[data-skin="app"] .globalNavIconBtn {
   color: rgba(20, 20, 20, 0.72);
 }
 
-body[data-skin="story"] .globalNavIconBtn:hover {
+body[data-skin="story"] .globalNavIconBtn:hover,
+body[data-skin="app"] .globalNavIconBtn:hover {
   color: #141414;
   background: rgba(20, 20, 20, 0.06);
 }
 
-body[data-skin="story"] .globalNavBrandMark {
+body[data-skin="story"] .globalNavBrandMark,
+body[data-skin="app"] .globalNavBrandMark {
   filter: invert(1);
 }
 
-body[data-skin="story"] .globalNavTokenCopy {
+body[data-skin="story"] .globalNavTokenCopy,
+body[data-skin="app"] .globalNavTokenCopy {
   background: rgba(255, 255, 255, 0.6);
   border-color: rgba(20, 20, 20, 0.08);
   color: #141414;
 }
 
-body[data-skin="story"] .globalNav .wallet-adapter-button {
+body[data-skin="story"] .globalNav .wallet-adapter-button,
+body[data-skin="app"] .globalNav .wallet-adapter-button {
   background: #141414;
   color: #fff;
   border-color: transparent;
 }
 
-body[data-skin="story"] .globalNav .wallet-adapter-button:not([disabled]):hover {
+body[data-skin="story"] .globalNav .wallet-adapter-button:not([disabled]):hover,
+body[data-skin="app"] .globalNav .wallet-adapter-button:not([disabled]):hover {
   background: #000;
 }

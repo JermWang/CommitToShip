@@ -697,7 +697,7 @@ export default function CreatorDashboardPage() {
     return (
       <div className={styles.page}>
         <div className={styles.connectPrompt}>
-          <img className={styles.connectIcon} src="/branding/white-logo.png" alt="" />
+          <img className={styles.connectIcon} src="/branding/black-logo.png" alt="" />
           <h1 className={styles.connectTitle}>Creator Dashboard</h1>
           <p className={styles.connectSubtitle}>
             Connect your wallet to view your projects, milestones, and earnings.
@@ -738,7 +738,7 @@ export default function CreatorDashboardPage() {
     return (
       <div className={styles.page}>
         <div className={styles.empty}>
-          <img className={styles.emptyIcon} src="/branding/white-logo.png" alt="" />
+          <img className={styles.emptyIcon} src="/branding/black-logo.png" alt="" />
           <h2>No Projects Yet</h2>
           <p>You haven&apos;t created any projects with Ship &amp; Commit yet.</p>
           <button className={styles.createBtn} onClick={() => { window.scrollTo({ top: 0, behavior: "instant" }); router.push("/?tab=commit"); }}>
@@ -1011,8 +1011,8 @@ export default function CreatorDashboardPage() {
               <div className={styles.milestoneManagerCard}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                   <div style={{ minWidth: 220 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.9)" }}>Milestone Manager</div>
-                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)", marginTop: 4 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>Milestone Manager</div>
+                    <div style={{ fontSize: 12, color: "var(--ink2)", marginTop: 4 }}>
                       Define deliverables and how fees unlock. Totals should add to 100% before you start completing milestones.
                     </div>
                   </div>
@@ -1020,11 +1020,11 @@ export default function CreatorDashboardPage() {
                     <div style={{
                       padding: "8px 10px",
                       borderRadius: 999,
-                      border: `1px solid ${selectedAllocatedPercent >= 99.5 ? "rgba(134,239,172,0.25)" : "rgba(96,165,250,0.22)"}`,
-                      background: selectedAllocatedPercent >= 99.5 ? "rgba(134,239,172,0.10)" : "rgba(96,165,250,0.10)",
+                      border: `1px solid ${selectedAllocatedPercent >= 99.5 ? "rgba(31, 122, 82, 0.22)" : "rgba(45, 91, 140, 0.2)"}`,
+                      background: selectedAllocatedPercent >= 99.5 ? "var(--successBg)" : "rgba(45, 91, 140, 0.1)",
                       fontSize: 12,
                       fontWeight: 700,
-                      color: selectedAllocatedPercent >= 99.5 ? "rgba(134,239,172,0.95)" : "rgba(96,165,250,0.95)",
+                      color: selectedAllocatedPercent >= 99.5 ? "var(--success)" : "#2d5b8c",
                     }}>
                       {Math.round(selectedAllocatedPercent)}% allocated
                     </div>
@@ -1040,7 +1040,7 @@ export default function CreatorDashboardPage() {
                 </div>
 
                 {!canManageSelectedProject ? (
-                  <div style={{ marginTop: 10, fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
+                  <div style={{ marginTop: 10, fontSize: 12, color: "var(--ink2)" }}>
                     Milestone actions require the creator wallet: <span style={{ fontFamily: "monospace" }}>{shortWallet(selectedProjectCreatorPk || "")}</span>
                   </div>
                 ) : null}
@@ -1056,9 +1056,9 @@ export default function CreatorDashboardPage() {
                           width: 200,
                           padding: "10px 12px",
                           borderRadius: 10,
-                          border: "1px solid rgba(255,255,255,0.15)",
-                          background: "rgba(0,0,0,0.30)",
-                          color: "#fff",
+                          border: "1px solid var(--input-border)",
+                          background: "var(--input-bg)",
+                          color: "var(--ink)",
                           fontSize: 13,
                         }}
                       >
@@ -1075,9 +1075,9 @@ export default function CreatorDashboardPage() {
                           minWidth: 220,
                           padding: "10px 12px",
                           borderRadius: 10,
-                          border: "1px solid rgba(255,255,255,0.15)",
-                          background: "rgba(0,0,0,0.30)",
-                          color: "#fff",
+                          border: "1px solid var(--input-border)",
+                          background: "var(--input-bg)",
+                          color: "var(--ink)",
                           fontSize: 13,
                         }}
                       />
@@ -1091,9 +1091,9 @@ export default function CreatorDashboardPage() {
                             width: 220,
                             padding: "10px 12px",
                             borderRadius: 10,
-                            border: "1px solid rgba(255,255,255,0.15)",
-                            background: "rgba(0,0,0,0.30)",
-                            color: "#fff",
+                            border: "1px solid var(--input-border)",
+                            background: "var(--input-bg)",
+                            color: "var(--ink)",
                             fontSize: 13,
                           }}
                         />
@@ -1107,9 +1107,9 @@ export default function CreatorDashboardPage() {
                             width: 220,
                             padding: "10px 12px",
                             borderRadius: 10,
-                            border: "1px solid rgba(255,255,255,0.15)",
-                            background: "rgba(0,0,0,0.30)",
-                            color: "#fff",
+                            border: "1px solid var(--input-border)",
+                            background: "var(--input-bg)",
+                            color: "var(--ink)",
                             fontSize: 13,
                           }}
                         />
@@ -1126,13 +1126,13 @@ export default function CreatorDashboardPage() {
                             textAlign: "center",
                             padding: "10px 12px",
                             borderRadius: 10,
-                            border: "1px solid rgba(255,255,255,0.15)",
-                            background: "rgba(0,0,0,0.30)",
-                            color: "#fff",
+                            border: "1px solid var(--input-border)",
+                            background: "var(--input-bg)",
+                            color: "var(--ink)",
                             fontSize: 13,
                           }}
                         />
-                        <span style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>%</span>
+                        <span style={{ fontSize: 12, color: "var(--ink2)" }}>%</span>
                       </div>
                       <button
                         type="button"
@@ -1153,11 +1153,11 @@ export default function CreatorDashboardPage() {
                       (() => {
                         const thresholdUsd = parseUsdShorthand(newMilestoneThresholdUsd);
                         return (
-                          <div style={{ marginTop: 10, fontSize: 12, color: "rgba(255,255,255,0.60)" }}>
+                          <div style={{ marginTop: 10, fontSize: 12, color: "var(--ink2)" }}>
                             <div>
                               Use shorthand only: <span className={styles.mono}>250k</span>, <span className={styles.mono}>10m</span>, <span className={styles.mono}>2b</span>.
                             </div>
-                            <div style={{ marginTop: 6, color: thresholdUsd ? "rgba(255,255,255,0.72)" : "rgba(248,113,113,0.92)" }}>
+                            <div style={{ marginTop: 6, color: thresholdUsd ? "var(--ink2)" : "var(--error)" }}>
                               {thresholdUsd
                                 ? `You are setting: Market cap ≥ $${fmtUsdExact0(thresholdUsd)}`
                                 : "Invalid format — include a k/m/b suffix (e.g. 10m, 250k, 2b)."}
@@ -1166,7 +1166,7 @@ export default function CreatorDashboardPage() {
                         );
                       })()
                     ) : null}
-                    <div style={{ marginTop: 10, fontSize: 12, color: "rgba(255,255,255,0.50)" }}>
+                    <div style={{ marginTop: 10, fontSize: 12, color: "var(--ink3)" }}>
                       Adding milestones uses a wallet signature only. No funds move during setup.
                     </div>
                   </div>
@@ -1254,9 +1254,9 @@ export default function CreatorDashboardPage() {
                                   minWidth: 220,
                                   padding: "10px 12px",
                                   borderRadius: 10,
-                                  border: "1px solid rgba(255,255,255,0.15)",
-                                  background: "rgba(0,0,0,0.30)",
-                                  color: "#fff",
+                                  border: "1px solid var(--input-border)",
+                                  background: "var(--input-bg)",
+                                  color: "var(--ink)",
                                   fontSize: 13,
                                 }}
                               />
@@ -1269,9 +1269,9 @@ export default function CreatorDashboardPage() {
                                   width: 220,
                                   padding: "10px 12px",
                                   borderRadius: 10,
-                                  border: "1px solid rgba(255,255,255,0.15)",
-                                  background: "rgba(0,0,0,0.30)",
-                                  color: "#fff",
+                                  border: "1px solid var(--input-border)",
+                                  background: "var(--input-bg)",
+                                  color: "var(--ink)",
                                   fontSize: 13,
                                 }}
                               />
@@ -1287,13 +1287,13 @@ export default function CreatorDashboardPage() {
                                     textAlign: "center",
                                     padding: "10px 12px",
                                     borderRadius: 10,
-                                    border: "1px solid rgba(255,255,255,0.15)",
-                                    background: "rgba(0,0,0,0.30)",
-                                    color: "#fff",
+                                    border: "1px solid var(--input-border)",
+                                    background: "var(--input-bg)",
+                                    color: "var(--ink)",
                                     fontSize: 13,
                                   }}
                                 />
-                                <span style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>%</span>
+                                <span style={{ fontSize: 12, color: "var(--ink2)" }}>%</span>
                               </div>
                             </div>
                             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>

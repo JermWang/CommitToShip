@@ -948,7 +948,9 @@ export default function CommitDashboardClient(props: Props) {
           style={{
             position: "fixed",
             inset: 0,
-            background: "rgba(0,0,0,0.64)",
+            background: "rgba(60, 44, 30, 0.22)",
+            backdropFilter: "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
             zIndex: 120,
             display: "flex",
             alignItems: "center",
@@ -962,8 +964,12 @@ export default function CommitDashboardClient(props: Props) {
             style={{
               width: "min(640px, 96vw)",
               borderRadius: 16,
-              border: "1px solid rgba(255,255,255,0.16)",
-              background: "rgba(0,0,0,0.92)",
+              border: "1px solid var(--glass-border)",
+              background: "var(--glass-bg-strong)",
+              backdropFilter: "var(--glass-blur-strong)",
+              WebkitBackdropFilter: "var(--glass-blur-strong)",
+              boxShadow: "var(--glass-shadow)",
+              color: "var(--ink)",
               padding: 18,
             }}
           >
@@ -1008,7 +1014,7 @@ export default function CommitDashboardClient(props: Props) {
             )}
 
             {adminModal.error ? (
-              <div className={styles.smallNote} style={{ marginTop: 12, color: "rgba(180, 40, 60, 0.86)" }}>
+              <div className={styles.smallNote} style={{ marginTop: 12, color: "var(--error)" }}>
                 {adminModal.error}
               </div>
             ) : null}
@@ -1156,7 +1162,7 @@ export default function CommitDashboardClient(props: Props) {
           <div className={styles.primarySection}>
             <div className={styles.primaryTitle}>Price</div>
             <div style={{ marginTop: 12 }}>
-              <PriceChart tokenMint={props.tokenMint} height={460} />
+              <PriceChart tokenMint={props.tokenMint} height={460} theme="light" />
             </div>
           </div>
         ) : null}
@@ -1195,7 +1201,7 @@ export default function CommitDashboardClient(props: Props) {
             })()}
 
             {fundError ? (
-              <div className={styles.smallNote} style={{ color: "rgba(180, 40, 60, 0.86)", marginTop: 10 }}>
+              <div className={styles.smallNote} style={{ color: "var(--error)", marginTop: 10 }}>
                 {fundError}
               </div>
             ) : null}
@@ -1387,7 +1393,7 @@ export default function CommitDashboardClient(props: Props) {
             <div className={styles.smallNote} style={{ marginTop: 10 }}>
               Voter rewards ($SHIP) accumulate over time. Claim them from your Holder dashboard.
               <span> </span>
-              <a href="/dashboard" style={{ color: "rgba(134, 239, 172, 0.95)", textDecoration: "none", fontWeight: 650 }}>
+              <a href="/dashboard" style={{ color: "var(--ink)", textDecoration: "none", fontWeight: 650 }}>
                 Open dashboard
               </a>
             </div>
@@ -1733,7 +1739,7 @@ export default function CommitDashboardClient(props: Props) {
                             href={solscanTxUrl(m.releasedTxSig)}
                             target="_blank"
                             rel="noopener noreferrer"
-                            style={{ color: "rgba(255,255,255,0.72)", textDecoration: "none" }}
+                            style={{ color: "var(--ink2)", textDecoration: "none" }}
                           >
                             View on Solscan ({shortSig(m.releasedTxSig)})
                           </a>
@@ -1744,7 +1750,7 @@ export default function CommitDashboardClient(props: Props) {
                         <div className={styles.milestoneAction}>
                           <div className={styles.smallNote}>This milestone failed. If the failure payout is approved, eligible voters can claim their share.</div>
                           {milestoneFailureClaimError[m.id] ? (
-                            <div className={styles.smallNote} style={{ marginTop: 8, color: "rgba(180, 40, 60, 0.86)" }}>
+                            <div className={styles.smallNote} style={{ marginTop: 8, color: "var(--error)" }}>
                               {milestoneFailureClaimError[m.id]}
                             </div>
                           ) : null}
@@ -1807,7 +1813,7 @@ export default function CommitDashboardClient(props: Props) {
               Admin controls are intentionally quiet. They appear only when relevant.
             </div>
 
-            {adminError ? <div className={styles.smallNote} style={{ color: "rgba(180, 40, 60, 0.86)", marginTop: 10 }}>{adminError}</div> : null}
+            {adminError ? <div className={styles.smallNote} style={{ color: "var(--error)", marginTop: 10 }}>{adminError}</div> : null}
 
             <div className={styles.actions} style={{ marginTop: 14, justifyContent: "flex-start" }}>
               {canMarkSuccess ? (
@@ -1946,7 +1952,7 @@ export default function CommitDashboardClient(props: Props) {
         {(kind === "creator_reward" || canMarkSuccess || canMarkFailure) ? (
           <div className={styles.receiptBlock}>
             <div className={styles.receiptLabel}>Admin key</div>
-            {adminAuthError ? <div className={styles.smallNote} style={{ marginTop: 8, color: "rgba(180, 40, 60, 0.86)" }}>{adminAuthError}</div> : null}
+            {adminAuthError ? <div className={styles.smallNote} style={{ marginTop: 8, color: "var(--error)" }}>{adminAuthError}</div> : null}
             <div className={styles.actions} style={{ marginTop: 10, justifyContent: "flex-start" }}>
               <button className={styles.actionBtn} onClick={adminSignIn} disabled={adminAuthBusy != null}>
                 {adminWalletPubkey ? "Admin Signed In" : adminAuthBusy === "signin" ? "Signing in..." : "Admin Sign In"}
@@ -1969,7 +1975,7 @@ export default function CommitDashboardClient(props: Props) {
                 : "Connect the creator wallet to check and claim fees."}
             </div>
 
-            {pumpError ? <div className={styles.smallNote} style={{ marginTop: 10, color: "rgba(180, 40, 60, 0.86)" }}>{pumpError}</div> : null}
+            {pumpError ? <div className={styles.smallNote} style={{ marginTop: 10, color: "var(--error)" }}>{pumpError}</div> : null}
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
               <input
@@ -2036,7 +2042,7 @@ export default function CommitDashboardClient(props: Props) {
                 href={`https://solscan.io/token/${encodeURIComponent(props.tokenMint)}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                style={{ color: "rgba(255,255,255,0.72)", textDecoration: "none" }}
+                style={{ color: "var(--ink2)", textDecoration: "none" }}
               >
                 {shortWallet(props.tokenMint)}
               </a>

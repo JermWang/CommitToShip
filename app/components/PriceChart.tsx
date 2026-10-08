@@ -34,7 +34,7 @@ function pickBestPair(pairs: DexScreenerPair[], chain: string): DexScreenerPair 
   return best ?? filtered[0] ?? null;
 }
 
-export default function PriceChart({ tokenMint, chain = "solana", height = 400, theme = "dark", embed: embedProp = true }: Props) {
+export default function PriceChart({ tokenMint, chain = "solana", height = 400, theme = "light", embed: embedProp = true }: Props) {
   const [pair, setPair] = useState<DexScreenerPair | null>(null);
   const [pairLoading, setPairLoading] = useState(false);
   const [iframeLoaded, setIframeLoaded] = useState(false);

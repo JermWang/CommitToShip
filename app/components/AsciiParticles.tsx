@@ -51,7 +51,7 @@ export default function AsciiParticles() {
 
       ctx.clearRect(0, 0, width, height);
 
-      ctx.fillStyle = "#fff";
+      ctx.fillStyle = "#141414"; // ink dust on the cream backdrop
       for (let i = 0; i < particles.length; i++) {
         const p = particles[i];
         p.x += p.vx;

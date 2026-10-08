@@ -1,148 +1,277 @@
-# Ship & Commit — Operations Runbook
+# Ship & Commit: Operations Runbook
 
-## Production Deployment Checklist
+This runbook covers production on Railway. The Railway project `ship-and-commit` has two services:
 
-- Configure environment variables (see `.env.example`).
-- Tables are created automatically at runtime (no manual migrations are needed on a fresh Postgres).
-- Ensure `DATABASE_URL` is set (required in production; on Railway reference the Postgres service).
-- Ensure `CRON_SECRET` is set (required for the built-in background scheduler).
-- Set `CTS_PUBLIC_LAUNCHES=true` to allow anyone to launch; `CTS_LAUNCHES_PAUSED=1` is the emergency stop.
-- Ensure `CTS_MOCK_MODE` is unset/false (forbidden in production).
-- Ensure `ESCROW_DB_SECRET` is set (required in production to encrypt escrow secrets).
-- Ensure `ADMIN_WALLET_PUBKEYS` is set (required in production).
-- Ensure `APP_ORIGIN` is set (required in production for admin endpoints).
-- Ensure `SOLANA_RPC_URL` points to a reliable provider.
+| Service | Role |
+|---------|------|
+| `ship-and-commit` | Next.js app: web, API and the in-process scheduler |
+| `Postgres` | Railway Postgres. The app reads it through `DATABASE_URL=${{Postgres.DATABASE_URL}}` |
 
-## Critical Secrets + Rotation
+Variable names that start with `CTS_` come from the project's earlier name and are kept on purpose. Do not rename them.
 
-### `ESCROW_DB_SECRET`
+---
 
-- Purpose: encrypts escrow secret keys at rest.
-- Rotation requires a controlled migration:
-  - Deploy code that can decrypt with both old+new keys (not implemented).
-  - Re-encrypt all escrow secrets.
-  - Remove old key.
+## 1. Deploy
 
-### `PRIVY_APP_SECRET`
+Deploy committed code from a clean checkout. `railway up` uploads your working directory, minus `.gitignore` and `.railwayignore` entries, so uncommitted edits would ship too.
 
-- Purpose: signs and sends transactions for Privy-managed escrow wallets.
-- Rotation:
-  - Update secret in hosting provider.
-  - Validate pump.fun launch flow and any Privy wallet signing paths.
+```bash
+git status                                # must be clean
+railway link                              # once per checkout: project ship-and-commit
+railway up --service ship-and-commit      # build + deploy
+```
 
-### `ASSET_SIGNING_SECRET` (falls back to `ESCROW_DB_SECRET`)
+What happens next:
 
-- Purpose: signs short-lived image upload URLs (token icons, banners, avatars).
-- Rotation: update in Railway; in-flight uploads (max 2h validity) will need a retry.
+- **Build:** `npm run build`. `NEXT_PUBLIC_*` values are inlined at this step.
+- **Start:** `npm run start`, which runs `next start -H 0.0.0.0` on Railway's `PORT`.
+- **Healthcheck:** `GET /api/healthz` with a 120 s timeout. The new deployment receives traffic only after it passes.
+- **Restarts:** restart policy `ON_FAILURE`, up to 5 retries (see `railway.json`).
+- **Boot:** `instrumentation.ts` calls `app/lib/boot.ts`. Boot warms the database schema (tables are created if missing), writes a `server_boot` audit event and starts the scheduler (section 6).
 
-### `ESCROW_FEE_PAYER_SECRET_KEY` (optional)
+Pre-flight checklist for a first deploy or a new environment:
 
-- Purpose: sponsor fees for escrow transfers.
-- Rotation:
-  - Replace with a funded new key.
-  - Monitor for failed fee-payer balance checks.
+- [ ] `DATABASE_URL` references the Postgres service.
+- [ ] `APP_ORIGIN` is set. Use a comma-separated list if both the Railway domain and a custom domain are live.
+- [ ] `ADMIN_WALLET_PUBKEYS`, `ESCROW_DB_SECRET` and `CRON_SECRET` are set. The app throws in production without the first two, and the scheduler stays off without `CRON_SECRET`.
+- [ ] `SOLANA_RPC_URL` points to a dedicated provider. The public RPC fallback is heavily rate-limited and logs a warning.
+- [ ] `PRIVY_APP_ID`, `PRIVY_APP_SECRET` and `PRIVY_WEBHOOK_SIGNING_SECRET` are set. The Privy webhook points at `https://<domain>/api/webhooks/privy`.
+- [ ] `ESCROW_FEE_PAYER_SECRET_KEY` is set and the key is funded with SOL.
+- [ ] `CTS_SHIP_BUYBACK_TREASURY_PUBKEY` and `CTS_VOTE_REWARD_FAUCET_OWNER_PUBKEY` are set before any failure distribution runs.
+- [ ] `CTS_MOCK_MODE` is unset. The app refuses to use the database in production while it is set.
+- [ ] `TRUSTED_PROXY_HOPS=2`, the value verified for Railway.
 
-## Monitoring & Alerts
+## 2. Rollback
 
-### Audit Logs
+- **Dashboard (preferred):** open service `ship-and-commit`, go to **Deployments**, choose the last good deployment, open its menu and select **Redeploy** (or **Rollback**). That deployment's build image goes live again, with the `NEXT_PUBLIC_*` values it was built with.
+- **CLI:** `railway redeploy --service ship-and-commit` redeploys the latest deployment, which is useful after a crash or a variable change. To return to older code, check out the last good commit in a clean checkout and run `railway up --service ship-and-commit`.
+- The schema is additive (`create table if not exists`, `add column if not exists`), so rolling code back does not require a database rollback.
 
-- Stored in Postgres table: `public.audit_logs`.
-- High-signal events can optionally be delivered to `AUDIT_WEBHOOK_URL`.
+## 3. Health checks
 
-Recommended alert triggers:
+| Endpoint | Checks | Use |
+|----------|--------|-----|
+| `GET /api/healthz` | Process only. Returns `{status:"ok", uptime}` | Railway liveness. It never touches the database or RPC, so a slow dependency cannot cause restart loops. |
+| `GET /api/health` | `SELECT 1` on Postgres, plus Solana RPC | Deep check. Returns HTTP 503 when a dependency is down. |
 
-- Any `*_error` event.
-- Any `*_denied` event.
-- Any `admin_*` event.
+```bash
+curl -s https://<domain>/api/healthz
+curl -s https://<domain>/api/health | jq
+```
 
-### Rate Limiting
+## 4. Logs
 
-- Stored in Postgres table: `public.rate_limits`.
-- If DB is down in production, rate limiting fails closed (requests are rejected).
+```bash
+railway logs --service ship-and-commit            # runtime logs of the current deployment
+railway logs --service ship-and-commit --build    # build logs
+```
 
-## Incident Response
+Useful prefixes:
 
-### 1) Database outage / connection failures
+- `[scheduler]`: job scheduling, failed jobs and HTTP errors from job endpoints
+- `[boot]`: schema warm-up failures
+- `[rpc]`: missing `SOLANA_RPC_URL`
+- `DB pool error`: Postgres connection problems
+
+Audit trail: the `public.audit_logs` table, which is also viewable by admins at `/admin/audit-logs`. Events whose names contain `_error` or `_denied`, or start with `admin_`, are also posted to `AUDIT_WEBHOOK_URL` when it is set. Audit rows older than 120 days are pruned automatically.
+
+## 5. Environment variables
+
+`.env.example` is the reference for every variable.
+
+```bash
+railway variables --service ship-and-commit                        # list
+railway variables --service ship-and-commit --set "KEY=value"      # set (triggers a redeploy)
+```
+
+- **Server-side variables** take effect on the next deployment. Railway redeploys automatically after a change.
+- **`NEXT_PUBLIC_*` variables** are inlined at build time. They need a new build (`railway up`); a restart or a redeploy of an old image does not pick them up.
+- **Blank by design for now:** `NEXT_PUBLIC_TOKEN_CONTRACT_ADDRESS`, `CTS_SHIP_TOKEN_MINT` and `NEXT_PUBLIC_X_URL`. Until they are set, the contract pill, X button, `$SHIP` voting multiplier and per-vote rewards stay inactive.
+- **Before the custom domain exists:** `APP_ORIGIN` and `NEXT_PUBLIC_SITE_URL` use the Railway domain. When the domain is attached:
+  1. Add it to `APP_ORIGIN`, keeping the Railway domain in the comma-separated list.
+  2. Set `NEXT_PUBLIC_SITE_URL`.
+  3. Rebuild.
+  4. Update the Privy webhook URL.
+
+### Secrets and rotation
+
+| Secret | Purpose | Rotation |
+|--------|---------|----------|
+| `ESCROW_DB_SECRET` | Encrypts escrow secret keys at rest (legacy and dev-fallback keypair escrows; production escrows are Privy wallets) | **Do not rotate while encrypted escrows hold funds.** Dual-key decryption is not implemented, so rotation would need a re-encryption migration. |
+| `PRIVY_APP_SECRET` / `PRIVY_AUTHORIZATION_PRIVATE_KEY(S)` | Sign and send transactions from Privy-managed launch, escrow and ASD wallets | Update in Railway, then verify a launch and a claim or release. `PRIVY_AUTHORIZATION_PRIVATE_KEYS` accepts a comma-separated list for overlap. |
+| `PRIVY_WEBHOOK_SIGNING_SECRET` | Verifies Privy (Svix) webhooks | Rotate in Privy and Railway together. |
+| `ESCROW_FEE_PAYER_SECRET_KEY` | Pays fees for pump.fun fee claims, escrow sweeps, launch-wallet refunds and escrow transfers | Fund the new key, swap the variable, then drain the old key. |
+| `CRON_SECRET` | Scheduler and cron endpoints (`x-cron-secret`) | Any long random string. Takes effect on the next deploy. |
+| `ASSET_SIGNING_SECRET` | Signs image-upload URLs. Falls back to `ESCROW_DB_SECRET`, then `PRIVY_APP_SECRET` | In-flight uploads (valid for 2 h at most) need a retry. |
+
+## 6. Database
+
+- Railway Postgres. TLS is switched off automatically for `*.railway.internal` and localhost hosts and on for everything else; `PG_SSL` overrides this.
+- **Migrations:** there is no migration step. Each store runs `create table if not exists` and `alter table ... add column if not exists` on first use, and boot warms this up. `supabase/migrations/` is legacy reference SQL and is not applied.
+- **Pool:** `PG_POOL_MAX` (default 10 in production), `PG_POOL_CONNECTION_TIMEOUT_MS` (10 s) and `PG_POOL_IDLE_TIMEOUT_MS` (30 s).
+- **Shell:** `railway connect Postgres` opens `psql`.
+- **Backups:** use the Postgres service's **Backups** tab in Railway if your plan includes it. Take a manual dump before risky changes:
+  ```bash
+  pg_dump "$(railway variables --service Postgres --kv | sed -n 's/^DATABASE_PUBLIC_URL=//p')" -Fc -f ship-commit-$(date +%F).dump
+  ```
+- **Housekeeping** runs every 30 minutes and prunes:
+  - expired rate-limit rows
+  - unused launch staging uploads
+  - admin nonces older than 1 h
+  - expired admin sessions
+  - audit logs older than 120 days
+  - market snapshots older than 400 days
+
+## 7. Scheduler
+
+The app runs its own scheduler (`app/lib/boot.ts`). Each job calls its admin endpoint over loopback with `x-cron-secret: $CRON_SECRET`, inside a Postgres advisory lock, so overlapping deployments or replicas never run the same job twice.
+
+| Job | Endpoint | Cadence | Runs when |
+|-----|----------|---------|-----------|
+| Market-cap milestone resolution | `/api/admin/resolve-marketcap-milestones` | 1 min | `CTS_ENABLE_MARKETCAP_MILESTONES=1` |
+| Reward milestone normalization (vote windows, approvals, failures, claimable) | `/api/admin/normalize-rewards` | 10 min | always |
+| ASD execution | `/api/admin/asd-execute` | 15 min | `CTS_ASD_ENABLE_SWAPS=1` |
+| Transparent Bundler snapshots | `/api/admin/transparent-bundler-snapshot` | daily | always |
+| Housekeeping | internal | 30 min | always |
+
+- **Production:** the scheduler starts automatically when `CRON_SECRET` is set. `DISABLE_SCHEDULER=1` turns it off, for example if a separate cron service takes over.
+- **Development:** the scheduler is off unless `ENABLE_SCHEDULER=1`.
+- **Manual trigger:**
+  ```bash
+  curl -X POST https://<domain>/api/admin/normalize-rewards -H "x-cron-secret: $CRON_SECRET" -H "content-type: application/json" -d '{}'
+  ```
+- **Not scheduled:** sweeping managed creator fees into escrow. `/api/escrow/sweep` accepts `x-cron-secret` and, with no body, sweeps every managed commitment, but the built-in scheduler does not call it. Today, sweeps happen when a creator triggers one from `/creator` or an admin calls the endpoint. If you want sweeps on a timer, point an external cron at it.
+- **Admin-triggered:** failure distributions for failed milestones (`.../milestones/[id]/failure-distribution/create`) require an admin session. They do not run on their own.
+
+## 8. Emergency switches
+
+| Variable | Effect |
+|----------|--------|
+| `CTS_LAUNCHES_PAUSED=1` | Rejects new Auto-Lock launches with HTTP 503 (`/api/launch/prepare`, `execute`, `dev-buy-tx`, launch image uploads). It does **not** block Manual Lock commitments. |
+| `CTS_PUBLIC_LAUNCHES=false` | Restricts launches and new commitments to `CTS_CREATOR_WALLET_PUBKEYS` and admins |
+| `CTS_ENABLE_REWARD_PAYOUTS=0` | Stops creator milestone claims and admin releases |
+| `CTS_ENABLE_FAILURE_DISTRIBUTION_PAYOUTS=0` | Stops failure-distribution creation and voter claims |
+| `CTS_ENABLE_VOTE_REWARD_DISTRIBUTIONS=0` / `CTS_ENABLE_VOTE_REWARD_PAYOUTS=0` | Stops allocating or paying `$SHIP` vote rewards |
+| `CTS_ASD_ENABLE_SWAPS=0` | Stops ASD swaps (the job is not scheduled) |
+| `CTS_ENABLE_MARKETCAP_MILESTONES=0` | Stops market-cap auto-resolution |
+| `DISABLE_SCHEDULER=1` | Stops every background job |
+
+These are server-side flags. Set them with `railway variables --set` and they apply on the automatic redeploy, which takes about a minute.
+
+## 9. Incidents
+
+### Database outage
 
 Symptoms:
 
-- API endpoints return `Database connection failed`.
-- Rate limiting begins rejecting requests.
+- API errors such as `Database connection failed`
+- Every request rejected with 429, because rate limiting fails closed in production
+- `/api/health` returns 503
 
 Actions:
 
-- Confirm `DATABASE_URL` validity.
-- Confirm the Railway Postgres service is healthy (Railway dashboard → Postgres → Metrics).
-- Ensure `DATABASE_URL` references the Postgres service (`${{Postgres.DATABASE_URL}}`).
-- Consider temporarily increasing `PG_POOL_CONNECTION_TIMEOUT_MS`.
-- Liveness for the platform healthcheck is `/api/healthz` (no dependencies); `/api/health` runs the deep DB + RPC checks.
+1. Check the Railway Postgres service (status and metrics).
+2. Confirm `DATABASE_URL` still resolves to `${{Postgres.DATABASE_URL}}`.
+3. If the database is slow rather than down, raise `PG_POOL_CONNECTION_TIMEOUT_MS`.
+4. `/api/healthz` stays green on purpose, so Railway will not restart-loop the app.
 
-### 2) Solana RPC outage / degraded RPC
+### Solana RPC outage or degradation
 
 Symptoms:
 
-- Funding/release actions fail to confirm.
-- Voting endpoints time out.
+- Launches, claims and releases fail to confirm
+- Voting times out on balance lookups
+- `/api/health` RPC check fails
 
 Actions:
 
-- Switch `SOLANA_RPC_URL` to a backup provider.
-- Verify the new RPC supports `getLatestBlockhash`, `getBlockTime`, token account parsing.
+1. Point `SOLANA_RPC_URL` at a backup provider. The browser uses `/api/rpc`, so it follows automatically unless `NEXT_PUBLIC_SOLANA_RPC_URL` is set.
+2. Make sure the provider supports `getLatestBlockhash`, `getBlockTime`, `getSignaturesForAddress` and token-account parsing.
+3. If launches are failing mid-flight, set `CTS_LAUNCHES_PAUSED=1`.
 
-### 3) Stuck “release lock” / concurrent release
+### Jupiter outage
 
 Symptoms:
 
-- Reward milestone release returns `Release already in progress`.
+- Prices are missing
+- ASD swaps error
+- Voters get "Token price unavailable"
+
+Behavior and actions:
+
+- Voting falls back to DexScreener prices, then to stale cached prices, and finally to a 1,000-token minimum balance.
+- If ASD errors persist, set `CTS_ASD_ENABLE_SWAPS=0`.
+- Without `JUPITER_API_BASE_URL` the app uses the keyless `https://lite-api.jup.ag` tier. The keyed tier is `JUPITER_API_BASE_URL=https://api.jup.ag` with `JUPITER_API_KEY`. `JUPITER_TIMEOUT_MS` defaults to 8000.
+
+### Fee payer out of SOL
+
+Symptoms: `Insufficient fee payer balance`, or "Top up the fee payer wallet" hints on sweeps and claims.
+
+Action: fund the `ESCROW_FEE_PAYER_SECRET_KEY` wallet.
+
+### Stuck release lock
+
+Symptom: `Release already in progress`.
 
 Actions:
 
-- Check `reward_release_locks` row for that `(commitmentId, milestoneId)`.
-- If no tx sig and lock is stale, delete/clear lock row.
+1. Inspect `reward_release_locks` (and `reward_milestone_payout_claims`) for `(commitment_id, milestone_id)`.
+2. If no tx signature was recorded and the lock is stale, first try the admin reconcile endpoint (`POST /api/commitments/[id]/milestones/[milestoneId]/reconcile`). It looks for the on-chain transfer.
+3. Clear the row only if the reconcile endpoint finds nothing.
 
-### 4) Underfunded escrow
+### Stuck pump.fun fee claim
 
-Symptoms:
+Symptom: `Sweep already in progress` (HTTP 409).
 
-- Release endpoint fails with `Escrow underfunded for this release`.
+Action: inspect `pumpfun_creator_fee_claim_locks` and clear a stale row once you have confirmed that no claim transaction landed.
+
+### Underfunded escrow
+
+Symptom: `Escrow underfunded for this release` or `Escrow underfunded for milestone failure payout`.
 
 Actions:
 
-- Verify escrow address balance in explorer.
-- In assisted mode, funding is voluntary; communicate expectations clearly.
-- In managed mode, verify fee routing is correctly configured.
+1. Check the escrow balance on an explorer.
+2. For Auto-Lock projects, sweep pending creator fees first (from `/creator`, or `POST /api/escrow/sweep` as admin or cron).
+3. Manual Lock projects are funded by the creator, so communicate this to holders.
 
-## Reconciliation
+### Launch failed after payment
 
-### Escrow balance reconciliation
+- Each launch is recorded in `launch_attempts`, and its funded launch wallet in `public.launch_treasury_wallets`.
+- An admin can refund a launch wallet through `POST /api/launch/refund`, or sweep leftover SOL back to the fee payer through `POST /api/launch/sweep`.
+- **Warning:** for Auto-Lock, the launch wallet *is* the project escrow. In batch mode, `/api/launch/sweep` skips wallets whose launch succeeded, but the single-wallet mode (`walletId` or `creatorWallet` in the body) has no such guard. Never point it at the wallet of a live project, because it would move escrowed fees to the fee payer.
+- The offline script `npm run recover-sol:dry` lists balances across all Privy wallets.
 
-- Query all open commitments.
-- For each commitment:
-  - Fetch escrow balance on-chain.
-  - Compare against expected funded amount (personal) or milestone unlock schedule (reward).
+### Failure distribution refused
 
-### Admin action reconciliation
+Symptom: HTTP 500 `CTS_SHIP_BUYBACK_TREASURY_PUBKEY is required` or `CTS_VOTE_REWARD_FAUCET_OWNER_PUBKEY is required`.
 
-- Use `audit_logs` to enumerate:
-  - `admin_commitment_*`
-  - `admin_reward_milestone_release_*`
-  - `admin_pumpfun_launch_*`
+Action: set the missing variable and retry. The endpoint is idempotent: it finds transfers that were already sent before sending new ones.
 
-For each event with a `signature`, confirm the tx on explorer.
+## 10. Reconciliation
 
-## Scheduled Tasks
+### Escrow balances
 
-### Built-in scheduler
+For each open commitment, compare the on-chain escrow balance with the expected amount. The expected amount is:
 
-The web service runs its own scheduler (see `app/lib/boot.ts`); each job calls its admin endpoint over loopback with `CRON_SECRET` and takes a Postgres advisory lock, so several replicas never double-run a job:
+> swept fees − released milestones − reserved failure payouts
 
-| Job | Endpoint | Cadence |
-|-----|----------|---------|
-| Market-cap milestone resolution | `/api/admin/resolve-marketcap-milestones` | 1 min (if `CTS_ENABLE_MARKETCAP_MILESTONES`) |
-| Reward milestone normalization | `/api/admin/normalize-rewards` | 10 min |
-| ASD execution | `/api/admin/asd-execute` | 15 min (if `CTS_ASD_ENABLE_SWAPS`) |
-| Bundler snapshots | `/api/admin/transparent-bundler-snapshot` | daily |
-| Housekeeping (rate limits, staging uploads, nonces, old logs) | internal | 30 min |
+The `normalize-rewards` job keeps the derived totals in the database up to date.
 
-Set `DISABLE_SCHEDULER=1` to turn it off (for example if you run a separate cron service).
-Manual trigger: `POST` the endpoint with header `x-cron-secret: $CRON_SECRET`.
+### Admin actions
+
+From `audit_logs`, list the `admin_*` events, for example:
+
+- `admin_reward_milestone_release_ok`
+- `admin_reward_milestone_release_error`
+- `admin_milestone_failure_distribution_ok`
+- `admin_milestone_failure_distribution_error`
+
+Confirm every recorded `signature` on an explorer.
+
+### Market-cap confirmations
+
+Every auto-resolved milestone is recorded in two places:
+
+- a row in `marketcap_milestone_confirmations`, with evidence (pair, price, liquidity, samples)
+- a `marketcap_milestone_confirmed` audit event

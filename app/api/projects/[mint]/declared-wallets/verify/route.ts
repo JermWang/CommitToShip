@@ -57,7 +57,7 @@ async function requireProjectAuthority(req: Request, mint: string, body: any): P
       return {
         ok: false,
         res: NextResponse.json(
-          { error: "Wallet is not approved for closed beta", hint: "Ask to be added to CTS_CREATOR_WALLET_PUBKEYS." },
+          { error: "This wallet is not approved to launch yet", hint: "Launches are currently limited to approved wallets." },
           { status: 403 }
         ),
       };
