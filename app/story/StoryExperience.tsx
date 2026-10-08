@@ -286,7 +286,7 @@ export default function StoryExperience() {
       setMode("static");
       return;
     }
-    const sea = createAsciiHorizon(asciiCanvas, "#1a1712");
+    const sea = createAsciiHorizon(asciiCanvas, "#0e0c09");
 
     const pointer = { x: 0, y: 0 };
     const target = { x: 0, y: 0 };
@@ -387,7 +387,7 @@ export default function StoryExperience() {
       meterRef.current?.style.setProperty("--p", p.toFixed(4));
 
       // ink on cream reads stronger than white on black: keep the sea quiet
-      sea.draw({ time, level: seaLevel, alpha: seaAlpha * 0.5, drift: u * 60, stream, streamTo });
+      sea.draw({ time, level: seaLevel, alpha: Math.min(1, seaAlpha * 1.05), drift: u * 60, stream, streamTo });
       emblem?.render(u, time, pointer);
     };
     raf = requestAnimationFrame(frame);

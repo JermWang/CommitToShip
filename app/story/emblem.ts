@@ -8,9 +8,11 @@ import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
  *
  * - Geometry: our own /branding/svg-logo.svg, extruded with a multi-segment bevel (every edge rounded).
  * - Backdrop: a full-screen pastel shader drawn INSIDE the WebGL scene, so the glass genuinely refracts it.
- *   It also paints the soft bloom behind the emblem and its contact shadow.
+ *   It also paints the soft bloom behind the emblem, its contact shadow and iridescent twinkles around it.
  * - Motion: chapter poses + a cinematic transition (full turn, dolly toward camera, bank, arc) fed through
  *   damped springs so the emblem has weight and settles instead of snapping. Idle "sailing" bob on top.
+ * - Sparkle: prismatic glints that live on the rounded edges, an orbiting key light that slides highlights
+ *   across the curves, floating bokeh dust, and a small glint burst whenever the emblem lands on a chapter.
  */
 
 /** x/y: fraction of the half-viewport (-1..1). size: fraction of viewport height. maxW: cap as a fraction of viewport width. */
@@ -27,6 +29,13 @@ const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const easeInOutCubic = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 const easeOutExpo = (t: number) => (t >= 1 ? 1 : 1 - Math.pow(2, -10 * t));
+
+/** Pastel "prism" tint for a glint, so sparkles read on a light background. */
+function prism(seed: number): THREE.Color {
+  const c = new THREE.Color();
+  c.setHSL((seed * 0.83 + 0.55) % 1, 0.85, 0.82);
+  return c;
+}
 
 /** Lightly under-damped spring: gives the emblem mass and a soft settle without overshooting into the UI. */
 class Spring {
@@ -103,6 +112,21 @@ const BACKDROP_FRAG = /* glsl */ `
     float bloom = exp(-dot(gd, gd) / pow(uGlowR * 1.35, 2.0));
     col = mix(col, vec3(1.0), bloom * 0.7);
 
+    // iridescent twinkles in the air around the emblem
+    vec2 g = vec2(uv.x * uAspect, uv.y) * 54.0;
+    vec2 cell = floor(g);
+    vec2 fr = fract(g) - 0.5;
+    float rnd = hash(cell);
+    if (rnd > 0.955) {
+      float tw = pow(max(0.0, sin(uTime * (0.9 + rnd * 2.2) + rnd * 50.0)), 14.0);
+      float crossH = max(0.0, 1.0 - abs(fr.y) * 22.0) * max(0.0, 1.0 - abs(fr.x) * 2.2);
+      float crossV = max(0.0, 1.0 - abs(fr.x) * 22.0) * max(0.0, 1.0 - abs(fr.y) * 2.2);
+      float star = (exp(-dot(fr, fr) * 140.0) + (crossH + crossV) * 0.55) * tw;
+      float near = exp(-dot(gd, gd) / pow(uGlowR * 2.8, 2.0)) * (1.0 - bloom * 0.6);
+      vec3 tint = 0.62 + 0.38 * cos(6.2831 * (rnd * 7.0 + vec3(0.0, 0.33, 0.67)));
+      col = mix(col, tint, clamp(star * near, 0.0, 1.0) * 0.95);
+    }
+
     // gentle vignette + grain (kills banding)
     vec2 v = uv - 0.5;
     col *= 1.0 - dot(v, v) * 0.12;
@@ -112,7 +136,80 @@ const BACKDROP_FRAG = /* glsl */ `
   }
 `;
 
-async function buildGlassLogo(material: THREE.Material): Promise<THREE.Group> {
+/* bokeh dust: soft discs at different depths, drifting up and parallaxing with scroll */
+const DUST_VERT = /* glsl */ `
+  attribute float aSeed;
+  uniform float uTime;
+  uniform float uProg;
+  uniform float uPixelRatio;
+  varying float vAlpha;
+  varying float vSeed;
+  void main() {
+    vec3 p = position;
+    float speed = 0.12 + fract(aSeed * 13.7) * 0.18;
+    p.y = mod(p.y + uTime * speed + 6.0, 12.0) - 6.0;
+    p.x += sin(uTime * 0.3 + aSeed * 20.0) * 0.25 - uProg * (1.5 + p.z * 0.4);
+    vec4 mv = modelViewMatrix * vec4(p, 1.0);
+    gl_Position = projectionMatrix * mv;
+    float size = 14.0 + fract(aSeed * 7.3) * 34.0;
+    gl_PointSize = size * uPixelRatio * (8.0 / -mv.z);
+    vAlpha = (0.22 + 0.4 * fract(aSeed * 3.1)) * smoothstep(6.0, 4.0, abs(p.y));
+    vSeed = aSeed;
+  }
+`;
+
+const DUST_FRAG = /* glsl */ `
+  precision highp float;
+  varying float vAlpha;
+  varying float vSeed;
+  void main() {
+    vec2 c = gl_PointCoord - 0.5;
+    float d = length(c);
+    float disc = smoothstep(0.5, 0.18, d);
+    float rim = smoothstep(0.5, 0.42, d) - smoothstep(0.42, 0.34, d);
+    vec3 tint = 0.86 + 0.14 * cos(6.2831 * (vSeed * 5.0 + vec3(0.0, 0.33, 0.67)));
+    gl_FragColor = vec4(tint, (disc * 0.65 + rim * 0.35) * vAlpha);
+  }
+`;
+
+function makeSparkleTexture(): THREE.CanvasTexture {
+  const S = 128;
+  const c = document.createElement("canvas");
+  c.width = S;
+  c.height = S;
+  const g = c.getContext("2d")!;
+  const m = S / 2;
+
+  const core = g.createRadialGradient(m, m, 0, m, m, S * 0.2);
+  core.addColorStop(0, "rgba(255,255,255,1)");
+  core.addColorStop(0.3, "rgba(255,255,255,0.75)");
+  core.addColorStop(1, "rgba(255,255,255,0)");
+  g.fillStyle = core;
+  g.fillRect(0, 0, S, S);
+
+  const flare = (angle: number, len: number, width: number, alpha: number) => {
+    g.save();
+    g.translate(m, m);
+    g.rotate(angle);
+    const lg = g.createLinearGradient(-len, 0, len, 0);
+    lg.addColorStop(0, "rgba(255,255,255,0)");
+    lg.addColorStop(0.5, `rgba(255,255,255,${alpha})`);
+    lg.addColorStop(1, "rgba(255,255,255,0)");
+    g.fillStyle = lg;
+    g.fillRect(-len, -width / 2, len * 2, width);
+    g.restore();
+  };
+  flare(0, m, 3, 1);
+  flare(Math.PI / 2, m, 3, 1);
+  flare(Math.PI / 4, m * 0.5, 2, 0.6);
+  flare(-Math.PI / 4, m * 0.5, 2, 0.6);
+
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+async function buildGlassLogo(material: THREE.Material): Promise<{ holder: THREE.Group; edgePoints: THREE.Vector3[] }> {
   const svgText = await fetch("/branding/svg-logo.svg").then((r) => r.text());
   const data = new SVGLoader().parse(svgText);
 
@@ -148,7 +245,28 @@ async function buildGlassLogo(material: THREE.Material): Promise<THREE.Group> {
   const holder = new THREE.Group();
   holder.add(group);
   holder.scale.setScalar(1 / Math.max(size.x, size.y));
-  return holder;
+  holder.updateMatrixWorld(true);
+
+  // Glint anchors: points on the rounded front bevel (normals tilted toward the viewer), in holder space.
+  const edgePoints: THREE.Vector3[] = [];
+  const v = new THREE.Vector3();
+  const nrm = new THREE.Vector3();
+  const nm = new THREE.Matrix3();
+  holder.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!(mesh as any).isMesh) return;
+    const pos = mesh.geometry.getAttribute("position");
+    const nor = mesh.geometry.getAttribute("normal");
+    nm.getNormalMatrix(mesh.matrixWorld);
+    for (let k = 0; k < pos.count; k += 7) {
+      nrm.fromBufferAttribute(nor, k).applyMatrix3(nm).normalize();
+      if (nrm.z > 0.35 && nrm.z < 0.85) {
+        v.fromBufferAttribute(pos, k).applyMatrix4(mesh.matrixWorld);
+        edgePoints.push(v.clone());
+      }
+    }
+  });
+  return { holder, edgePoints };
 }
 
 /* ---------------------------------------------------------------------------------------------- */
@@ -166,6 +284,10 @@ export function createEmblem(canvas: HTMLCanvasElement, poses: EmblemPose[], mob
 
   const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
   camera.position.set(0, 0, 10);
+
+  // An orbiting key light: its specular highlight glides across the rounded glass (the "glisten").
+  const keyLight = new THREE.DirectionalLight(0xffffff, 2.4);
+  scene.add(keyLight);
 
   // Full-screen pastel backdrop (opaque, so the glass's transmission pass sees it).
   const bgUniforms = {
@@ -189,6 +311,33 @@ export function createEmblem(canvas: HTMLCanvasElement, poses: EmblemPose[], mob
   bg.renderOrder = -10;
   scene.add(bg);
 
+  // Bokeh dust
+  const DUST = 70;
+  const dustGeo = new THREE.BufferGeometry();
+  const dustPos = new Float32Array(DUST * 3);
+  const dustSeed = new Float32Array(DUST);
+  for (let k = 0; k < DUST; k++) {
+    dustPos[k * 3] = (Math.random() * 2 - 1) * 9;
+    dustPos[k * 3 + 1] = (Math.random() * 2 - 1) * 6;
+    dustPos[k * 3 + 2] = -4 + Math.random() * 6.5;
+    dustSeed[k] = Math.random();
+  }
+  dustGeo.setAttribute("position", new THREE.BufferAttribute(dustPos, 3));
+  dustGeo.setAttribute("aSeed", new THREE.BufferAttribute(dustSeed, 1));
+  const dustUniforms = { uTime: { value: 0 }, uProg: { value: 0 }, uPixelRatio: { value: 1 } };
+  const dustMat = new THREE.ShaderMaterial({
+    vertexShader: DUST_VERT,
+    fragmentShader: DUST_FRAG,
+    uniforms: dustUniforms,
+    transparent: true,
+    depthWrite: false,
+    toneMapped: false,
+  });
+  const dust = new THREE.Points(dustGeo, dustMat);
+  dust.frustumCulled = false;
+  dust.renderOrder = 5;
+  scene.add(dust);
+
   // Clear, lightly frosted glass with a glossy coat: refracts the pastel light, crisp rounded highlights.
   const glass = new THREE.MeshPhysicalMaterial({
     color: 0xffffff,
@@ -208,13 +357,56 @@ export function createEmblem(canvas: HTMLCanvasElement, poses: EmblemPose[], mob
   const pivot = new THREE.Group();
   scene.add(pivot);
 
+  // sparkle sprites
+  const sparkleTex = makeSparkleTexture();
+  const makeSprite = (tint: THREE.Color) => {
+    const s = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: sparkleTex,
+        color: tint,
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        toneMapped: false,
+      })
+    );
+    s.renderOrder = 20;
+    return s;
+  };
+
+  type Glint = { sprite: THREE.Sprite; rate: number; phase: number; size: number };
+  const glints: Glint[] = [];
+
+  const BURST = 16;
+  const burst = Array.from({ length: BURST }, (_, k) => {
+    const sprite = makeSprite(prism(k / BURST));
+    sprite.visible = false;
+    scene.add(sprite);
+    const ang = (k / BURST) * TAU + Math.random() * 0.3;
+    return { sprite, dir: new THREE.Vector2(Math.cos(ang), Math.sin(ang)), reach: 0.55 + Math.random() * 0.45, size: 0.06 + Math.random() * 0.07 };
+  });
+  let burstAt = -10;
+  let burstCenter = new THREE.Vector3();
+  let burstScale = 1;
+
   let loaded = false;
   let loadedAt = 0;
   let disposed = false;
   buildGlassLogo(glass)
-    .then((logo) => {
+    .then(({ holder, edgePoints }) => {
       if (disposed) return;
-      pivot.add(logo);
+      pivot.add(holder);
+      // ~14 glints spread across the rounded edges
+      const picks = Math.min(14, edgePoints.length);
+      for (let k = 0; k < picks; k++) {
+        const p = edgePoints[Math.floor((k / picks) * edgePoints.length + Math.random() * (edgePoints.length / picks))];
+        if (!p) continue;
+        const sprite = makeSprite(prism(Math.random()));
+        sprite.position.copy(p);
+        pivot.add(sprite);
+        glints.push({ sprite, rate: 0.6 + Math.random() * 1.1, phase: Math.random() * TAU, size: 0.08 + Math.random() * 0.1 });
+      }
       loaded = true;
       loadedAt = -1; // stamped on the next frame
     })
@@ -225,11 +417,13 @@ export function createEmblem(canvas: HTMLCanvasElement, poses: EmblemPose[], mob
   const resize = () => {
     w = Math.max(1, canvas.clientWidth);
     h = Math.max(1, canvas.clientHeight);
-    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    const pr = Math.min(2, window.devicePixelRatio || 1);
+    renderer.setPixelRatio(pr);
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     bgUniforms.uAspect.value = w / h;
+    dustUniforms.uPixelRatio.value = pr;
   };
   resize();
 
@@ -246,11 +440,17 @@ export function createEmblem(canvas: HTMLCanvasElement, poses: EmblemPose[], mob
 
   const projected = new THREE.Vector3();
   let lastTime = 0;
+  let lastSeg = -1;
+  let lastE = 0;
 
   const render = (u: number, time: number, pointer: { x: number; y: number }) => {
     const dt = Math.min(0.05, Math.max(0.001, time - lastTime));
     lastTime = time;
     bgUniforms.uTime.value = time;
+    dustUniforms.uTime.value = time;
+
+    // the key light slowly orbits so highlights slide across the curved glass
+    keyLight.position.set(Math.cos(time * 0.42) * 6, 3.5 + Math.sin(time * 0.31) * 2, 5 + Math.sin(time * 0.42) * 2);
 
     if (loaded) {
       if (loadedAt < 0) loadedAt = time;
@@ -291,14 +491,54 @@ export function createEmblem(canvas: HTMLCanvasElement, poses: EmblemPose[], mob
       pivot.scale.setScalar(Math.max(0.0001, sScale.step(targetScale, dt)));
       pivot.rotation.set(sRotX.step(targetRotX, dt) + pitch, sRotY.step(targetRotY, dt), sRotZ.step(targetRotZ, dt) + roll);
       glass.envMapIntensity = 1.1 + lerp(a.glow, b.glow, e) * 0.35 + arc * 0.25;
+      keyLight.intensity = 2.0 + arc * 2.2;
 
-      // tell the backdrop where the emblem is (for its bloom + contact shadow)
+      // edge glints: brief, sharp twinkles (brighter while the emblem turns)
+      for (const g of glints) {
+        const tw = Math.pow(Math.max(0, Math.sin(time * g.rate * TAU * 0.35 + g.phase)), 10);
+        const s = g.size * (tw * (1 + arc * 0.8) + 0.0001) * intro;
+        g.sprite.scale.setScalar(s);
+        (g.sprite.material as THREE.SpriteMaterial).rotation = time * 0.6 + g.phase;
+        (g.sprite.material as THREE.SpriteMaterial).opacity = Math.min(1, tw * 1.4);
+      }
+
+      // landing burst: a ring of prismatic glints when the emblem settles into a chapter
+      const landed = (i === lastSeg && ((lastE < 0.96 && e >= 0.96) || (lastE > 0.04 && e <= 0.04))) || (lastSeg >= 0 && i !== lastSeg && (e >= 0.96 || e <= 0.04));
+      if (landed && time - loadedAt > 1.2) {
+        burstAt = time;
+        burstCenter.copy(pivot.position);
+        burstScale = pivot.scale.x;
+      }
+      lastSeg = i;
+      lastE = e;
+
+      // tell the backdrop where the emblem is (for its bloom, contact shadow and twinkles)
       projected.set(pivot.position.x, pivot.position.y, 0).project(camera);
       bgUniforms.uGlow.value.set(projected.x * 0.5 + 0.5, projected.y * 0.5 + 0.5);
       bgUniforms.uGlowR.value = (pivot.scale.x / (hh * 2)) * 0.62 * (1 + sz.x * 0.08);
       bgUniforms.uLift.value = clamp01(sz.x / 2.6);
       bgUniforms.uProg.value = u / Math.max(1, n - 1);
+      dustUniforms.uProg.value = u / Math.max(1, n - 1);
     }
+
+    const bp = (time - burstAt) / 1.1;
+    for (const p of burst) {
+      if (bp < 0 || bp >= 1) {
+        p.sprite.visible = false;
+        continue;
+      }
+      const out = easeOutExpo(bp);
+      p.sprite.visible = true;
+      p.sprite.position.set(
+        burstCenter.x + p.dir.x * burstScale * p.reach * (0.35 + out * 0.65),
+        burstCenter.y + p.dir.y * burstScale * p.reach * (0.35 + out * 0.65),
+        burstCenter.z + 0.2
+      );
+      p.sprite.scale.setScalar(burstScale * p.size * (1 - bp) * (0.6 + Math.sin(bp * Math.PI) * 0.8));
+      (p.sprite.material as THREE.SpriteMaterial).opacity = Math.pow(1 - bp, 1.4);
+      (p.sprite.material as THREE.SpriteMaterial).rotation = bp * 2;
+    }
+
     renderer.render(scene, camera);
   };
 
@@ -309,9 +549,16 @@ export function createEmblem(canvas: HTMLCanvasElement, poses: EmblemPose[], mob
       disposed = true;
       glass.dispose();
       bgMat.dispose();
+      dustMat.dispose();
+      dustGeo.dispose();
+      sparkleTex.dispose();
       env.dispose();
       pmrem.dispose();
-      scene.traverse((o) => (o as THREE.Mesh).geometry?.dispose?.());
+      scene.traverse((o) => {
+        (o as THREE.Mesh).geometry?.dispose?.();
+        const m = (o as THREE.Sprite).material as THREE.Material | undefined;
+        if (m && (o as any).isSprite) m.dispose();
+      });
       renderer.dispose();
     },
   };

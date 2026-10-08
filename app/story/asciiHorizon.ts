@@ -71,7 +71,7 @@ export function createAsciiHorizon(canvas: HTMLCanvasElement, color = "#fff"): A
 
         const depth = Math.max(0, 1 - dy / 13);
         const idx = Math.max(0, Math.min(RAMP.length - 1, Math.floor((dy <= 0 ? 1 : depth) * (RAMP.length - 1))));
-        ctx.globalAlpha = f.alpha * (dy <= 1 ? 0.78 : 0.3 * depth);
+        ctx.globalAlpha = f.alpha * (dy <= 1 ? 0.9 : 0.46 * depth);
         ctx.fillStyle = color;
         ctx.fillText(RAMP[idx], x * cw, y * chh);
       }
