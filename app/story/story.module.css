@@ -26,18 +26,11 @@
 }
 
 .gl {
-  z-index: 2;
+  z-index: 1;
 }
 
-/* soft studio light pooling under the emblem */
-.glow {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  background:
-    radial-gradient(60vw 42vh at 50% 34%, rgba(255, 255, 255, 0.07), transparent 70%),
-    radial-gradient(90vw 30vh at 50% 105%, rgba(255, 255, 255, 0.06), transparent 70%);
-  pointer-events: none;
+.sea {
+  z-index: 2;
 }
 
 .vignette {
@@ -68,8 +61,13 @@
 }
 
 .split {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: clamp(32px, 6vw, 96px);
+  /* copy | emblem | card */
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.6fr) minmax(0, 1fr);
+  gap: clamp(20px, 3vw, 48px);
+}
+
+.split .cardWrap {
+  grid-column: 3;
 }
 
 .center {
@@ -158,6 +156,7 @@
   perspective: 1600px;
   display: flex;
   justify-content: flex-end;
+  min-width: 0;
 }
 
 .card {
@@ -776,6 +775,10 @@
     grid-template-columns: minmax(0, 1fr);
     align-content: space-between;
     gap: 24px;
+  }
+
+  .split .cardWrap {
+    grid-column: auto;
   }
 
   .chapter {

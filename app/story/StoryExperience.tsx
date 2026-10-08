@@ -218,22 +218,20 @@ const N = CHAPTERS.length;
 
 /* Emblem choreography (x/y: fraction of half-viewport, size: fraction of viewport height) */
 const POSES: EmblemPose[] = [
-  { x: 0, y: 0.5, size: 0.27, rotY: 0, rotX: 0.04, glow: 1 },
-  // middle chapters: the emblem floats behind the frosted card, so the glass reads as real depth
-  { x: 0.53, y: -0.02, size: 0.3, rotY: -0.65, rotX: 0.06, glow: 0.5 },
-  { x: 0.5, y: -0.05, size: 0.3, rotY: 0.75, rotX: -0.05, glow: 0.6 },
-  { x: 0.56, y: 0.02, size: 0.28, rotY: -0.45, rotX: 0.08, glow: 0.5 },
-  { x: 0.51, y: 0, size: 0.3, rotY: 0.55, rotX: 0.02, glow: 0.5 },
-  { x: 0.53, y: 0.04, size: 0.22, rotY: -0.3, rotX: -0.04, glow: 0.6 },
-  { x: 0, y: 0.5, size: 0.27, rotY: Math.PI * 2, rotX: 0.04, glow: 1 },
+  { x: 0, y: 0.5, size: 0.27, rotY: 0, rotX: 0.04, glow: 1, maxW: 0.3 },
+  // middle chapters: the emblem holds the centre column, between the copy and the glass card
+  { x: 0, y: 0.02, size: 0.3, rotY: -0.32, rotX: 0.05, glow: 0.5, maxW: 0.15 },
+  { x: 0, y: 0.02, size: 0.3, rotY: 0.34, rotX: -0.04, glow: 0.6, maxW: 0.15 },
+  { x: 0, y: 0.02, size: 0.3, rotY: -0.28, rotX: 0.06, glow: 0.5, maxW: 0.15 },
+  { x: 0, y: 0.02, size: 0.3, rotY: 0.3, rotX: 0.02, glow: 0.5, maxW: 0.15 },
+  { x: 0, y: 0.02, size: 0.3, rotY: -0.22, rotX: -0.03, glow: 0.6, maxW: 0.15 },
+  { x: 0, y: 0.5, size: 0.27, rotY: Math.PI * 2, rotX: 0.04, glow: 1, maxW: 0.3 },
 ];
-const MOBILE_POSES: EmblemPose[] = POSES.map((p, i) => ({
-  ...p,
-  x: 0,
-  // intro/CTA: emblem above the headline; elsewhere it sits behind the docked glass card
-  y: i === 0 || i === N - 1 ? 0.42 : -0.32,
-  size: i === 0 || i === N - 1 ? 0.24 : 0.2,
-}));
+const MOBILE_POSES: EmblemPose[] = POSES.map((p, i) => {
+  const edge = i === 0 || i === N - 1;
+  // intro/CTA: above the headline. Other chapters: in the gap between the copy and the docked glass card.
+  return { ...p, x: 0, y: edge ? 0.42 : 0.1, size: edge ? 0.24 : 0.15, maxW: 0.7 };
+});
 
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 const smooth = (x: number) => {
@@ -470,9 +468,9 @@ export default function StoryExperience() {
   return (
     <div ref={rootRef} className={styles.root} style={{ height: `${N * 140}vh` }}>
       <div ref={stageRef} className={styles.stage}>
-        <div className={styles.glow} aria-hidden />
-        <canvas ref={asciiRef} className={styles.layer} aria-hidden />
+        {/* the glass scene renders its own studio backdrop; the ASCII sea draws on top of it */}
         <canvas ref={glRef} className={`${styles.layer} ${styles.gl}`} aria-hidden />
+        <canvas ref={asciiRef} className={`${styles.layer} ${styles.sea}`} aria-hidden />
         <div className={styles.vignette} aria-hidden />
 
         {mode === "cinematic" ? CHAPTERS.map((c, i) => renderChapter(c, i, false)) : null}
