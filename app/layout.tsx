@@ -23,10 +23,10 @@ export const metadata: Metadata = {
     description: SITE_DESCRIPTION,
     images: [
       {
-        url: "/branding/SHIP-AND-COMMIT-PROMO-1.png",
-        width: 1024,
-        height: 576,
-        alt: "Ship & Commit — Accountability infrastructure & milestone escrow",
+        url: "/branding/og-image.jpg",
+        width: 1200,
+        height: 630,
+        alt: "Ship & Commit: Launch is easy. Shipping is everything.",
       },
     ],
     type: "website",
@@ -35,7 +35,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: SITE_NAME,
     description: SITE_DESCRIPTION,
-    images: ["/branding/SHIP-AND-COMMIT-PROMO-1.png"],
+    images: [{ url: "/branding/og-image.jpg", width: 1200, height: 630, alt: "Ship & Commit: Launch is easy. Shipping is everything." }],
   },
 };
 

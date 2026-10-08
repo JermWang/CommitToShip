@@ -1055,7 +1055,7 @@ export default function Home() {
       const projectBannerUrl = projectBannerUrlRaw
         ? projectBannerUrlRaw
         : String(projectSymbol ?? "").trim().toUpperCase() === "SHIP"
-          ? "/branding/SHIP-AND-COMMIT-BANNER.png"
+          ? "/branding/x-header.jpg"
           : "";
       const projectDesc = project?.description != null ? String(project.description) : "";
       const websiteUrl = project?.websiteUrl != null ? String(project.websiteUrl) : "";
@@ -2384,8 +2384,8 @@ export default function Home() {
                                           onError={(ev) => {
                                             const img = ev.currentTarget as HTMLImageElement;
                                             const sym = String(c.projectSymbol ?? "").trim().toUpperCase();
-                                            const fallback = "/branding/SHIP-AND-COMMIT-BANNER.png";
-                                            if (sym === "SHIP" && !img.src.includes("SHIP-AND-COMMIT-BANNER.png")) {
+                                            const fallback = "/branding/x-header.jpg";
+                                            if (sym === "SHIP" && !img.src.includes("x-header.jpg")) {
                                               img.src = fallback;
                                               return;
                                             }
