@@ -1,351 +1,490 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 
 import styles from "./story.module.css";
-import { SCENE_COUNT, createStoryEngine } from "./engine";
+import { createEmblem, type EmblemPose } from "./emblem";
+import { createAsciiHorizon } from "./asciiHorizon";
 
-type MockKind = "form" | "escrow" | "milestones" | "votes" | "split" | "cta" | "none";
+/* ------------------------------------------------------------------------------------------------
+ * Chapters
+ * ---------------------------------------------------------------------------------------------- */
 
-type SceneDef = {
+type Chapter = {
   id: string;
-  eyebrow: string;
+  label: string;
   title: string;
   body: string;
-  chips?: string[];
-  mock: MockKind;
-  side: 1 | -1; // which side of the screen the glass card sits on (desktop)
+  layout: "center" | "split";
+  card?: () => ReactNode;
+  /** ASCII sea for this chapter */
+  sea: { level: number; alpha: number; stream?: number };
 };
 
-const SCENES: SceneDef[] = [
+const css = (v: Record<string, string | number>) => v as CSSProperties;
+
+const CHAPTERS: Chapter[] = [
   {
     id: "intro",
-    eyebrow: "Ship & Commit",
-    title: "Anyone can launch. Few ever ship.",
-    body: "Ship & Commit is the accountability layer for token launches: creators lock their fees behind real milestones, and holders decide when they're earned.",
-    mock: "none",
-    side: 1,
+    label: "Ship & Commit",
+    title: "Launch is easy.\nShipping is everything.",
+    body: "The launchpad that locks creator fees behind milestones holders verify.",
+    layout: "center",
+    sea: { level: 0.04, alpha: 0.9 },
   },
   {
     id: "launch",
-    eyebrow: "01 — Launch",
-    title: "Launch a token in a few clicks.",
-    body: "Name it, drop in an image and approve one wallet transaction. Your token goes live on pump.fun, with fee-locking switched on from the very first trade.",
-    chips: ["pump.fun", "One approval", "Auto-Lock"],
-    mock: "form",
-    side: -1,
+    label: "Launch",
+    title: "Launch in one transaction.",
+    body: "Name your token, add an image and approve once. It goes live on pump.fun with Auto-Lock already on.",
+    layout: "split",
+    sea: { level: 0, alpha: 0.5 },
+    card: () => (
+      <>
+        <div className={styles.cardHead}>
+          <span>New token</span>
+          <span className={styles.mono}>pump.fun</span>
+        </div>
+        <div className={styles.tokenRow}>
+          <img src="/branding/PFP.png" alt="" className={styles.tokenImg} />
+          <div className={styles.tokenFields}>
+            <div className={styles.input}>
+              <span>Name</span>
+              <b data-type="Ship It" />
+            </div>
+            <div className={styles.input}>
+              <span>Ticker</span>
+              <b data-type="$SHIPIT" />
+            </div>
+          </div>
+        </div>
+        <div className={styles.switchRow}>
+          <span>Auto-Lock creator fees</span>
+          <i className={styles.switch} />
+        </div>
+        <div className={styles.steps} data-steps="4">
+          {["Validate", "Fund", "Launch", "Live"].map((s, i) => (
+            <div key={s} className={styles.step} style={css({ "--k": i })}>
+              <i />
+              <span>{s}</span>
+            </div>
+          ))}
+        </div>
+      </>
+    ),
   },
   {
     id: "lock",
-    eyebrow: "02 — Lock",
-    title: "Creator fees go into escrow.",
-    body: "Fees flow into a dedicated on-chain escrow wallet instead of the creator's pocket. Nobody can quietly drain it, and anyone can verify the balance.",
-    chips: ["On-chain", "Verifiable", "Non-custodial"],
-    mock: "escrow",
-    side: 1,
+    label: "Lock",
+    title: "Every fee lands in escrow.",
+    body: "Creator fees flow into a dedicated on-chain escrow instead of a wallet. Anyone can verify the balance; nobody can quietly drain it.",
+    layout: "split",
+    sea: { level: 0, alpha: 0.55, stream: 1 },
+    card: () => (
+      <>
+        <div className={styles.cardHead}>
+          <span>Escrow</span>
+          <span className={styles.badge}>Locked</span>
+        </div>
+        <div className={styles.big}>
+          <b data-count-to="12.48" data-decimals="2">0.00</b>
+          <small>SOL</small>
+        </div>
+        <div className={`${styles.mono} ${styles.spark}`}>
+          ▁▁▂▂▃▃▄▅▅▆▇
+        </div>
+        <div className={styles.kv}>
+          <span>Address</span>
+          <span className={styles.mono}>4mLR…3pmam</span>
+        </div>
+        <div className={styles.kv}>
+          <span>Released</span>
+          <span className={styles.mono}>0.00 SOL</span>
+        </div>
+      </>
+    ),
   },
   {
     id: "commit",
-    eyebrow: "03 — Commit",
-    title: "Commit to milestones.",
-    body: "Set specific deliverables with deadlines, or market-cap goals that resolve automatically. Each milestone unlocks a share of the escrow, and nothing moves until it's earned.",
-    chips: ["Deadlines", "Market-cap goals", "% of escrow"],
-    mock: "milestones",
-    side: -1,
+    label: "Commit",
+    title: "Commit to real milestones.",
+    body: "Each milestone unlocks a share of the escrow — a deadline you deliver against, or a market-cap goal that verifies itself.",
+    layout: "split",
+    sea: { level: 0, alpha: 0.42 },
+    card: () => (
+      <>
+        <div className={styles.cardHead}>
+          <span>Milestones</span>
+          <span className={styles.mono}>3 · 100%</span>
+        </div>
+        <div className={styles.timeline}>
+          {[
+            ["Ship v1 on mainnet", "30%", "Due Nov 14"],
+            ["Reach $1M market cap", "30%", "Auto-verified"],
+            ["Publish security audit", "40%", "Due Dec 20"],
+          ].map(([t, p, m], i) => (
+            <div key={t} className={styles.ms} style={css({ "--k": i })}>
+              <i className={styles.msDot} />
+              <div className={styles.msText}>
+                <b>{t}</b>
+                <span>{m}</span>
+              </div>
+              <span className={styles.msPct}>{p}</span>
+            </div>
+          ))}
+        </div>
+      </>
+    ),
   },
   {
-    id: "vote",
-    eyebrow: "04 — Verify",
-    title: "Holders vote on every milestone.",
-    body: "When the creator ships, token holders confirm it with signed, publicly verifiable votes. Real holders decide — not promises, not hype.",
-    chips: ["Signed votes", "Holder-weighted", "Public record"],
-    mock: "votes",
-    side: 1,
+    id: "verify",
+    label: "Verify",
+    title: "Holders decide when it's earned.",
+    body: "When a milestone ships, token holders review it and vote with signed, publicly verifiable messages.",
+    layout: "split",
+    sea: { level: 0, alpha: 0.42 },
+    card: () => (
+      <>
+        <div className={styles.cardHead}>
+          <span>Ship v1 on mainnet</span>
+          <span className={styles.mono}>vote</span>
+        </div>
+        <div className={styles.voters} aria-hidden>
+          {Array.from({ length: 48 }, (_, i) => (
+            <i key={i} style={css({ "--k": i })} className={i % 8 === 5 ? styles.voterNo : undefined} />
+          ))}
+        </div>
+        <div className={styles.bar}>
+          <span>Approve</span>
+          <div className={styles.track}>
+            <div className={styles.fill} style={css({ "--w": 0.87 })} />
+          </div>
+          <b data-count-to="87" data-decimals="0">0</b>
+          <b>%</b>
+        </div>
+        <div className={styles.sig}>
+          <span className={styles.mono} data-type="sig 5Kq9…f2Tz · verified ✓" />
+        </div>
+      </>
+    ),
   },
   {
-    id: "payout",
-    eyebrow: "05 — Release or forfeit",
-    title: "Ship and get paid. Miss and it's redistributed.",
-    body: "Approved milestones release their share to the creator. Missed deadlines forfeit it: half to the voters, the rest to buybacks and the rewards pool.",
-    chips: ["Released on approval", "Forfeits go to holders"],
-    mock: "split",
-    side: -1,
+    id: "outcome",
+    label: "Release",
+    title: "Ship and get paid.\nMiss, and holders do.",
+    body: "Approved milestones release to the creator. Missed ones are forfeited: half to voters, the rest to $SHIP buybacks and rewards.",
+    layout: "split",
+    sea: { level: 0, alpha: 0.48 },
+    card: () => (
+      <>
+        <div className={styles.outcome}>
+          <div className={styles.outcomeRow}>
+            <span className={styles.outcomeTag}>Approved</span>
+            <span>Released to creator</span>
+            <b className={styles.mono}>3.74 SOL</b>
+          </div>
+          <div className={styles.outcomeDivider} />
+          <div className={styles.outcomeRow}>
+            <span className={`${styles.outcomeTag} ${styles.outcomeTagGhost}`}>Missed</span>
+            <span>Forfeited and redistributed</span>
+          </div>
+          <div className={styles.splitBar}>
+            <div style={css({ flex: 50 })}>
+              <b>50%</b>
+              <span>Voters</span>
+            </div>
+            <div style={css({ flex: 45 })}>
+              <b>45%</b>
+              <span>Buybacks</span>
+            </div>
+            <div style={css({ flex: 5 })} title="Rewards" />
+          </div>
+        </div>
+      </>
+    ),
   },
   {
     id: "cta",
-    eyebrow: "Your turn",
+    label: "Your turn",
     title: "Ready to ship?",
-    body: "Launch your token, lock your fees and let your delivery speak for itself.",
-    mock: "cta",
-    side: 1,
+    body: "Launch your token, lock your fees, and let your delivery speak for itself.",
+    layout: "center",
+    sea: { level: 0, alpha: 0.55 },
   },
 ];
 
-function Mock({ kind }: { kind: MockKind }) {
-  if (kind === "form") {
-    return (
-      <div className={styles.mock}>
-        <div className={styles.field}>
-          <span>Coin name</span>
-          <b>Ship It</b>
-        </div>
-        <div className={styles.field}>
-          <span>Ticker</span>
-          <b>$SHIPIT</b>
-        </div>
-        <div className={styles.toggleRow}>
-          <span>Auto-Lock fees</span>
-          <i className={styles.toggle} />
-        </div>
-        <div className={styles.mockBtn}>Launch token</div>
-      </div>
-    );
-  }
-  if (kind === "escrow") {
-    return (
-      <div className={styles.mock}>
-        <div className={styles.mockHead}>
-          <span>Escrow</span>
-          <em className={styles.pill}>Locked</em>
-        </div>
-        <div className={styles.bigNum}>
-          12.480 <small>SOL</small>
-        </div>
-        <div className={styles.track}>
-          <div className={styles.fill} style={{ ["--w" as any]: "0.78" }} />
-        </div>
-        <div className={styles.mockFoot}>Released only when milestones are approved</div>
-      </div>
-    );
-  }
-  if (kind === "milestones") {
-    const rows = [
-      ["Ship v1 on mainnet", "30%"],
-      ["Reach $1M market cap", "30%"],
-      ["Publish audit report", "40%"],
-    ];
-    return (
-      <div className={styles.mock}>
-        {rows.map(([t, p], i) => (
-          <div key={t} className={styles.row} style={{ ["--i" as any]: i }}>
-            <span className={styles.check}>✓</span>
-            <span className={styles.rowTitle}>{t}</span>
-            <span className={styles.rowPct}>{p}</span>
-          </div>
-        ))}
-      </div>
-    );
-  }
-  if (kind === "votes") {
-    return (
-      <div className={styles.mock}>
-        <div className={styles.voteRow}>
-          <span>Approve</span>
-          <div className={styles.track}>
-            <div className={styles.fill} style={{ ["--w" as any]: "0.87" }} />
-          </div>
-          <b>87%</b>
-        </div>
-        <div className={styles.voteRow}>
-          <span>Reject</span>
-          <div className={styles.track}>
-            <div className={styles.fill} style={{ ["--w" as any]: "0.13" }} />
-          </div>
-          <b>13%</b>
-        </div>
-        <div className={styles.mockFoot}>214 holders voted · all signatures verifiable</div>
-      </div>
-    );
-  }
-  if (kind === "split") {
-    return (
-      <div className={styles.mock}>
-        <div className={styles.mockHead}>
-          <span>If a milestone is missed</span>
-        </div>
-        <div className={styles.split}>
-          <div style={{ flex: 50 }} className={styles.seg}>
-            <b>50%</b>
-            <span>Voters</span>
-          </div>
-          <div style={{ flex: 45 }} className={styles.seg}>
-            <b>45%</b>
-            <span>Buybacks</span>
-          </div>
-          <div style={{ flex: 5 }} className={styles.seg}>
-            <b>5%</b>
-          </div>
-        </div>
-        <div className={styles.mockFoot}>Approved? 100% of that milestone&apos;s share goes to the creator.</div>
-      </div>
-    );
-  }
-  return null;
-}
+const N = CHAPTERS.length;
+
+/* Emblem choreography (x/y: fraction of half-viewport, size: fraction of viewport height) */
+const POSES: EmblemPose[] = [
+  { x: 0, y: 0.5, size: 0.27, rotY: 0, rotX: 0.04, glow: 1 },
+  // middle chapters: the emblem floats behind the frosted card, so the glass reads as real depth
+  { x: 0.53, y: -0.02, size: 0.3, rotY: -0.65, rotX: 0.06, glow: 0.5 },
+  { x: 0.5, y: -0.05, size: 0.3, rotY: 0.75, rotX: -0.05, glow: 0.6 },
+  { x: 0.56, y: 0.02, size: 0.28, rotY: -0.45, rotX: 0.08, glow: 0.5 },
+  { x: 0.51, y: 0, size: 0.3, rotY: 0.55, rotX: 0.02, glow: 0.5 },
+  { x: 0.53, y: 0.04, size: 0.22, rotY: -0.3, rotX: -0.04, glow: 0.6 },
+  { x: 0, y: 0.5, size: 0.27, rotY: Math.PI * 2, rotX: 0.04, glow: 1 },
+];
+const MOBILE_POSES: EmblemPose[] = POSES.map((p, i) => ({
+  ...p,
+  x: 0,
+  // intro/CTA: emblem above the headline; elsewhere it sits behind the docked glass card
+  y: i === 0 || i === N - 1 ? 0.42 : -0.32,
+  size: i === 0 || i === N - 1 ? 0.24 : 0.2,
+}));
+
+const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
+const smooth = (x: number) => {
+  const t = clamp01(x);
+  return t * t * (3 - 2 * t);
+};
+
+/* ------------------------------------------------------------------------------------------------ */
 
 export default function StoryExperience() {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const cardRefs = useRef<(HTMLElement | null)[]>([]);
-  const pointer = useRef({ x: 0, y: 0 });
-  const visible = useRef(true);
-  const lastActive = useRef(0);
-
+  const glRef = useRef<HTMLCanvasElement | null>(null);
+  const asciiRef = useRef<HTMLCanvasElement | null>(null);
+  const chapterRefs = useRef<(HTMLElement | null)[]>([]);
+  const meterRef = useRef<HTMLDivElement | null>(null);
   const [active, setActive] = useState(0);
-  const [staticMode, setStaticMode] = useState<boolean | null>(null);
+  const [mode, setMode] = useState<"pending" | "cinematic" | "static">("pending");
 
-  // Decide between the cinematic version and the simple stacked fallback.
   useEffect(() => {
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     let webgl = false;
     try {
-      const c = document.createElement("canvas");
-      webgl = Boolean(c.getContext("webgl2") || c.getContext("webgl"));
+      webgl = Boolean(document.createElement("canvas").getContext("webgl2"));
     } catch {
       webgl = false;
     }
-    setStaticMode(reduce || !webgl);
-  }, []);
-
-  const getProgress = useCallback(() => {
-    const root = rootRef.current;
-    if (!root) return 0;
-    const rect = root.getBoundingClientRect();
-    const total = rect.height - window.innerHeight;
-    if (total <= 0) return 0;
-    return Math.min(1, Math.max(0, -rect.top / total));
+    setMode(reduce || !webgl ? "static" : "cinematic");
   }, []);
 
   useEffect(() => {
-    if (staticMode !== false) return;
-    const canvas = canvasRef.current;
+    if (mode !== "cinematic") return;
+    const root = rootRef.current;
     const stage = stageRef.current;
-    if (!canvas || !stage) return;
+    const gl = glRef.current;
+    const asciiCanvas = asciiRef.current;
+    if (!root || !stage || !gl || !asciiCanvas) return;
 
-    const io = new IntersectionObserver(([e]) => (visible.current = e.isIntersecting), { threshold: 0 });
-    io.observe(stage);
+    let emblem: ReturnType<typeof createEmblem> | null = null;
+    try {
+      emblem = createEmblem(gl, POSES, MOBILE_POSES);
+    } catch {
+      setMode("static");
+      return;
+    }
+    const sea = createAsciiHorizon(asciiCanvas);
 
+    const pointer = { x: 0, y: 0 };
+    const target = { x: 0, y: 0 };
     const onMove = (e: PointerEvent) => {
-      pointer.current = { x: (e.clientX / window.innerWidth) * 2 - 1, y: (e.clientY / window.innerHeight) * 2 - 1 };
-      stage.style.setProperty("--mx", `${e.clientX}px`);
-      stage.style.setProperty("--my", `${e.clientY}px`);
+      target.x = (e.clientX / window.innerWidth) * 2 - 1;
+      target.y = (e.clientY / window.innerHeight) * 2 - 1;
     };
     window.addEventListener("pointermove", onMove, { passive: true });
 
-    let engine: ReturnType<typeof createStoryEngine> | null = null;
-    try {
-      engine = createStoryEngine({
-        canvas,
-        getProgress,
-        getPointer: () => pointer.current,
-        isVisible: () => visible.current,
-        onFrame: (u) => {
-          for (let i = 0; i < SCENE_COUNT; i++) {
-            const el = cardRefs.current[i];
-            if (!el) continue;
-            const d = u - i;
-            const ad = Math.abs(d);
-            // hold fully visible near the centre, fade/rotate away on either side
-            const v = Math.min(1, Math.max(0, 1 - (ad - 0.2) / 0.3));
-            const vs = v * v * (3 - 2 * v);
-            el.style.setProperty("--v", vs.toFixed(3));
-            el.style.setProperty("--d", Math.max(-1, Math.min(1, d)).toFixed(3));
-            el.style.pointerEvents = vs > 0.6 ? "auto" : "none";
-            el.style.visibility = vs < 0.01 ? "hidden" : "visible";
+    const onResize = () => {
+      emblem?.resize();
+      sea.resize();
+    };
+    const ro = new ResizeObserver(onResize);
+    ro.observe(stage);
+
+    const readProgress = () => {
+      const rect = root.getBoundingClientRect();
+      const total = rect.height - window.innerHeight;
+      return total > 0 ? clamp01(-rect.top / total) : 0;
+    };
+
+    let p = readProgress();
+    let last = performance.now();
+    let time = 0;
+    let raf = 0;
+    let lastActive = -1;
+
+    const frame = () => {
+      raf = requestAnimationFrame(frame);
+      const now = performance.now();
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      if (document.hidden) return;
+      time += dt;
+
+      // inertia: the story glides toward the scroll position instead of snapping
+      p += (readProgress() - p) * (1 - Math.exp(-dt * 7));
+      pointer.x += (target.x - pointer.x) * (1 - Math.exp(-dt * 4));
+      pointer.y += (target.y - pointer.y) * (1 - Math.exp(-dt * 4));
+      const u = p * (N - 1);
+
+      let seaLevel = 0;
+      let seaAlpha = 0;
+      let stream = 0;
+      let streamTo: { x: number; y: number } | null = null;
+
+      for (let i = 0; i < N; i++) {
+        const el = chapterRefs.current[i];
+        const d = u - i;
+        const ad = Math.abs(d);
+        const v = smooth(1 - (ad - 0.16) / 0.34);
+        const s = clamp01((d + 0.46) / 0.42); // scrubbed micro-animations finish just before the chapter is centred
+        const w = Math.max(0, 1 - ad); // weight for blending global layers
+
+        seaLevel += CHAPTERS[i].sea.level * w;
+        seaAlpha += CHAPTERS[i].sea.alpha * w;
+        stream += (CHAPTERS[i].sea.stream ?? 0) * w * v;
+
+        if (!el) continue;
+        el.style.setProperty("--v", v.toFixed(4));
+        el.style.setProperty("--d", Math.max(-1, Math.min(1, d)).toFixed(4));
+        el.style.setProperty("--s", s.toFixed(4));
+        el.style.visibility = v < 0.005 ? "hidden" : "visible";
+        el.style.pointerEvents = v > 0.6 ? "auto" : "none";
+
+        if (v > 0.005) {
+          // scroll-scrubbed micro-interactions inside the cards
+          el.querySelectorAll<HTMLElement>("[data-count-to]").forEach((n) => {
+            const to = Number(n.dataset.countTo);
+            const dec = Number(n.dataset.decimals ?? 0);
+            n.textContent = (to * smooth(s)).toFixed(dec);
+          });
+          el.querySelectorAll<HTMLElement>("[data-type]").forEach((n) => {
+            const full = n.dataset.type ?? "";
+            const k = Math.round(full.length * smooth(s * 1.3));
+            n.textContent = full.slice(0, k);
+          });
+          el.querySelectorAll<HTMLElement>("[data-steps]").forEach((n) => {
+            const steps = Number(n.dataset.steps);
+            n.dataset.at = String(Math.min(steps, Math.floor(s * (steps + 0.6))));
+          });
+          if (CHAPTERS[i].id === "lock" && v > 0.2) {
+            const card = el.querySelector<HTMLElement>(`.${styles.card}`);
+            if (card) {
+              const r = card.getBoundingClientRect();
+              streamTo = { x: r.left + r.width * 0.5, y: r.top + r.height * 0.42 };
+            }
           }
-          const idx = Math.max(0, Math.min(SCENE_COUNT - 1, Math.round(u)));
-          if (idx !== lastActive.current) {
-            lastActive.current = idx;
-            setActive(idx);
-          }
-        },
-      });
-    } catch {
-      setStaticMode(true);
-    }
+        }
+      }
+
+      const idx = Math.max(0, Math.min(N - 1, Math.round(u)));
+      if (idx !== lastActive) {
+        lastActive = idx;
+        setActive(idx);
+      }
+      meterRef.current?.style.setProperty("--p", p.toFixed(4));
+
+      sea.draw({ time, level: seaLevel, alpha: seaAlpha, drift: u * 60, stream, streamTo });
+      emblem?.render(u, time, pointer);
+    };
+    raf = requestAnimationFrame(frame);
 
     return () => {
-      engine?.dispose();
-      io.disconnect();
+      cancelAnimationFrame(raf);
+      ro.disconnect();
       window.removeEventListener("pointermove", onMove);
+      emblem?.dispose();
     };
-  }, [staticMode, getProgress]);
+  }, [mode]);
 
-  const jump = (i: number) => {
+  const jumpTo = (i: number) => {
     const root = rootRef.current;
     if (!root) return;
     const top = root.getBoundingClientRect().top + window.scrollY;
-    const total = root.offsetHeight - window.innerHeight;
-    window.scrollTo({ top: top + (i / (SCENE_COUNT - 1)) * total, behavior: "smooth" });
+    window.scrollTo({ top: top + (i / (N - 1)) * (root.offsetHeight - window.innerHeight), behavior: "smooth" });
   };
 
-  const renderCard = (s: SceneDef, i: number, isStatic: boolean) => (
-    <section
-      key={s.id}
-      ref={(el) => {
-        cardRefs.current[i] = el;
-      }}
-      className={`${styles.card} ${s.mock === "cta" ? styles.cardCta : ""} ${isStatic ? styles.cardStatic : ""}`}
-      style={{ ["--side" as any]: s.side }}
-      data-side={s.side === 1 ? "right" : "left"}
-      aria-label={s.title}
-    >
-      <div className={styles.eyebrow}>{s.eyebrow}</div>
-      <h2 className={i === 0 ? styles.titleHero : styles.title}>{s.title}</h2>
-      <p className={styles.body}>{s.body}</p>
-      {s.chips ? (
-        <div className={styles.chips}>
-          {s.chips.map((c) => (
-            <span key={c} className={styles.chip}>
-              {c}
-            </span>
-          ))}
-        </div>
-      ) : null}
-      <Mock kind={s.mock} />
-      {s.mock === "cta" ? (
-        <div className={styles.ctaRow}>
-          <Link href="/?tab=commit" className={styles.ctaBtn}>
-            Launch your token
-            <span aria-hidden>→</span>
-          </Link>
-          <Link href="/?tab=discover" className={styles.ctaGhost}>
-            Explore projects
-          </Link>
-        </div>
-      ) : null}
-    </section>
-  );
+  const titleWords = (title: string) =>
+    title.split("\n").map((line, li) => (
+      <span key={li} className={styles.line}>
+        {line.split(" ").map((word, wi) => (
+          <span key={wi} className={styles.word} style={css({ "--wi": li * 4 + wi })}>
+            {word}&nbsp;
+          </span>
+        ))}
+      </span>
+    ));
 
-  if (staticMode === true) {
+  const renderChapter = (c: Chapter, i: number, isStatic: boolean) => {
+    const isCta = c.id === "cta";
+    const isIntro = c.id === "intro";
     return (
-      <div className={`${styles.root} ${styles.rootStatic} story-root`}>
-        <div className={styles.staticList}>{SCENES.map((s, i) => renderCard(s, i, true))}</div>
+      <section
+        key={c.id}
+        ref={(el) => {
+          chapterRefs.current[i] = el;
+        }}
+        className={`${styles.chapter} ${c.layout === "center" ? styles.center : styles.split} ${isStatic ? styles.static : ""}`}
+        aria-label={c.title.replace("\n", " ")}
+      >
+        <div className={styles.copy}>
+          <div className={styles.label}>
+            {i > 0 && !isCta ? <span className={styles.num}>{String(i).padStart(2, "0")}</span> : null}
+            {c.label}
+          </div>
+          {isIntro ? <h1 className={styles.hero}>{titleWords(c.title)}</h1> : <h2 className={isCta ? styles.hero : styles.title}>{titleWords(c.title)}</h2>}
+          <p className={styles.body}>{c.body}</p>
+          {isCta ? (
+            <div className={styles.ctaRow}>
+              <Link href="/?tab=commit" className={styles.cta}>
+                Launch your token
+                <span aria-hidden className={styles.ctaArrow}>
+                  →
+                </span>
+              </Link>
+              <Link href="/?tab=discover" className={styles.ghost}>
+                Explore projects
+              </Link>
+            </div>
+          ) : null}
+          {isIntro && !isStatic ? (
+            <div className={styles.scrollCue} aria-hidden>
+              <span>Scroll</span>
+              <i />
+            </div>
+          ) : null}
+        </div>
+        {c.card ? (
+          <div className={styles.cardWrap}>
+            <div className={`${styles.card} ${styles["card_" + c.id] ?? ""}`}>{c.card()}</div>
+          </div>
+        ) : null}
+      </section>
+    );
+  };
+
+  if (mode === "static") {
+    return (
+      <div className={`${styles.root} ${styles.rootStatic}`}>
+        <img src="/branding/white-logo.png" alt="" className={styles.staticLogo} />
+        {CHAPTERS.map((c, i) => renderChapter(c, i, true))}
       </div>
     );
   }
 
   return (
-    <div ref={rootRef} className={`${styles.root} story-root`} style={{ height: `${SCENE_COUNT * 115}vh` }}>
+    <div ref={rootRef} className={styles.root} style={{ height: `${N * 140}vh` }}>
       <div ref={stageRef} className={styles.stage}>
-        <canvas ref={canvasRef} className={styles.ascii} aria-hidden />
+        <div className={styles.glow} aria-hidden />
+        <canvas ref={asciiRef} className={styles.layer} aria-hidden />
+        <canvas ref={glRef} className={`${styles.layer} ${styles.gl}`} aria-hidden />
         <div className={styles.vignette} aria-hidden />
-        <div className={styles.grain} aria-hidden />
 
-        {SCENES.map((s, i) => renderCard(s, i, false))}
+        {mode === "cinematic" ? CHAPTERS.map((c, i) => renderChapter(c, i, false)) : null}
 
-        <nav className={styles.rail} aria-label="Story progress">
-          {SCENES.map((s, i) => (
-            <button key={s.id} type="button" className={`${styles.dot} ${i === active ? styles.dotActive : ""}`} onClick={() => jump(i)} aria-label={s.eyebrow}>
-              <span className={styles.dotLabel}>{s.eyebrow.replace(/^\d+ — /, "")}</span>
+        <nav className={styles.chapters} aria-label="Chapters">
+          {CHAPTERS.map((c, i) => (
+            <button key={c.id} type="button" onClick={() => jumpTo(i)} className={`${styles.chip} ${i === active ? styles.chipOn : ""}`} aria-current={i === active ? "step" : undefined}>
+              <span>{c.label}</span>
             </button>
           ))}
         </nav>
-
-        <div className={`${styles.hint} ${active === 0 ? styles.hintOn : ""}`} aria-hidden>
-          <span>SCROLL</span>
+        <div ref={meterRef} className={styles.meter} aria-hidden>
           <i />
         </div>
       </div>
