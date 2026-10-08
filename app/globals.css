@@ -8389,3 +8389,13 @@ body[data-skin="app"] .commitComplianceFill {
     max-width: 100%;
   }
 }
+
+/* Cinematic story page: it draws its own ASCII world, so hide the global ASCII particle layer there. */
+body:has(.story-root) .ascii-particles {
+  display: none;
+}
+
+.storyMain {
+  padding: 0;
+  margin: 0;
+}

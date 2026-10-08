@@ -1,15 +1,16 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 
 export default function AsciiWaves() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const searchParams = useSearchParams();
+  const pathname = usePathname();
   const tab = searchParams.get("tab");
   
   // Only show on landing page (no tab or tab=home)
-  const isLandingPage = !tab || tab === "home";
+  const isLandingPage = pathname === "/" && (!tab || tab === "home");
 
   useEffect(() => {
     if (!isLandingPage) return;

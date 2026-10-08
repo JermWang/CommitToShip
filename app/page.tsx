@@ -1795,6 +1795,10 @@ export default function Home() {
                           >
                             Explore Discover
                           </button>
+
+                          <button className="btn landingCtaSecondary" onClick={() => router.push("/story")}>
+                            How it works
+                          </button>
                         </div>
                       </div>
 
