@@ -7,6 +7,7 @@ import { isAdminRequestAsync } from "../../../lib/adminAuth";
 import { verifyAdminOrigin } from "../../../lib/adminSession";
 import { getProjectProfile, upsertProjectProfile } from "../../../lib/projectProfilesStore";
 import { getConnection, getMintAuthorityBase58, getTokenMetadataUpdateAuthorityBase58 } from "../../../lib/solana";
+import { apiError } from "../../../lib/apiError";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 import { getAllowedCreatorWallets } from "../../../lib/creatorAuth";
 
@@ -27,7 +28,7 @@ export async function GET(_req: Request, ctx: { params: { mint: string } }) {
     const project = await getProjectProfile(mint);
     return NextResponse.json({ project });
   } catch (e) {
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    return apiError(e, "projects/[mint]");
   }
 }
 
@@ -149,6 +150,6 @@ export async function POST(req: Request, ctx: { params: { mint: string } }) {
 
     return NextResponse.json({ ok: true, project });
   } catch (e) {
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    return apiError(e, "projects/[mint]");
   }
 }

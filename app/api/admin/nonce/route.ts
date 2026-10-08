@@ -3,7 +3,7 @@ import { PublicKey } from "@solana/web3.js";
 
 import { createAdminNonce, expectedAdminLoginMessage, getAllowedAdminWallets, verifyAdminOrigin } from "../../../lib/adminSession";
 import { checkRateLimit } from "../../../lib/rateLimit";
-import { getSafeErrorMessage } from "../../../lib/safeError";
+import { apiError } from "../../../lib/apiError";
 
 export const runtime = "nodejs";
 
@@ -33,6 +33,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ walletPubkey, nonce, message });
   } catch (e) {
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    return apiError(e, "admin/nonce");
   }
 }

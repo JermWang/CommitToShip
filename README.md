@@ -131,7 +131,6 @@ docs/                 platform overview (rendered in-app) + reference PDF
 public/               static assets and branding
 instrumentation.ts    server boot hook (schema warm-up + scheduler)
 railway.json          Railway build/deploy config
-supabase/migrations/  legacy SQL kept for reference only; the app creates its own tables
 ```
 
 ## Scripts

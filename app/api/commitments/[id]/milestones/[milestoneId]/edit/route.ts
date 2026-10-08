@@ -5,7 +5,7 @@ import bs58 from "bs58";
 
 import { RewardMilestone, getCommitment, publicView, updateRewardTotalsAndMilestones } from "../../../../../../lib/escrowStore";
 import { checkRateLimit } from "../../../../../../lib/rateLimit";
-import { getSafeErrorMessage } from "../../../../../../lib/safeError";
+import { apiError } from "../../../../../../lib/apiError";
 
 export const runtime = "nodejs";
 
@@ -177,6 +177,6 @@ export async function POST(req: Request, ctx: { params: { id: string; milestoneI
 
     return NextResponse.json({ ok: true, commitment: publicView(updated) });
   } catch (e) {
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    return apiError(e, "commitments/[id]/milestones/[milestoneId]/edit");
   }
 }

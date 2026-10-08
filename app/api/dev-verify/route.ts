@@ -5,7 +5,7 @@ import bs58 from "bs58";
 
 import { getConnection, getMintAuthorityBase58, getTokenMetadataUpdateAuthorityBase58 } from "../../lib/solana";
 import { checkRateLimit } from "../../lib/rateLimit";
-import { getSafeErrorMessage } from "../../lib/safeError";
+import { apiError } from "../../lib/apiError";
 
 export const runtime = "nodejs";
 
@@ -79,6 +79,6 @@ export async function POST(req: Request) {
       updateAuthority,
     });
   } catch (e) {
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    return apiError(e, "dev-verify");
   }
 }

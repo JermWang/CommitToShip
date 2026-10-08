@@ -4,7 +4,7 @@ import { PublicKey } from "@solana/web3.js";
 import { getChainUnixTime, getConnection } from "../../../lib/solana";
 import { getClaimableCreatorFeeLamports } from "../../../lib/pumpfun";
 import { checkRateLimit } from "../../../lib/rateLimit";
-import { getSafeErrorMessage } from "../../../lib/safeError";
+import { apiError } from "../../../lib/apiError";
 
 export const runtime = "nodejs";
 
@@ -41,6 +41,6 @@ export async function POST(req: Request) {
       claimableLamports: status.claimableLamports,
     });
   } catch (e) {
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    return apiError(e, "pumpfun/status");
   }
 }

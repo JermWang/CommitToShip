@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { buildAdminSessionClearCookie, getAdminSessionWallet, deleteAdminSession, getAdminCookieName, verifyAdminOrigin } from "../../../lib/adminSession";
 import { checkRateLimit } from "../../../lib/rateLimit";
-import { getSafeErrorMessage } from "../../../lib/safeError";
+import { apiError } from "../../../lib/apiError";
 
 export const runtime = "nodejs";
 
@@ -44,6 +44,6 @@ export async function POST(req: Request) {
     res.headers.set("set-cookie", buildAdminSessionClearCookie());
     return res;
   } catch (e) {
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    return apiError(e, "admin/logout");
   }
 }

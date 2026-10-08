@@ -43,7 +43,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "contentType must be an image" }, { status: 400 });
     }
 
-    const bucket = String(process.env.SUPABASE_PROJECT_ASSETS_BUCKET ?? "project-assets").trim() || "project-assets";
+    const bucket = "project-assets";
     const ext = extFromContentType(contentType);
     const sessionId = crypto.randomBytes(16).toString("hex");
     const fileId = crypto.randomBytes(12).toString("hex");

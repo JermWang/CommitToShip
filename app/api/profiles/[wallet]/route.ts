@@ -6,7 +6,7 @@ import bs58 from "bs58";
 
 import { getProfile, upsertProfile } from "../../../lib/profilesStore";
 import { checkRateLimit } from "../../../lib/rateLimit";
-import { getSafeErrorMessage } from "../../../lib/safeError";
+import { apiError } from "../../../lib/apiError";
 
 export const runtime = "nodejs";
 
@@ -22,7 +22,7 @@ export async function GET(_req: Request, ctx: { params: { wallet: string } }) {
     const profile = await getProfile(wallet);
     return NextResponse.json({ profile });
   } catch (e) {
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    return apiError(e, "profiles/[wallet]");
   }
 }
 
@@ -105,6 +105,6 @@ export async function POST(req: Request, ctx: { params: { wallet: string } }) {
 
     return NextResponse.json({ ok: true, profile });
   } catch (e) {
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    return apiError(e, "profiles/[wallet]");
   }
 }

@@ -12,7 +12,7 @@ import {
   verifyAdminOrigin,
 } from "../../../lib/adminSession";
 import { checkRateLimit } from "../../../lib/rateLimit";
-import { getSafeErrorMessage } from "../../../lib/safeError";
+import { apiError } from "../../../lib/apiError";
 
 export const runtime = "nodejs";
 
@@ -59,6 +59,6 @@ export async function POST(req: Request) {
     res.headers.set("set-cookie", buildAdminSessionCookie({ sessionId: sess.sessionId, maxAgeSeconds: sessionTtlSeconds }));
     return res;
   } catch (e) {
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    return apiError(e, "admin/login");
   }
 }

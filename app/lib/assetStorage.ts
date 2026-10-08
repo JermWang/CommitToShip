@@ -5,12 +5,8 @@ import { getPool, hasDatabase } from "./db";
 /**
  * Asset storage for user-uploaded images (token icons/banners, avatars).
  *
- * Two interchangeable backends behind one "upload ticket" contract:
- *  - "supabase": Supabase Storage signed upload URLs (used only when SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY are set)
- *  - "database": images stored in Postgres and served by /api/assets/* (default; needs nothing but DATABASE_URL)
- *
- * The client contract is identical for both: POST for a ticket, PUT the file to `signedUrl`,
- * then use `publicUrl` as the image URL.
+ * Images are stored in Postgres (Railway) and served by /api/assets/*; nothing but DATABASE_URL is needed.
+ * Client contract: POST for an upload ticket, PUT the file to `signedUrl`, then use `publicUrl` as the image URL.
  */
 
 export type AssetBucket = string;
@@ -34,12 +30,6 @@ export const ASSET_MAX_BYTES = {
 const UPLOAD_TTL_SECONDS = 2 * 60 * 60;
 
 const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
-
-export function assetStorageMode(): "supabase" | "database" {
-  const url = String(process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").trim();
-  const key = String(process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").trim();
-  return url && key ? "supabase" : "database";
-}
 
 export function extFromContentType(contentType: string): string {
   const ct = String(contentType ?? "").toLowerCase();
@@ -99,48 +89,7 @@ export async function createUploadTicket(
   req: Request,
   input: { bucket: string; path: string; contentType: string; maxBytes: number }
 ): Promise<UploadTicket> {
-  if (assetStorageMode() === "supabase") return createSupabaseTicket(input);
   return createDatabaseTicket(req, input);
-}
-
-async function createSupabaseTicket(input: { bucket: string; path: string }): Promise<UploadTicket> {
-  const supabaseUrl = String(process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "")
-    .trim()
-    .replace(/\/+$/, "");
-  const storageBase = `${supabaseUrl}/storage/v1`;
-  const serviceRoleKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").trim();
-
-  const res = await fetch(`${storageBase}/object/upload/sign/${encodeURIComponent(input.bucket)}/${input.path}`, {
-    method: "POST",
-    headers: {
-      apikey: serviceRoleKey,
-      authorization: `Bearer ${serviceRoleKey}`,
-      "content-type": "application/json",
-      "x-upsert": "true",
-    },
-    body: JSON.stringify({ expiresIn: UPLOAD_TTL_SECONDS }),
-  });
-
-  const json = (await res.json().catch(() => ({}))) as any;
-  if (!res.ok) {
-    throw new Error(json?.message ?? json?.error ?? `Storage request failed (${res.status})`);
-  }
-
-  const raw = String(json?.url ?? "").trim();
-  const p = raw.replace(/^\/+/, "");
-  const signedUrl = /^https?:\/\//i.test(raw) ? raw : p.startsWith("storage/v1/") ? `${supabaseUrl}/${p}` : `${storageBase}/${p}`;
-  const token = new URL(signedUrl).searchParams.get("token") || "";
-  if (!token) throw new Error("Storage did not return token");
-
-  return {
-    ok: true,
-    bucket: input.bucket,
-    path: input.path,
-    token,
-    signedUrl,
-    publicUrl: `${storageBase}/object/public/${encodeURIComponent(input.bucket)}/${input.path}`,
-    expiresInSeconds: UPLOAD_TTL_SECONDS,
-  };
 }
 
 function signingKey(): Buffer {

@@ -4,7 +4,7 @@ import { PublicKey } from "@solana/web3.js";
 
 import { checkRateLimit } from "../../../../../lib/rateLimit";
 import { apiError } from "../../../../../lib/apiError";
-import { getAdminSessionWallet, verifyAdminOrigin } from "../../../../../lib/adminSession";
+import { getAdminSessionWallet, getAllowedAdminWallets, verifyAdminOrigin } from "../../../../../lib/adminSession";
 import { ASSET_MAX_BYTES, createUploadTicket, extFromContentType } from "../../../../../lib/assetStorage";
 
 export const runtime = "nodejs";
@@ -21,7 +21,9 @@ export async function POST(req: Request) {
     verifyAdminOrigin(req);
 
     const walletPubkey = await getAdminSessionWallet(req);
-    if (!walletPubkey) return NextResponse.json({ error: "Admin sign-in required" }, { status: 401 });
+    if (!walletPubkey || !getAllowedAdminWallets().has(walletPubkey)) {
+      return NextResponse.json({ error: "Admin sign-in required" }, { status: 401 });
+    }
 
     const body = (await req.json().catch(() => null)) as any;
 
@@ -37,7 +39,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "contentType must be an image" }, { status: 400 });
     }
 
-    const bucket = String(process.env.SUPABASE_PROJECT_ASSETS_BUCKET ?? "project-assets").trim() || "project-assets";
+    const bucket = "project-assets";
     const ext = extFromContentType(contentType);
     const id = crypto.randomBytes(12).toString("hex");
     const path = `${tokenMint}/${kind}/${id}.${ext}`;

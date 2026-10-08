@@ -6,7 +6,7 @@ import crypto from "crypto";
 
 import { RewardMilestone, getCommitment, publicView, updateRewardTotalsAndMilestones } from "../../../../../lib/escrowStore";
 import { checkRateLimit } from "../../../../../lib/rateLimit";
-import { getSafeErrorMessage } from "../../../../../lib/safeError";
+import { apiError } from "../../../../../lib/apiError";
 
 export const runtime = "nodejs";
 
@@ -124,6 +124,14 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
     if (!ok) return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
 
     const milestones: RewardMilestone[] = Array.isArray(record.milestones) ? (record.milestones.slice() as RewardMilestone[]) : [];
+
+    // Idempotent retries: a replayed request must report the existing milestone, not fail the limit checks below.
+    const milestoneId = milestoneIdFromRequest({ commitmentId: id, requestId });
+    const existingIdx = milestones.findIndex((m) => m.id === milestoneId);
+    if (existingIdx >= 0) {
+      return NextResponse.json({ ok: true, duplicate: true, commitment: publicView(record) });
+    }
+
     if (milestones.length >= 50) {
       return NextResponse.json({ error: "Maximum 50 milestones allowed" }, { status: 400 });
     }
@@ -132,12 +140,6 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
     const totalNext = currentAllocatedPercent + Math.floor(unlockPercent);
     if (totalNext > 100.0001) {
       return NextResponse.json({ error: `Total allocation cannot exceed 100% (would be ${totalNext}%).` }, { status: 400 });
-    }
-
-    const milestoneId = milestoneIdFromRequest({ commitmentId: id, requestId });
-    const existingIdx = milestones.findIndex((m) => m.id === milestoneId);
-    if (existingIdx >= 0) {
-      return NextResponse.json({ ok: true, duplicate: true, commitment: publicView(record) });
     }
 
     milestones.push({
@@ -157,6 +159,6 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
 
     return NextResponse.json({ ok: true, milestoneId, commitment: publicView(updated) });
   } catch (e) {
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    return apiError(e, "commitments/[id]/milestones/add");
   }
 }

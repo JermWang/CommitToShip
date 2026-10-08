@@ -20,6 +20,13 @@ export function apiError(e: unknown, scope: string, extra?: Record<string, unkno
     return NextResponse.json({ error: redactSensitive(message), ...(e as any)?.body, ...extra }, { status });
   }
 
+  // Malformed wallet/mint addresses or signatures from the request (new PublicKey / bs58.decode) are client errors.
+  if (message === "Invalid public key input" || message.startsWith("Non-base58 character")) {
+    console.warn(`[${scope}] rejected malformed input: ${message}`);
+    const error = message === "Invalid public key input" ? "Invalid Solana address" : "Invalid base58 encoding (address or signature)";
+    return NextResponse.json({ error, ...extra }, { status: 400 });
+  }
+
   console.error(`[${scope}] failed:`, e);
   return NextResponse.json({ error: getSafeErrorMessage(e), ...extra }, { status: Number.isFinite(status) && status >= 500 ? status : 500 });
 }

@@ -1,12 +1,12 @@
 .next/
 node_modules/
 .env.local
+.env*.local
 app/.env.local
 *.log
 .vercel/
 .DS_Store
 *.sql
-!supabase/migrations/*.sql
 
 *.tsbuildinfo
 

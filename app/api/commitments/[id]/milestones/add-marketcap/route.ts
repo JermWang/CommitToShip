@@ -6,7 +6,7 @@ import bs58 from "bs58";
 
 import { RewardMilestone, getCommitment, publicView, updateRewardTotalsAndMilestones } from "../../../../../lib/escrowStore";
 import { checkRateLimit } from "../../../../../lib/rateLimit";
-import { getSafeErrorMessage } from "../../../../../lib/safeError";
+import { apiError } from "../../../../../lib/apiError";
 import { fetchDexScreenerPairsByTokenMint, pickBestDexScreenerPair } from "../../../../../lib/dexScreener";
 
 export const runtime = "nodejs";
@@ -109,6 +109,19 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
     const ok = nacl.sign.detached.verify(new TextEncoder().encode(expectedMessage), signature, creatorPk.toBytes());
     if (!ok) return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
 
+    const milestones: RewardMilestone[] = Array.isArray(record.milestones) ? (record.milestones.slice() as RewardMilestone[]) : [];
+
+    // Idempotent retries: a replayed request must report the existing milestone, not fail the checks below.
+    const milestoneId = milestoneIdFromRequest({ commitmentId: id, requestId });
+    const existingIdx = milestones.findIndex((m) => m.id === milestoneId);
+    if (existingIdx >= 0) {
+      return NextResponse.json({ ok: true, duplicate: true, commitment: publicView(record) });
+    }
+
+    if (milestones.length >= 50) {
+      return NextResponse.json({ error: "Maximum 50 milestones allowed" }, { status: 400 });
+    }
+
     // A market-cap goal has to be a real goal: reject thresholds the token has already reached.
     // (Best effort - if the price feed is unreachable we don't block the creator.)
     try {
@@ -126,17 +139,6 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
       }
     } catch {
       // price feed unavailable - allow
-    }
-
-    const milestones: RewardMilestone[] = Array.isArray(record.milestones) ? (record.milestones.slice() as RewardMilestone[]) : [];
-    if (milestones.length >= 50) {
-      return NextResponse.json({ error: "Maximum 50 milestones allowed" }, { status: 400 });
-    }
-
-    const milestoneId = milestoneIdFromRequest({ commitmentId: id, requestId });
-    const existingIdx = milestones.findIndex((m) => m.id === milestoneId);
-    if (existingIdx >= 0) {
-      return NextResponse.json({ ok: true, duplicate: true, commitment: publicView(record) });
     }
 
     const nextMilestone: RewardMilestone = {
@@ -167,6 +169,6 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
 
     return NextResponse.json({ ok: true, milestoneId, commitment: publicView(updated) });
   } catch (e) {
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    return apiError(e, "commitments/[id]/milestones/add-marketcap");
   }
 }

@@ -4,6 +4,7 @@ import { isAdminRequestAsync } from "../../../../lib/adminAuth";
 import { verifyAdminOrigin } from "../../../../lib/adminSession";
 import { auditLog } from "../../../../lib/auditLog";
 import { checkRateLimit } from "../../../../lib/rateLimit";
+import { apiError } from "../../../../lib/apiError";
 import { getSafeErrorMessage } from "../../../../lib/safeError";
 import { getCommitment, publicView, updateCommitmentAdminFields } from "../../../../lib/escrowStore";
 
@@ -78,6 +79,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, commitment: publicView(updated) });
   } catch (e) {
     await auditLog("admin_commitment_update_error", { error: getSafeErrorMessage(e) });
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    return apiError(e, "admin/commitments/update");
   }
 }

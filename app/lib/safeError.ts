@@ -13,7 +13,6 @@ export function redactSensitive(input: string): string {
 
   out = out.replace(/\/\/([^\/\s@]+):([^\/\s@]+)@/g, "//$1:[redacted]@");
 
-  out = out.replace(/([a-z0-9-]+\.)*supabase\.co/gi, "[redacted]");
 
   return out;
 }

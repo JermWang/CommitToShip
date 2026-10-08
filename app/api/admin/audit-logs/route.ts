@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { isAdminRequestAsync } from "../../../lib/adminAuth";
 import { verifyAdminOrigin } from "../../../lib/adminSession";
 import { getPool, hasDatabase } from "../../../lib/db";
-import { getSafeErrorMessage } from "../../../lib/safeError";
+import { apiError } from "../../../lib/apiError";
 
 export const runtime = "nodejs";
 
@@ -70,6 +70,6 @@ export async function GET(req: Request) {
       })),
     });
   } catch (e) {
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    return apiError(e, "admin/audit-logs");
   }
 }

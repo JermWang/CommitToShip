@@ -3,8 +3,7 @@ import { getPool, hasDatabase } from "./db";
 /**
  * Background services for the long-running Node server (Railway).
  *
- * Vercel-style hosting had no place for scheduled work, so the platform's periodic jobs (market-cap milestone
- * resolution, reward normalization, ASD, bundler snapshots) were expected to be triggered externally. Here they
+ * The platform's periodic jobs (market-cap milestone resolution, reward normalization, ASD, bundler snapshots)
  * run in-process: each job POSTs its own admin endpoint over loopback with CRON_SECRET, and a Postgres advisory
  * lock guarantees only one instance runs a given job at a time (safe during overlapping Railway deploys).
  */

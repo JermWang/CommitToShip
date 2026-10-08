@@ -7,5 +7,4 @@ node_modules/
 .env*.local
 *.tsbuildinfo
 *.log
-supabase/
 app/public/

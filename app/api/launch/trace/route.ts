@@ -3,6 +3,7 @@ import { PublicKey } from "@solana/web3.js";
 
 import { checkRateLimit } from "../../../lib/rateLimit";
 import { auditLog } from "../../../lib/auditLog";
+import { apiError } from "../../../lib/apiError";
 import { getSafeErrorMessage } from "../../../lib/safeError";
 import { getAdminCookieName, getAdminSessionWallet, getAllowedAdminWallets, verifyAdminOrigin } from "../../../lib/adminSession";
 import { getConnection } from "../../../lib/solana";
@@ -207,6 +208,6 @@ export async function POST(req: Request) {
   } catch (e) {
     const msg = getSafeErrorMessage(e);
     await auditLog("launch_trace_error", { error: msg });
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return apiError(e, "launch/trace");
   }
 }

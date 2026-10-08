@@ -81,7 +81,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Wallet is not token authority", mintAuthority, updateAuthority }, { status: 403 });
     }
 
-    const bucket = String(process.env.SUPABASE_PROJECT_ASSETS_BUCKET ?? "project-assets").trim() || "project-assets";
+    const bucket = "project-assets";
     const ext = extFromContentType(contentType);
     const id = crypto.randomBytes(12).toString("hex");
     const path = `${tokenMint}/${kind}/${id}.${ext}`;

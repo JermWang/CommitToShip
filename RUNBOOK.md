@@ -107,7 +107,7 @@ railway variables --service ship-and-commit --set "KEY=value"      # set (trigge
 ## 6. Database
 
 - Railway Postgres. TLS is switched off automatically for `*.railway.internal` and localhost hosts and on for everything else; `PG_SSL` overrides this.
-- **Migrations:** there is no migration step. Each store runs `create table if not exists` and `alter table ... add column if not exists` on first use, and boot warms this up. `supabase/migrations/` is legacy reference SQL and is not applied.
+- **Migrations:** there is no migration step. Each store runs `create table if not exists` and `alter table ... add column if not exists` on first use, and boot warms this up. Uploaded images (token icons, banners, avatars) live in the `uploaded_assets` table and are served by `/api/assets/*`, so a database backup covers them too.
 - **Pool:** `PG_POOL_MAX` (default 10 in production), `PG_POOL_CONNECTION_TIMEOUT_MS` (10 s) and `PG_POOL_IDLE_TIMEOUT_MS` (30 s).
 - **Shell:** `railway connect Postgres` opens `psql`.
 - **Backups:** use the Postgres service's **Backups** tab in Railway if your plan includes it. Take a manual dump before risky changes:

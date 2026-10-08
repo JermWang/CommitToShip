@@ -9,7 +9,7 @@ import { getAllowedCreatorWallets } from "../../../../../lib/creatorAuth";
 import { deprecateDeclaredWallet } from "../../../../../lib/transparentBundlerStore";
 import { getConnection, getMintAuthorityBase58, getTokenMetadataUpdateAuthorityBase58 } from "../../../../../lib/solana";
 import { checkRateLimit } from "../../../../../lib/rateLimit";
-import { getSafeErrorMessage } from "../../../../../lib/safeError";
+import { apiError } from "../../../../../lib/apiError";
 
 export const runtime = "nodejs";
 
@@ -107,6 +107,6 @@ export async function POST(req: Request, ctx: { params: { mint: string } }) {
 
     return NextResponse.json({ ok: true });
   } catch (e) {
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    return apiError(e, "projects/[mint]/declared-wallets/deprecate");
   }
 }

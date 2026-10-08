@@ -1,13 +1,12 @@
 import { PublicKey } from "@solana/web3.js";
 
-import { assetStorageMode, readOwnAssetByUrl } from "./assetStorage";
+import { readOwnAssetByUrl } from "./assetStorage";
 
 export const LAUNCH_NAME_MAX = 32;
 export const LAUNCH_SYMBOL_MAX = 10;
 export const LAUNCH_DESCRIPTION_MAX = 600;
 export const LAUNCH_STATEMENT_MAX = 280;
 const URL_MAX = 300;
-const IMAGE_FETCH_MAX_BYTES = 15 * 1024 * 1024;
 
 export type LaunchInput = {
   name: string;
@@ -94,14 +93,7 @@ export function validateLaunchInput(body: any): LaunchInput {
   };
 }
 
-function supabasePublicPrefix(): string {
-  const base = String(process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "")
-    .trim()
-    .replace(/\/+$/, "");
-  return base ? `${base}/storage/v1/object/public/` : "";
-}
-
-/** True when the URL points at storage this app controls (its own asset route, or its Supabase public bucket). */
+/** True when the URL points at this app's own asset route (/api/assets/...). */
 export function isOwnAssetUrl(url: string): boolean {
   const s = String(url ?? "").trim();
   if (!s) return false;
@@ -109,10 +101,6 @@ export function isOwnAssetUrl(url: string): boolean {
     if (new URL(s, "http://internal.invalid").pathname.startsWith("/api/assets/")) return true;
   } catch {
     return false;
-  }
-  if (assetStorageMode() === "supabase") {
-    const prefix = supabasePublicPrefix();
-    return Boolean(prefix) && s.startsWith(prefix);
   }
   return false;
 }
@@ -128,21 +116,6 @@ export async function loadLaunchImage(imageUrl: string): Promise<{ data: Buffer;
 
   const own = await readOwnAssetByUrl(imageUrl);
   if (own) return own;
-
-  if (assetStorageMode() === "supabase") {
-    // Only ever fetch from our own Supabase public bucket (never a foreign host that merely has a matching path).
-    const prefix = supabasePublicPrefix();
-    if (!prefix || !imageUrl.startsWith(prefix)) throw new LaunchInputError("Token image must be uploaded through the launch form");
-    const res = await fetch(imageUrl, { redirect: "error", signal: AbortSignal.timeout(15_000) });
-    if (!res.ok) throw new LaunchInputError("Failed to load token image. Please re-upload it.");
-    const contentType = String(res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
-    if (!contentType.startsWith("image/")) throw new LaunchInputError("Token image is not a valid image");
-    const declared = Number(res.headers.get("content-length") ?? 0);
-    if (declared > IMAGE_FETCH_MAX_BYTES) throw new LaunchInputError("Token image is too large (max 15MB)");
-    const data = Buffer.from(await res.arrayBuffer());
-    if (data.length > IMAGE_FETCH_MAX_BYTES) throw new LaunchInputError("Token image is too large (max 15MB)");
-    return { data, contentType };
-  }
 
   throw new LaunchInputError("Token image was not found. Please re-upload it.");
 }

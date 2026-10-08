@@ -52,7 +52,7 @@ export async function POST(req: Request) {
     const ok = nacl.sign.detached.verify(new TextEncoder().encode(msg), signature, new PublicKey(walletPubkey).toBytes());
     if (!ok) return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
 
-    const bucket = String(process.env.SUPABASE_AVATAR_BUCKET ?? "avatars").trim() || "avatars";
+    const bucket = "avatars";
     const ext = extFromContentType(contentType);
     const id = crypto.randomBytes(12).toString("hex");
     const path = `${walletPubkey}/${id}.${ext}`;

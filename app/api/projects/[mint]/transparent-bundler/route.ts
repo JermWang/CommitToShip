@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { PublicKey } from "@solana/web3.js";
 
 import { checkRateLimit } from "../../../../lib/rateLimit";
-import { getSafeErrorMessage } from "../../../../lib/safeError";
+import { apiError } from "../../../../lib/apiError";
 import { getConnection, getTokenBalanceForMint, getTokenSupplyForMint } from "../../../../lib/solana";
 import {
   computeSnapshotFromRaw,
@@ -167,6 +167,6 @@ export async function GET(req: Request, ctx: { params: { mint: string } }) {
       disclaimer,
     });
   } catch (e) {
-    return NextResponse.json({ error: getSafeErrorMessage(e) }, { status: 500 });
+    return apiError(e, "projects/[mint]/transparent-bundler");
   }
 }
