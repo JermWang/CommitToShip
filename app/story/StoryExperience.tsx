@@ -220,12 +220,13 @@ const N = CHAPTERS.length;
 const POSES: EmblemPose[] = [
   { x: 0, y: 0.5, size: 0.27, rotY: 0, rotX: 0.04, glow: 1, maxW: 0.3 },
   // middle chapters: the emblem holds the centre column, between the copy and the glass card
-  { x: 0, y: 0.02, size: 0.3, rotY: -0.32, rotX: 0.05, glow: 0.5, maxW: 0.15 },
-  { x: 0, y: 0.02, size: 0.3, rotY: 0.34, rotX: -0.04, glow: 0.6, maxW: 0.15 },
-  { x: 0, y: 0.02, size: 0.3, rotY: -0.28, rotX: 0.06, glow: 0.5, maxW: 0.15 },
-  { x: 0, y: 0.02, size: 0.3, rotY: 0.3, rotX: 0.02, glow: 0.5, maxW: 0.15 },
-  { x: 0, y: 0.02, size: 0.3, rotY: -0.22, rotX: -0.03, glow: 0.6, maxW: 0.15 },
-  { x: 0, y: 0.5, size: 0.27, rotY: Math.PI * 2, rotX: 0.04, glow: 1, maxW: 0.3 },
+  // each pose also says how the emblem travels into it, so every chapter change feels different
+  { x: 0, y: 0.02, size: 0.3, rotY: -0.32, rotX: 0.05, glow: 0.5, maxW: 0.15, move: "spin" },
+  { x: 0, y: 0.02, size: 0.3, rotY: 0.34, rotX: -0.04, glow: 0.6, maxW: 0.15, move: "dial", land: "ripple" },
+  { x: 0, y: 0.02, size: 0.3, rotY: -0.28, rotX: 0.06, glow: 0.5, maxW: 0.15, move: "flip" },
+  { x: 0, y: 0.02, size: 0.3, rotY: 0.3, rotX: 0.02, glow: 0.5, maxW: 0.15, move: "inspect" },
+  { x: 0, y: 0.02, size: 0.3, rotY: -0.22, rotX: -0.03, glow: 0.6, maxW: 0.15, move: "double", land: "burst" },
+  { x: 0, y: 0.5, size: 0.27, rotY: Math.PI * 2, rotX: 0.04, glow: 1, maxW: 0.3, move: "spin", land: "burst" },
 ];
 const MOBILE_POSES: EmblemPose[] = POSES.map((p, i) => {
   const edge = i === 0 || i === N - 1;
@@ -427,7 +428,7 @@ export default function StoryExperience() {
         ref={(el) => {
           chapterRefs.current[i] = el;
         }}
-        className={`${styles.chapter} ${c.layout === "center" ? styles.center : styles.split} ${isStatic ? styles.static : ""}`}
+        className={`${styles.chapter} ${c.layout === "center" ? styles.center : styles.split} ${isStatic ? styles.static : styles["enter_" + c.id] ?? ""}`}
         aria-label={c.title.replace("\n", " ")}
       >
         <div className={styles.copy}>

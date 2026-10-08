@@ -195,6 +195,51 @@
   background-position: calc(120% - var(--s) * 140%) 0;
 }
 
+/* per-chapter entrances, so the middle of the story doesn't repeat itself
+   (--d < 0 while arriving, > 0 while leaving) */
+
+/* lock: the card swings shut like a vault door, the copy slides in from the side */
+.enter_lock .card {
+  transform-origin: 0% 50%;
+  transform: translate3d(0, 0, calc((1 - var(--v)) * -120px)) rotateY(calc(var(--d) * 72deg));
+}
+
+.enter_lock .copy {
+  transform: translate3d(calc(var(--d) * 80px), 0, 0);
+}
+
+/* commit: the card rises from below and tips upright, like a page being handed over */
+.enter_commit .card {
+  transform-origin: 50% 100%;
+  transform: translate3d(0, calc(var(--d) * -170px), 0) rotateX(calc(var(--d) * -36deg)) scale(calc(0.9 + var(--v) * 0.1));
+}
+
+/* verify: the card is scanned into existence top-to-bottom */
+.enter_verify .card {
+  --r: min(1, calc(var(--v) * 1.2));
+  transform: translate3d(0, 0, calc((1 - var(--v)) * -180px)) scale(calc(0.95 + var(--v) * 0.05));
+  clip-path: inset(0 0 calc((1 - var(--r)) * 100%) 0 round 24px);
+  filter: none;
+}
+
+.enter_verify .card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(var(--r) * 100% - 2px);
+  height: 2px;
+  z-index: 2;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.95) 20%, #fff 50%, rgba(255, 255, 255, 0.95) 80%, transparent);
+  box-shadow: 0 0 18px 4px rgba(255, 255, 255, 0.9), 0 -6px 24px rgba(180, 160, 255, 0.35);
+  opacity: clamp(0, calc((1 - var(--r)) * 8), 1);
+}
+
+.enter_verify .copy {
+  filter: blur(calc((1 - var(--v)) * 8px));
+}
+
 .cardHead {
   display: flex;
   justify-content: space-between;

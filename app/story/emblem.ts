@@ -15,8 +15,49 @@ import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
  *   across the curves, floating bokeh dust, and a small glint burst whenever the emblem lands on a chapter.
  */
 
+/**
+ * How the emblem travels INTO a pose:
+ * - spin: one full turn with a dolly toward the lens and a banking roll
+ * - dial: pulls back and turns face-on like a vault dial, in mechanical ticks
+ * - flip: a high, coin-toss forward flip
+ * - inspect: turns over, holds on its back in close-up while a scan line passes, then turns home
+ * - double: a fast, lifted double turn
+ */
+export type EmblemMove = "spin" | "dial" | "flip" | "inspect" | "double";
+
 /** x/y: fraction of the half-viewport (-1..1). size: fraction of viewport height. maxW: cap as a fraction of viewport width. */
-export type EmblemPose = { x: number; y: number; size: number; rotY: number; rotX: number; glow: number; maxW?: number };
+export type EmblemPose = {
+  x: number;
+  y: number;
+  size: number;
+  rotY: number;
+  rotX: number;
+  glow: number;
+  maxW?: number;
+  move?: EmblemMove;
+  /** what happens when the emblem settles on this pose */
+  land?: "burst" | "ripple";
+};
+
+/** whole turns each move adds per axis (keeps rotation continuous across chapters) */
+const MOVE_TURNS: Record<EmblemMove, { x: number; y: number; z: number }> = {
+  spin: { x: 0, y: 1, z: 0 },
+  dial: { x: 0, y: 0, z: -1 },
+  flip: { x: 1, y: 0, z: 0 },
+  inspect: { x: 0, y: 1, z: 0 },
+  double: { x: 0, y: 2, z: 0 },
+};
+
+const smoothstep = (a: number, b: number, x: number) => {
+  const t = clamp01((x - a) / (b - a));
+  return t * t * (3 - 2 * t);
+};
+/** advance in discrete ticks; the springs turn each tick into a small mechanical click */
+const ticks = (e: number, n: number) => {
+  const x = e * n;
+  const k = Math.min(n - 1, Math.floor(x));
+  return (k + smoothstep(0.35, 1, x - k)) / n;
+};
 
 export type Emblem = {
   render: (u: number, time: number, pointer: { x: number; y: number }) => void;
@@ -69,6 +110,9 @@ const BACKDROP_FRAG = /* glsl */ `
   uniform vec2 uGlow;      // emblem centre in uv
   uniform float uGlowR;    // emblem radius in uv-height units
   uniform float uLift;     // how far the emblem is lifted toward camera (0..1) -> softer, wider shadow
+  uniform float uScan;     // 0..1 scan line travelling down across the emblem ("verify")
+  uniform float uScanA;    // scan strength
+  uniform float uRipple;   // seconds since a "lock click" ripple started (<0 = none)
 
   float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 
@@ -111,6 +155,31 @@ const BACKDROP_FRAG = /* glsl */ `
     gd.x *= uAspect;
     float bloom = exp(-dot(gd, gd) / pow(uGlowR * 1.35, 2.0));
     col = mix(col, vec3(1.0), bloom * 0.7);
+
+    // lock click: a soft ring of light that expands from the emblem and fades
+    if (uRipple >= 0.0 && uRipple < 1.8) {
+      float rt = uRipple / 1.8;
+      float dist = length(gd);
+      float r = uGlowR * (0.85 + rt * 2.2);
+      float wdt = 0.006 + rt * 0.018;
+      float ring = exp(-pow((dist - r) / wdt, 2.0)) * pow(1.0 - rt, 2.0);
+      float shade = exp(-pow((dist - r - wdt * 2.2) / (wdt * 1.6), 2.0)) * pow(1.0 - rt, 2.0);
+      col = mix(col, vec3(1.0), ring * 0.85);
+      col *= 1.0 - shade * 0.06;
+    }
+
+    // verify: a fine scan line (with a faint prismatic fringe) sweeps down across the emblem;
+    // the glass refracts it, so the emblem itself looks scanned
+    if (uScanA > 0.001) {
+      float by = uGlow.y + uGlowR * (1.25 - uScan * 2.5);
+      float hx = exp(-pow(gd.x / (uGlowR * 1.7), 2.0));
+      float dy = uv.y - by;
+      float line = exp(-pow(dy / 0.0035, 2.0));
+      float trail = (dy > 0.0 ? exp(-dy / 0.05) : 0.0) * 0.22;
+      vec3 fringe = vec3(exp(-pow((dy - 0.004) / 0.004, 2.0)), 0.0, exp(-pow((dy + 0.004) / 0.004, 2.0)));
+      col = mix(col, vec3(1.0), clamp((line + trail) * hx * uScanA, 0.0, 1.0));
+      col += vec3(0.9, 0.55, 1.0) * fringe * hx * uScanA * 0.06;
+    }
 
     // iridescent twinkles in the air around the emblem
     vec2 g = vec2(uv.x * uAspect, uv.y) * 54.0;
@@ -297,6 +366,9 @@ export function createEmblem(canvas: HTMLCanvasElement, poses: EmblemPose[], mob
     uGlow: { value: new THREE.Vector2(0.5, 0.6) },
     uGlowR: { value: 0.1 },
     uLift: { value: 0 },
+    uScan: { value: 0 },
+    uScanA: { value: 0 },
+    uRipple: { value: -1 },
   };
   const bgMat = new THREE.ShaderMaterial({
     vertexShader: BACKDROP_VERT,
@@ -436,12 +508,26 @@ export function createEmblem(canvas: HTMLCanvasElement, poses: EmblemPose[], mob
   const sScale = new Spring(0.0001, 40, 0.9);
   const sRotX = new Spring(0, 46, 0.8);
   const sRotY = new Spring(0, 34, 0.82);
-  const sRotZ = new Spring(0, 46, 0.8);
+  // stiffer + springier on Z so the dial's ticks land as little mechanical clicks
+  const sRotZ = new Spring(0, 110, 0.55);
+
+  // whole turns completed before arriving at pose k (so rotation never jumps between chapters)
+  const cumTurns = (set: EmblemPose[], k: number) => {
+    const t = { x: 0, y: 0, z: 0 };
+    for (let j = 1; j <= k; j++) {
+      const m = MOVE_TURNS[set[j].move ?? "spin"];
+      t.x += m.x;
+      t.y += m.y;
+      t.z += m.z;
+    }
+    return t;
+  };
 
   const projected = new THREE.Vector3();
+  const scanLight = new THREE.Vector3();
   let lastTime = 0;
-  let lastSeg = -1;
-  let lastE = 0;
+  let lastSettled = -2;
+  let rippleAt = -10;
 
   const render = (u: number, time: number, pointer: { x: number; y: number }) => {
     const dt = Math.min(0.05, Math.max(0.001, time - lastTime));
@@ -472,15 +558,66 @@ export function createEmblem(canvas: HTMLCanvasElement, poses: EmblemPose[], mob
       // entrance: rises out of the light and turns to face you
       const intro = easeOutExpo(clamp01((time - loadedAt) / 2.2));
 
-      // cinematic move: one full turn per chapter, a dolly toward the lens, a banking roll and a lifting arc
-      const turns = (i + e) * TAU;
+      // each chapter has its own way of arriving (see EmblemMove)
+      const move = b.move ?? "spin";
+      const cum = cumTurns(set, i);
+      let mX = 0;
+      let mY = 0;
+      let mZ = 0;
+      let dz = 0; // dolly (toward camera +)
+      let dy = 0; // lift, in emblem sizes
+      let rx = 0;
+      let rz = 0;
+      let sc = 1;
+      let faceOn = 0; // 0..1: pull the pose's yaw toward face-on
+      let scan = 0;
+      let scanA = 0;
+      switch (move) {
+        case "dial":
+          mZ = -ticks(e, 8);
+          dz = -arc * 1.5;
+          rx = arc * 0.08;
+          sc = 1 - arc * 0.06;
+          faceOn = arc;
+          break;
+        case "flip":
+          mX = e;
+          dz = arc * 1.2;
+          dy = arc * 0.55;
+          rz = arc * 0.12 * dir;
+          break;
+        case "inspect":
+          // turn over, hold on the back in close-up while the scan passes, turn home
+          mY = 0.5 * smoothstep(0, 0.4, e) + 0.5 * smoothstep(0.6, 1, e);
+          dz = arc * 1.9;
+          dy = -arc * 0.04;
+          rx = -arc * 0.32;
+          scan = smoothstep(0.22, 0.78, e);
+          scanA = smoothstep(0.15, 0.3, e) * (1 - smoothstep(0.72, 0.86, e));
+          break;
+        case "double":
+          mY = 2 * e;
+          dz = arc * 3;
+          dy = arc * 0.3;
+          rx = -arc * 0.18;
+          rz = arc * 0.3 * dir;
+          sc = 1 + arc * 0.06;
+          break;
+        default:
+          mY = e;
+          dz = arc * 2.6;
+          dy = arc * 0.16;
+          rx = -arc * 0.22;
+          rz = arc * 0.2 * dir;
+      }
+
       const targetX = lerp(a.x, b.x, e) * hw + pointer.x * 0.06 * size;
-      const targetY = lerp(a.y, b.y, e) * hh + arc * 0.16 * size - (1 - intro) * 0.6 * size - pointer.y * 0.04 * size;
-      const targetZ = arc * 2.6;
-      const targetScale = size * (0.82 + 0.18 * intro);
-      const targetRotY = lerp(a.rotY, b.rotY, e) + turns - (1 - intro) * 1.4 + pointer.x * 0.2;
-      const targetRotX = lerp(a.rotX, b.rotX, e) - arc * 0.22 + pointer.y * 0.12;
-      const targetRotZ = arc * 0.2 * dir;
+      const targetY = lerp(a.y, b.y, e) * hh + dy * size - (1 - intro) * 0.6 * size - pointer.y * 0.04 * size;
+      const targetZ = dz;
+      const targetScale = size * sc * (0.82 + 0.18 * intro);
+      const targetRotY = lerp(a.rotY, b.rotY, e) * (1 - faceOn) + (cum.y + mY) * TAU - (1 - intro) * 1.4 + pointer.x * 0.2;
+      const targetRotX = lerp(a.rotX, b.rotX, e) + (cum.x + mX) * TAU + rx + pointer.y * 0.12;
+      const targetRotZ = (cum.z + mZ) * TAU + rz;
 
       // idle "sailing": slow pitch, roll and bob layered on top of the springs
       const bob = Math.sin(time * 0.9) * 0.03 * size;
@@ -492,6 +629,8 @@ export function createEmblem(canvas: HTMLCanvasElement, poses: EmblemPose[], mob
       pivot.rotation.set(sRotX.step(targetRotX, dt) + pitch, sRotY.step(targetRotY, dt), sRotZ.step(targetRotZ, dt) + roll);
       glass.envMapIntensity = 1.1 + lerp(a.glow, b.glow, e) * 0.35 + arc * 0.25;
       keyLight.intensity = 2.0 + arc * 2.2;
+      // during the scan the key light rides the scan line, so a highlight travels down the glass with it
+      if (scanA > 0) keyLight.position.lerp(scanLight.set(0, 5 - scan * 10, 5), scanA);
 
       // edge glints: brief, sharp twinkles (brighter while the emblem turns)
       for (const g of glints) {
@@ -502,15 +641,24 @@ export function createEmblem(canvas: HTMLCanvasElement, poses: EmblemPose[], mob
         (g.sprite.material as THREE.SpriteMaterial).opacity = Math.min(1, tw * 1.4);
       }
 
-      // landing burst: a ring of prismatic glints when the emblem settles into a chapter
-      const landed = (i === lastSeg && ((lastE < 0.96 && e >= 0.96) || (lastE > 0.04 && e <= 0.04))) || (lastSeg >= 0 && i !== lastSeg && (e >= 0.96 || e <= 0.04));
-      if (landed && time - loadedAt > 1.2) {
-        burstAt = time;
-        burstCenter.copy(pivot.position);
-        burstScale = pivot.scale.x;
+      // landing FX, only on the poses that ask for one (a glint burst, or the lock's click ripple)
+      const settled = e >= 0.96 ? i + 1 : e <= 0.04 ? i : -1;
+      if (settled >= 0 && settled !== lastSettled) {
+        if (lastSettled !== -2 && time - loadedAt > 1.2) {
+          const land = set[settled].land;
+          if (land === "burst" && time - burstAt > 4) {
+            burstAt = time;
+            burstCenter.copy(pivot.position);
+            burstScale = pivot.scale.x;
+          } else if (land === "ripple" && time - rippleAt > 2) {
+            rippleAt = time;
+          }
+        }
+        lastSettled = settled;
       }
-      lastSeg = i;
-      lastE = e;
+      bgUniforms.uRipple.value = time - rippleAt < 1.8 ? time - rippleAt : -1;
+      bgUniforms.uScan.value = scan;
+      bgUniforms.uScanA.value = scanA;
 
       // tell the backdrop where the emblem is (for its bloom, contact shadow and twinkles)
       projected.set(pivot.position.x, pivot.position.y, 0).project(camera);
