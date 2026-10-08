@@ -230,7 +230,7 @@ const POSES: EmblemPose[] = [
 const MOBILE_POSES: EmblemPose[] = POSES.map((p, i) => {
   const edge = i === 0 || i === N - 1;
   // intro/CTA: above the headline. Other chapters: in the gap between the copy and the docked glass card.
-  return { ...p, x: 0, y: edge ? 0.42 : 0.1, size: edge ? 0.24 : 0.15, maxW: 0.7 };
+  return { ...p, x: 0, y: edge ? 0.47 : 0.1, size: edge ? 0.2 : 0.15, maxW: 0.7 };
 });
 
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
@@ -250,6 +250,15 @@ export default function StoryExperience() {
   const meterRef = useRef<HTMLDivElement | null>(null);
   const [active, setActive] = useState(0);
   const [mode, setMode] = useState<"pending" | "cinematic" | "static">("pending");
+
+  // cream skin for the global nav while the story is on screen
+  useEffect(() => {
+    const prev = document.body.dataset.skin;
+    document.body.dataset.skin = "story";
+    return () => {
+      document.body.dataset.skin = prev ?? "app";
+    };
+  }, []);
 
   useEffect(() => {
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -277,7 +286,7 @@ export default function StoryExperience() {
       setMode("static");
       return;
     }
-    const sea = createAsciiHorizon(asciiCanvas);
+    const sea = createAsciiHorizon(asciiCanvas, "#1a1712");
 
     const pointer = { x: 0, y: 0 };
     const target = { x: 0, y: 0 };
@@ -377,7 +386,8 @@ export default function StoryExperience() {
       }
       meterRef.current?.style.setProperty("--p", p.toFixed(4));
 
-      sea.draw({ time, level: seaLevel, alpha: seaAlpha, drift: u * 60, stream, streamTo });
+      // ink on cream reads stronger than white on black: keep the sea quiet
+      sea.draw({ time, level: seaLevel, alpha: seaAlpha * 0.5, drift: u * 60, stream, streamTo });
       emblem?.render(u, time, pointer);
     };
     raf = requestAnimationFrame(frame);
@@ -459,7 +469,7 @@ export default function StoryExperience() {
   if (mode === "static") {
     return (
       <div className={`${styles.root} ${styles.rootStatic}`}>
-        <img src="/branding/white-logo.png" alt="" className={styles.staticLogo} />
+        <img src="/branding/black-logo.png" alt="" className={styles.staticLogo} />
         {CHAPTERS.map((c, i) => renderChapter(c, i, true))}
       </div>
     );

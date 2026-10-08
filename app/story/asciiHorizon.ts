@@ -21,7 +21,7 @@ export type AsciiHorizon = { draw: (f: AsciiFrame) => void; resize: () => void }
 
 const RAMP = [".", ":", "-", "=", "+", "*", "#", "%", "@", "0", "1"];
 
-export function createAsciiHorizon(canvas: HTMLCanvasElement): AsciiHorizon {
+export function createAsciiHorizon(canvas: HTMLCanvasElement, color = "#fff"): AsciiHorizon {
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("2D canvas unavailable");
 
@@ -72,7 +72,7 @@ export function createAsciiHorizon(canvas: HTMLCanvasElement): AsciiHorizon {
         const depth = Math.max(0, 1 - dy / 13);
         const idx = Math.max(0, Math.min(RAMP.length - 1, Math.floor((dy <= 0 ? 1 : depth) * (RAMP.length - 1))));
         ctx.globalAlpha = f.alpha * (dy <= 1 ? 0.78 : 0.3 * depth);
-        ctx.fillStyle = "#fff";
+        ctx.fillStyle = color;
         ctx.fillText(RAMP[idx], x * cw, y * chh);
       }
     }
@@ -84,6 +84,7 @@ export function createAsciiHorizon(canvas: HTMLCanvasElement): AsciiHorizon {
       const tx = f.streamTo.x;
       const ty = f.streamTo.y;
       const n = 54;
+      ctx.fillStyle = color;
       for (let i = 0; i < n; i++) {
         const ph = (f.time * 0.22 + i / n) % 1;
         const lane = ((i * 37) % 7) - 3;

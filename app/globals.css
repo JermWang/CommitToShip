@@ -8399,3 +8399,47 @@ body:has(.story-root) .ascii-particles {
   padding: 0;
   margin: 0;
 }
+
+
+/* ---------------------------------------------------------------------------------------------- */
+/* "How it works" story: cream glass nav to match the pastel stage                                */
+body[data-skin="story"] {
+  background: #f6f1e9;
+}
+
+body[data-skin="story"] .globalNav {
+  background: rgba(246, 241, 233, 0.72);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(18px) saturate(160%);
+  border-bottom-color: rgba(20, 20, 20, 0.07);
+}
+
+body[data-skin="story"] .globalNavBrandText,
+body[data-skin="story"] .globalNavIconBtn {
+  color: rgba(20, 20, 20, 0.72);
+}
+
+body[data-skin="story"] .globalNavIconBtn:hover {
+  color: #141414;
+  background: rgba(20, 20, 20, 0.06);
+}
+
+body[data-skin="story"] .globalNavBrandMark {
+  filter: invert(1);
+}
+
+body[data-skin="story"] .globalNavTokenCopy {
+  background: rgba(255, 255, 255, 0.6);
+  border-color: rgba(20, 20, 20, 0.08);
+  color: #141414;
+}
+
+body[data-skin="story"] .globalNav .wallet-adapter-button {
+  background: #141414;
+  color: #fff;
+  border-color: transparent;
+}
+
+body[data-skin="story"] .globalNav .wallet-adapter-button:not([disabled]):hover {
+  background: #000;
+}
